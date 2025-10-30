@@ -28,6 +28,7 @@ export default function Home() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
 
   const { data: categories = [], isLoading: categoriesLoading } = useQuery<Category[]>({
     queryKey: ["/api/categories"],
@@ -36,6 +37,10 @@ export default function Home() {
   const { data: products = [], isLoading: productsLoading } = useQuery<Product[]>({
     queryKey: ["/api/products"],
   });
+
+  const filteredProducts = selectedCategoryId
+    ? products.filter(product => product.categoryId === selectedCategoryId)
+    : products;
 
   const handleAddToCart = (productId: string, productName: string, price: number, image: string, quantity: number) => {
     if (quantity === 0) {
@@ -113,45 +118,73 @@ export default function Home() {
                   itemCount={category.itemCount}
                   image={category.image}
                   icon={iconMap[category.iconName]}
-                  onBrowse={() => console.log(`Browse ${category.name}`)}
+                  onBrowse={() => {
+                    setSelectedCategoryId(category.id);
+                    const productsSection = document.getElementById('products-section');
+                    productsSection?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }}
                 />
               ))
             )}
           </div>
 
-          <div className="text-center mb-8">
-            <h2 className="text-3xl sm:text-4xl font-bold mb-4" data-testid="text-popular-heading">
-              Popular Items
-            </h2>
-            <p className="text-lg text-muted-foreground" data-testid="text-popular-subheading">
-              Most loved by our customers
-            </p>
-          </div>
+          <div id="products-section" className="scroll-mt-20">
+            <div className="text-center mb-8">
+              <h2 className="text-3xl sm:text-4xl font-bold mb-4" data-testid="text-popular-heading">
+                {selectedCategoryId 
+                  ? categories.find(c => c.id === selectedCategoryId)?.name || 'Products'
+                  : 'Popular Items'
+                }
+              </h2>
+              <p className="text-lg text-muted-foreground" data-testid="text-popular-subheading">
+                {selectedCategoryId 
+                  ? `Browse our ${categories.find(c => c.id === selectedCategoryId)?.name.toLowerCase()}`
+                  : 'Most loved by our customers'
+                }
+              </p>
+            </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {productsLoading ? (
-              <div className="col-span-full text-center py-8 text-muted-foreground">
-                Loading products...
+            {selectedCategoryId && (
+              <div className="flex justify-center mb-6">
+                <Button
+                  variant="outline"
+                  onClick={() => setSelectedCategoryId(null)}
+                  className="gap-2"
+                >
+                  ← Back to All Items
+                </Button>
               </div>
-            ) : (
-              products.slice(0, 8).map((product) => (
-                <ProductCard
-                  key={product.id}
-                  id={product.id}
-                  name={product.name}
-                  description={product.description}
-                  price={product.price}
-                  image={product.image}
-                  rating={parseFloat(product.rating)}
-                  reviewCount={product.reviewCount}
-                  isVeg={product.isVeg}
-                  isCustomizable={product.isCustomizable}
-                  onAddToCart={(quantity) =>
-                    handleAddToCart(product.id, product.name, product.price, product.image, quantity)
-                  }
-                />
-              ))
             )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {productsLoading ? (
+                <div className="col-span-full text-center py-8 text-muted-foreground">
+                  Loading products...
+                </div>
+              ) : filteredProducts.length === 0 ? (
+                <div className="col-span-full text-center py-8 text-muted-foreground">
+                  No products found in this category
+                </div>
+              ) : (
+                (selectedCategoryId ? filteredProducts : filteredProducts.slice(0, 8)).map((product) => (
+                  <ProductCard
+                    key={product.id}
+                    id={product.id}
+                    name={product.name}
+                    description={product.description}
+                    price={product.price}
+                    image={product.image}
+                    rating={parseFloat(product.rating)}
+                    reviewCount={product.reviewCount}
+                    isVeg={product.isVeg}
+                    isCustomizable={product.isCustomizable}
+                    onAddToCart={(quantity) =>
+                      handleAddToCart(product.id, product.name, product.price, product.image, quantity)
+                    }
+                  />
+                ))
+              )}
+            </div>
           </div>
         </section>
       </main>
