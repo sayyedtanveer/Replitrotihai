@@ -1,15 +1,14 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import Header from "@/components/Header";
 import Hero from "@/components/Hero";
 import CategoryCard from "@/components/CategoryCard";
 import ProductCard from "@/components/ProductCard";
 import CartSidebar from "@/components/CartSidebar";
+import CheckoutDialog from "@/components/CheckoutDialog";
 import Footer from "@/components/Footer";
 import { UtensilsCrossed, ChefHat, Hotel } from "lucide-react";
-
-import rotiImage from '@assets/generated_images/Fresh_tandoori_rotis_stack_1dcda2c7.png';
-import thaliImage from '@assets/generated_images/Complete_Indian_thali_meal_837cc17d.png';
-import hotelImage from '@assets/generated_images/Fine_dining_restaurant_setup_1724ed85.png';
+import type { Category, Product } from "@shared/schema";
 
 interface CartItem {
   id: string;
@@ -19,9 +18,24 @@ interface CartItem {
   image: string;
 }
 
+const iconMap: Record<string, React.ReactNode> = {
+  UtensilsCrossed: <UtensilsCrossed className="h-6 w-6 text-primary" />,
+  ChefHat: <ChefHat className="h-6 w-6 text-primary" />,
+  Hotel: <Hotel className="h-6 w-6 text-primary" />,
+};
+
 export default function Home() {
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
+
+  const { data: categories = [], isLoading: categoriesLoading } = useQuery<Category[]>({
+    queryKey: ["/api/categories"],
+  });
+
+  const { data: products = [], isLoading: productsLoading } = useQuery<Product[]>({
+    queryKey: ["/api/products"],
+  });
 
   const handleAddToCart = (productId: string, productName: string, price: number, image: string, quantity: number) => {
     if (quantity === 0) {
@@ -49,78 +63,20 @@ export default function Home() {
     }
   };
 
-  const categories = [
-    {
-      title: "Fresh Rotis & Breads",
-      description: "Tandoori rotis, naan, and more freshly baked",
-      itemCount: "20+ varieties",
-      image: rotiImage,
-      icon: <UtensilsCrossed className="h-6 w-6 text-primary" />,
-    },
-    {
-      title: "Lunch & Dinner",
-      description: "Complete meals with rice, curry, and sides",
-      itemCount: "50+ dishes",
-      image: thaliImage,
-      icon: <ChefHat className="h-6 w-6 text-primary" />,
-    },
-    {
-      title: "Hotel Specials",
-      description: "Restaurant quality dishes delivered to you",
-      itemCount: "30+ partners",
-      image: hotelImage,
-      icon: <Hotel className="h-6 w-6 text-primary" />,
-    },
-  ];
-
-  const products = [
-    {
-      id: "butter-naan",
-      name: "Butter Naan",
-      description: "Soft and fluffy naan brushed with butter, freshly baked in tandoor",
-      price: 45,
-      image: rotiImage,
-      rating: 4.7,
-      reviewCount: 128,
-      isVeg: true,
-      isCustomizable: true,
-    },
-    {
-      id: "tandoori-roti",
-      name: "Tandoori Roti",
-      description: "Whole wheat roti with authentic smoky flavor from the tandoor",
-      price: 30,
-      image: rotiImage,
-      rating: 4.5,
-      reviewCount: 95,
-      isVeg: true,
-      isCustomizable: false,
-    },
-    {
-      id: "special-thali",
-      name: "Special Thali",
-      description: "Complete meal with dal, curry, rice, roti, and dessert",
-      price: 180,
-      image: thaliImage,
-      rating: 4.8,
-      reviewCount: 210,
-      isVeg: true,
-      isCustomizable: true,
-    },
-    {
-      id: "paneer-tikka",
-      name: "Paneer Tikka",
-      description: "Grilled cottage cheese marinated in Indian spices",
-      price: 220,
-      image: hotelImage,
-      rating: 4.6,
-      reviewCount: 156,
-      isVeg: true,
-      isCustomizable: true,
-    },
-  ];
-
   const totalItems = cartItems.reduce((sum, item) => sum + item.quantity, 0);
+  const subtotal = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const deliveryFee = subtotal > 0 ? 40 : 0;
+  const total = subtotal + deliveryFee;
+
+  const handleCheckout = () => {
+    setIsCartOpen(false);
+    setIsCheckoutOpen(true);
+  };
+
+  const handleOrderSuccess = () => {
+    setCartItems([]);
+    setIsCheckoutOpen(false);
+  };
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -144,13 +100,23 @@ export default function Home() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-16">
-            {categories.map((category, index) => (
-              <CategoryCard
-                key={index}
-                {...category}
-                onBrowse={() => console.log(`Browse ${category.title}`)}
-              />
-            ))}
+            {categoriesLoading ? (
+              <div className="col-span-full text-center py-8 text-muted-foreground">
+                Loading categories...
+              </div>
+            ) : (
+              categories.map((category) => (
+                <CategoryCard
+                  key={category.id}
+                  title={category.name}
+                  description={category.description}
+                  itemCount={category.itemCount}
+                  image={category.image}
+                  icon={iconMap[category.iconName]}
+                  onBrowse={() => console.log(`Browse ${category.name}`)}
+                />
+              ))
+            )}
           </div>
 
           <div className="text-center mb-8">
@@ -163,15 +129,29 @@ export default function Home() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {products.map((product) => (
-              <ProductCard
-                key={product.id}
-                {...product}
-                onAddToCart={(quantity) =>
-                  handleAddToCart(product.id, product.name, product.price, product.image, quantity)
-                }
-              />
-            ))}
+            {productsLoading ? (
+              <div className="col-span-full text-center py-8 text-muted-foreground">
+                Loading products...
+              </div>
+            ) : (
+              products.slice(0, 8).map((product) => (
+                <ProductCard
+                  key={product.id}
+                  id={product.id}
+                  name={product.name}
+                  description={product.description}
+                  price={product.price}
+                  image={product.image}
+                  rating={parseFloat(product.rating)}
+                  reviewCount={product.reviewCount}
+                  isVeg={product.isVeg}
+                  isCustomizable={product.isCustomizable}
+                  onAddToCart={(quantity) =>
+                    handleAddToCart(product.id, product.name, product.price, product.image, quantity)
+                  }
+                />
+              ))
+            )}
           </div>
         </section>
       </main>
@@ -183,7 +163,17 @@ export default function Home() {
         onClose={() => setIsCartOpen(false)}
         items={cartItems}
         onUpdateQuantity={handleUpdateQuantity}
-        onCheckout={() => console.log('Checkout', cartItems)}
+        onCheckout={handleCheckout}
+      />
+
+      <CheckoutDialog
+        isOpen={isCheckoutOpen}
+        onClose={() => setIsCheckoutOpen(false)}
+        cartItems={cartItems}
+        subtotal={subtotal}
+        deliveryFee={deliveryFee}
+        total={total}
+        onOrderSuccess={handleOrderSuccess}
       />
     </div>
   );

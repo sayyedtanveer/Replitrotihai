@@ -18,6 +18,7 @@ interface CartSidebarProps {
   items?: CartItem[];
   onUpdateQuantity?: (id: string, quantity: number) => void;
   onCheckout?: () => void;
+  disableCheckout?: boolean;
 }
 
 export default function CartSidebar({
@@ -26,6 +27,7 @@ export default function CartSidebar({
   items = [],
   onUpdateQuantity,
   onCheckout,
+  disableCheckout = false,
 }: CartSidebarProps) {
   const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const deliveryFee = subtotal > 0 ? 40 : 0;
@@ -147,6 +149,7 @@ export default function CartSidebar({
                 size="lg"
                 className="w-full"
                 onClick={onCheckout}
+                disabled={disableCheckout}
                 data-testid="button-checkout"
               >
                 Proceed to Checkout
