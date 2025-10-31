@@ -189,7 +189,9 @@ export default function Home() {
         isOpen={isMenuOpen}
         onClose={() => setIsMenuOpen(false)}
         categories={categories}
-        onCategoryClick={handleCategoryClick}
+        products={products}
+        onAddToCart={handleAddToCart}
+        cartItems={cartItems}
       />
 
       <CartSidebar
