@@ -106,6 +106,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(chefs);
   });
 
+  // Calculate delivery fee based on distance
+  app.post("/api/calculate-delivery", async (req, res) => {
+    try {
+      const { latitude, longitude } = req.body;
+      
+      if (!latitude || !longitude) {
+        res.status(400).json({ message: "Latitude and longitude are required" });
+        return;
+      }
+
+      // Store location (you can change this in shared/deliveryUtils.ts)
+      const STORE_LAT = 28.6139;
+      const STORE_LON = 77.2090;
+
+      // Calculate distance using Haversine formula
+      const R = 6371; // Earth's radius in km
+      const dLat = toRad(latitude - STORE_LAT);
+      const dLon = toRad(longitude - STORE_LON);
+      
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(toRad(STORE_LAT)) *
+        Math.cos(toRad(latitude)) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+      
+      const c = 2 * Math.asin(Math.sqrt(a));
+      const distance = parseFloat((R * c).toFixed(2));
+
+      // Calculate delivery fee
+      const baseFee = 20;
+      let deliveryFee = baseFee;
+      
+      if (distance > 2) {
+        deliveryFee = baseFee + Math.ceil(distance - 2) * 10;
+      }
+
+      res.json({
+        distance,
+        deliveryFee,
+        estimatedTime: Math.ceil(distance * 2 + 15)
+      });
+    } catch (error) {
+      console.error("Error calculating delivery:", error);
+      res.status(500).json({ message: "Failed to calculate delivery" });
+    }
+  });
+
+  function toRad(degrees: number): number {
+    return degrees * (Math.PI / 180);
+  }
+
   const httpServer = createServer(app);
 
   return httpServer;

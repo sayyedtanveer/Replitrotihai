@@ -77,9 +77,23 @@ export const insertProductSchema = createInsertSchema(products).omit({
   id: true,
 });
 
-export const insertOrderSchema = createInsertSchema(orders).omit({
-  id: true,
-  createdAt: true,
+export const insertOrderSchema = z.object({
+  customerName: z.string(),
+  phone: z.string(),
+  address: z.string(),
+  latitude: z.number().optional(),
+  longitude: z.number().optional(),
+  items: z.array(z.object({
+    id: z.string(),
+    name: z.string(),
+    price: z.number(),
+    quantity: z.number(),
+  })),
+  subtotal: z.number(),
+  deliveryFee: z.number(),
+  distance: z.number().optional(),
+  total: z.number(),
+  status: z.string(),
 });
 
 export type InsertCategory = z.infer<typeof insertCategorySchema>;
