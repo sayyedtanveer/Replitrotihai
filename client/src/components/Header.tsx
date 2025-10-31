@@ -49,7 +49,7 @@ export default function Header({ cartItemCount = 0, onCartClick, onMenuClick, se
               data-testid="button-location"
             >
               <MapPin className="h-4 w-4" />
-              <span className="text-sm">Deliver to</span>
+              <span className="text-sm">Delivering to Kurla</span>
             </Button>
           </div>
 

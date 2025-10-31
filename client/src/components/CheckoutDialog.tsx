@@ -115,6 +115,18 @@ export default function CheckoutDialog({
   const calculateDistanceAndFee = async () => {
     const latitude = form.getValues("latitude");
     const longitude = form.getValues("longitude");
+    const address = form.getValues("address");
+    
+    // Check if address contains Kurla
+    const addressLower = address.toLowerCase().trim();
+    if (!addressLower.includes("kurla")) {
+      toast({
+        title: "Delivery Not Available",
+        description: "We currently deliver only in Kurla, Mumbai. Please enter a Kurla address.",
+        variant: "destructive",
+      });
+      return;
+    }
     
     if (!latitude || !longitude) {
       toast({
@@ -133,6 +145,16 @@ export default function CheckoutDialog({
         longitude: parseFloat(longitude),
       });
       const result = await res.json();
+      
+      // Additional validation based on distance
+      if (result.distance > 10) {
+        toast({
+          title: "Location Too Far",
+          description: "The location seems outside our Kurla delivery area. Please verify your address.",
+          variant: "destructive",
+        });
+        return;
+      }
       
       setCalculatedDistance(result.distance);
       setCalculatedDeliveryFee(result.deliveryFee);
@@ -244,10 +266,10 @@ export default function CheckoutDialog({
               name="address"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Delivery Address</FormLabel>
+                  <FormLabel>Delivery Address (Kurla Only)</FormLabel>
                   <FormControl>
                     <Textarea
-                      placeholder="Enter your complete delivery address"
+                      placeholder="Enter your complete delivery address in Kurla, Mumbai"
                       {...field}
                       data-testid="input-address"
                     />

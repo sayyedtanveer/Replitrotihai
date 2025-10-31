@@ -1,9 +1,50 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MapPin, Search } from "lucide-react";
+import { useState } from "react";
+import { useToast } from "@/hooks/use-toast";
 import heroImage from '@assets/generated_images/Indian_food_spread_hero_01f8cdab.png';
 
 export default function Hero() {
+  const [location, setLocation] = useState("");
+  const { toast } = useToast();
+
+  const handleSearchFood = () => {
+    const locationLower = location.toLowerCase().trim();
+    
+    if (!locationLower) {
+      toast({
+        title: "Location Required",
+        description: "Please enter your delivery location",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Check if location contains "kurla" or "mumbai"
+    if (!locationLower.includes("kurla")) {
+      toast({
+        title: "Delivery Not Available",
+        description: "We currently deliver only in Kurla, Mumbai. Please enter a Kurla location.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    toast({
+      title: "Location Confirmed",
+      description: "Great! We deliver to your area. Browse our menu below.",
+    });
+
+    // Scroll to products section
+    setTimeout(() => {
+      const productsSection = document.getElementById("products-section");
+      if (productsSection) {
+        productsSection.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }, 500);
+  };
+
   return (
     <section className="relative h-[60vh] min-h-[400px] max-h-[600px] overflow-hidden">
       <div
@@ -30,12 +71,21 @@ export default function Hero() {
             <div className="flex-1 relative">
               <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-white" />
               <Input
-                placeholder="Enter delivery location"
+                placeholder="Enter delivery location (Kurla, Mumbai)"
                 className="pl-10 bg-white/90 border-white/30 text-foreground placeholder:text-muted-foreground"
                 data-testid="input-location"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSearchFood()}
               />
             </div>
-            <Button size="lg" variant="default" className="gap-2" data-testid="button-search-food">
+            <Button 
+              size="lg" 
+              variant="default" 
+              className="gap-2" 
+              data-testid="button-search-food"
+              onClick={handleSearchFood}
+            >
               <Search className="h-5 w-5" />
               Search Food
             </Button>
