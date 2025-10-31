@@ -3,6 +3,7 @@ import { Card } from "@/components/ui/card";
 import { ArrowRight } from "lucide-react";
 
 interface CategoryCardProps {
+  id?: string;
   title: string;
   description: string;
   itemCount: string;
@@ -12,6 +13,7 @@ interface CategoryCardProps {
 }
 
 export default function CategoryCard({
+  id,
   title,
   description,
   itemCount,
@@ -21,6 +23,7 @@ export default function CategoryCard({
 }: CategoryCardProps) {
   return (
     <Card
+      id={id}
       className="overflow-hidden hover-elevate active-elevate-2 cursor-pointer group"
       onClick={onBrowse}
       data-testid={`card-category-${title.toLowerCase().replace(/\s+/g, '-')}`}

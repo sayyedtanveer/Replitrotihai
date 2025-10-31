@@ -18,7 +18,6 @@ export default function Header({ cartItemCount = 0, onCartClick, onMenuClick }: 
             <Button
               size="icon"
               variant="ghost"
-              className="lg:hidden"
               onClick={onMenuClick}
               data-testid="button-menu"
             >

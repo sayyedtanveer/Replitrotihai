@@ -6,6 +6,7 @@ import CategoryCard from "@/components/CategoryCard";
 import ProductCard from "@/components/ProductCard";
 import CartSidebar from "@/components/CartSidebar";
 import CheckoutDialog from "@/components/CheckoutDialog";
+import MenuDrawer from "@/components/MenuDrawer";
 import Footer from "@/components/Footer";
 import { UtensilsCrossed, ChefHat, Hotel } from "lucide-react";
 import type { Category, Product } from "@shared/schema";
@@ -27,6 +28,7 @@ const iconMap: Record<string, React.ReactNode> = {
 export default function Home() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
 
   const { data: categories = [], isLoading: categoriesLoading } = useQuery<Category[]>({
@@ -78,12 +80,20 @@ export default function Home() {
     setIsCheckoutOpen(false);
   };
 
+  const handleCategoryClick = (categoryId: string) => {
+    console.log(`Category clicked: ${categoryId}`);
+    const element = document.getElementById(`category-${categoryId}`);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col">
       <Header
         cartItemCount={totalItems}
         onCartClick={() => setIsCartOpen(true)}
-        onMenuClick={() => console.log('Menu clicked')}
+        onMenuClick={() => setIsMenuOpen(true)}
       />
 
       <main className="flex-1">
@@ -108,6 +118,7 @@ export default function Home() {
               categories.map((category) => (
                 <CategoryCard
                   key={category.id}
+                  id={`category-${category.id}`}
                   title={category.name}
                   description={category.description}
                   itemCount={category.itemCount}
@@ -157,6 +168,13 @@ export default function Home() {
       </main>
 
       <Footer />
+
+      <MenuDrawer
+        isOpen={isMenuOpen}
+        onClose={() => setIsMenuOpen(false)}
+        categories={categories}
+        onCategoryClick={handleCategoryClick}
+      />
 
       <CartSidebar
         isOpen={isCartOpen}
