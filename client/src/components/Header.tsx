@@ -41,7 +41,7 @@ export default function Header({ cartItemCount = 0, onCartClick, onMenuClick, se
               <Menu className="h-5 w-5" />
             </Button>
             <h1 className="text-2xl font-bold text-primary" data-testid="text-logo">
-              FoodExpress
+              RotiHai
             </h1>
             <Button
               variant="ghost"

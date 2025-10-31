@@ -25,12 +25,12 @@ export default function Landing() {
         <section className="relative py-20 px-4 sm:px-6 lg:px-8">
           <div className="max-w-7xl mx-auto text-center">
             <h1 className="text-5xl sm:text-6xl font-bold mb-6" data-testid="text-hero-title">
-              Delicious Meals Delivered
+              Fresh Rotis Delivered
               <br />
-              <span className="text-primary">to Your Door</span>
+              <span className="text-primary">Ghar Jaisa Swaad</span>
             </h1>
             <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto" data-testid="text-hero-subtitle">
-              Fresh rotis, complete meals, and restaurant specials in 30 minutes
+              Fresh rotis, homestyle meals, and restaurant specials in 30 minutes
             </p>
             <Button size="lg" onClick={handleLogin} className="text-lg px-8 py-6" data-testid="button-get-started">
               Get Started

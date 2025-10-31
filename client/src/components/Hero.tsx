@@ -17,12 +17,12 @@ export default function Hero() {
           className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white mb-4"
           data-testid="text-hero-title"
         >
-          Delicious Meals Delivered
+          Fresh Rotis Delivered
           <br />
-          to Your Door
+          Ghar Jaisa Swaad
         </h2>
         <p className="text-lg sm:text-xl text-white/90 mb-8 max-w-2xl" data-testid="text-hero-subtitle">
-          Fresh rotis, complete meals, and restaurant specials in 30 minutes
+          Fresh rotis, homestyle meals, and restaurant specials in 30 minutes
         </p>
 
         <div className="w-full max-w-2xl bg-white/10 backdrop-blur-md rounded-lg p-4 border border-white/20">
