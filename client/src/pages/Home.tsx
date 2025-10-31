@@ -29,6 +29,7 @@ export default function Home() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
 
   const { data: categories = [], isLoading: categoriesLoading } = useQuery<Category[]>({
@@ -88,12 +89,23 @@ export default function Home() {
     }
   };
 
+  const filteredProducts = products.filter(product => {
+    if (!searchQuery.trim()) return true;
+    const query = searchQuery.toLowerCase();
+    return (
+      product.name.toLowerCase().includes(query) ||
+      product.description.toLowerCase().includes(query)
+    );
+  });
+
   return (
     <div className="min-h-screen flex flex-col">
       <Header
         cartItemCount={totalItems}
         onCartClick={() => setIsCartOpen(true)}
         onMenuClick={() => setIsMenuOpen(true)}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
       />
 
       <main className="flex-1">
@@ -144,8 +156,12 @@ export default function Home() {
               <div className="col-span-full text-center py-8 text-muted-foreground">
                 Loading products...
               </div>
+            ) : filteredProducts.length === 0 ? (
+              <div className="col-span-full text-center py-8 text-muted-foreground">
+                No products found matching "{searchQuery}"
+              </div>
             ) : (
-              products.slice(0, 8).map((product) => (
+              filteredProducts.slice(0, 8).map((product) => (
                 <ProductCard
                   key={product.id}
                   id={product.id}

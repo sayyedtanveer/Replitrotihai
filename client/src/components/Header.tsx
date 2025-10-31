@@ -7,9 +7,11 @@ interface HeaderProps {
   cartItemCount?: number;
   onCartClick?: () => void;
   onMenuClick?: () => void;
+  searchQuery?: string;
+  onSearchChange?: (query: string) => void;
 }
 
-export default function Header({ cartItemCount = 0, onCartClick, onMenuClick }: HeaderProps) {
+export default function Header({ cartItemCount = 0, onCartClick, onMenuClick, searchQuery = "", onSearchChange }: HeaderProps) {
   return (
     <header className="sticky top-0 z-50 bg-background border-b">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -43,6 +45,8 @@ export default function Header({ cartItemCount = 0, onCartClick, onMenuClick }: 
                 type="search"
                 placeholder="Search for dishes..."
                 className="pl-10"
+                value={searchQuery}
+                onChange={(e) => onSearchChange?.(e.target.value)}
                 data-testid="input-search"
               />
             </div>
@@ -80,6 +84,8 @@ export default function Header({ cartItemCount = 0, onCartClick, onMenuClick }: 
               type="search"
               placeholder="Search for dishes..."
               className="pl-10"
+              value={searchQuery}
+              onChange={(e) => onSearchChange?.(e.target.value)}
               data-testid="input-search-mobile"
             />
           </div>
