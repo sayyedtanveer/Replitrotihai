@@ -12,6 +12,7 @@ interface CategoryMenuDrawerProps {
   products: Product[];
   onAddToCart?: (productId: string, productName: string, price: number, image: string, quantity: number) => void;
   cartItems?: { id: string; quantity: number }[];
+  autoCloseOnAdd?: boolean;
 }
 
 export default function CategoryMenuDrawer({ 
@@ -21,7 +22,8 @@ export default function CategoryMenuDrawer({
   chef,
   products,
   onAddToCart,
-  cartItems = []
+  cartItems = [],
+  autoCloseOnAdd = false
 }: CategoryMenuDrawerProps) {
   if (!isOpen || !category || !chef) return null;
 
@@ -47,6 +49,7 @@ export default function CategoryMenuDrawer({
 
     if (onAddToCart) {
       onAddToCart(product.id, product.name, product.price, product.image, newQuantity);
+      // Don't auto-close - let users continue browsing and adding items
     }
   };
 
