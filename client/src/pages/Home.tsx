@@ -41,6 +41,15 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState("");
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
 
+  const handleCategoryTabChange = (value: string) => {
+    setSelectedCategoryTab(value);
+    // Scroll to products section
+    const productsSection = document.getElementById("products-section");
+    if (productsSection) {
+      productsSection.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
+
   const { data: categories = [], isLoading: categoriesLoading } = useQuery<Category[]>({
     queryKey: ["/api/categories"],
   });
@@ -117,9 +126,10 @@ export default function Home() {
   };
 
   const filteredProducts = products.filter(product => {
-    const matchesSearch = !searchQuery.trim() || 
-      product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      product.description.toLowerCase().includes(searchQuery.toLowerCase());
+    const searchLower = searchQuery.trim().toLowerCase();
+    const matchesSearch = !searchLower || 
+      product.name.toLowerCase().includes(searchLower) ||
+      product.description.toLowerCase().includes(searchLower);
     
     const matchesCategory = selectedCategoryTab === "all" || product.categoryId === selectedCategoryTab;
     
@@ -148,7 +158,7 @@ export default function Home() {
               Choose from our popular categories
             </p>
             
-            <Tabs value={selectedCategoryTab} onValueChange={setSelectedCategoryTab} className="mb-8">
+            <Tabs value={selectedCategoryTab} onValueChange={handleCategoryTabChange} className="mb-8">
               <TabsList className="inline-flex" data-testid="category-tabs">
                 <TabsTrigger value="all" data-testid="tab-all">All</TabsTrigger>
                 {categories.map((category) => (
@@ -181,7 +191,7 @@ export default function Home() {
             )}
           </div>
 
-          <div className="text-center mb-8">
+          <div id="products-section" className="text-center mb-8">
             <h2 className="text-3xl sm:text-4xl font-bold mb-4" data-testid="text-popular-heading">
               {selectedCategoryTab === "all" ? "Popular Items" : "Items in Category"}
             </h2>
@@ -200,7 +210,7 @@ export default function Home() {
                 No products found matching "{searchQuery}"
               </div>
             ) : (
-              filteredProducts.slice(0, 8).map((product) => (
+              filteredProducts.map((product) => (
                 <ProductCard
                   key={product.id}
                   id={product.id}

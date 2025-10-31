@@ -90,9 +90,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get all chefs
-  app.get("/api/chefs", (_req, res) => {
-    const chefs = storage.getChefs();
-    res.json(chefs);
+  app.get("/api/chefs", async (_req, res) => {
+    try {
+      const chefs = await storage.getChefs();
+      res.json(chefs);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch chefs" });
+    }
   });
 
   // Get chefs by category ID
