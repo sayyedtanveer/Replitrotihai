@@ -7,7 +7,9 @@ import ProductCard from "@/components/ProductCard";
 import CartSidebar from "@/components/CartSidebar";
 import CheckoutDialog from "@/components/CheckoutDialog";
 import MenuDrawer from "@/components/MenuDrawer";
+import CategoryMenuDrawer from "@/components/CategoryMenuDrawer";
 import Footer from "@/components/Footer";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { UtensilsCrossed, ChefHat, Hotel } from "lucide-react";
 import type { Category, Product } from "@shared/schema";
 
@@ -29,6 +31,9 @@ export default function Home() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false);
+  const [selectedCategoryForMenu, setSelectedCategoryForMenu] = useState<Category | null>(null);
+  const [selectedCategoryTab, setSelectedCategoryTab] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
 
@@ -82,20 +87,25 @@ export default function Home() {
   };
 
   const handleCategoryClick = (categoryId: string) => {
-    console.log(`Category clicked: ${categoryId}`);
-    const element = document.getElementById(`category-${categoryId}`);
-    if (element) {
-      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setSelectedCategoryTab(categoryId);
+  };
+
+  const handleBrowseCategory = (categoryId: string) => {
+    const category = categories.find(c => c.id === categoryId);
+    if (category) {
+      setSelectedCategoryForMenu(category);
+      setIsCategoryMenuOpen(true);
     }
   };
 
   const filteredProducts = products.filter(product => {
-    if (!searchQuery.trim()) return true;
-    const query = searchQuery.toLowerCase();
-    return (
-      product.name.toLowerCase().includes(query) ||
-      product.description.toLowerCase().includes(query)
-    );
+    const matchesSearch = !searchQuery.trim() || 
+      product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      product.description.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    const matchesCategory = selectedCategoryTab === "all" || product.categoryId === selectedCategoryTab;
+    
+    return matchesSearch && matchesCategory;
   });
 
   return (
@@ -112,13 +122,24 @@ export default function Home() {
         <Hero />
 
         <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-          <div className="text-center mb-12">
+          <div className="text-center mb-8">
             <h2 className="text-3xl sm:text-4xl font-bold mb-4" data-testid="text-categories-heading">
               Browse by Category
             </h2>
-            <p className="text-lg text-muted-foreground" data-testid="text-categories-subheading">
+            <p className="text-lg text-muted-foreground mb-6" data-testid="text-categories-subheading">
               Choose from our popular categories
             </p>
+            
+            <Tabs value={selectedCategoryTab} onValueChange={setSelectedCategoryTab} className="mb-8">
+              <TabsList className="inline-flex" data-testid="category-tabs">
+                <TabsTrigger value="all" data-testid="tab-all">All</TabsTrigger>
+                {categories.map((category) => (
+                  <TabsTrigger key={category.id} value={category.id} data-testid={`tab-${category.id}`}>
+                    {category.name}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-16">
@@ -136,7 +157,7 @@ export default function Home() {
                   itemCount={category.itemCount}
                   image={category.image}
                   icon={iconMap[category.iconName]}
-                  onBrowse={() => console.log(`Browse ${category.name}`)}
+                  onBrowse={() => handleBrowseCategory(category.id)}
                 />
               ))
             )}
@@ -144,10 +165,10 @@ export default function Home() {
 
           <div className="text-center mb-8">
             <h2 className="text-3xl sm:text-4xl font-bold mb-4" data-testid="text-popular-heading">
-              Popular Items
+              {selectedCategoryTab === "all" ? "Popular Items" : "Items in Category"}
             </h2>
             <p className="text-lg text-muted-foreground" data-testid="text-popular-subheading">
-              Most loved by our customers
+              {selectedCategoryTab === "all" ? "Most loved by our customers" : `Browse our ${categories.find(c => c.id === selectedCategoryTab)?.name || ''} collection`}
             </p>
           </div>
 

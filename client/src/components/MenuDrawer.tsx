@@ -1,49 +1,23 @@
-import { X, Star, Plus, Minus, Leaf } from "lucide-react";
+import { X, Home, UtensilsCrossed, ShoppingBag, User, Settings, LogOut, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
-import type { Category, Product } from "@shared/schema";
+import type { Category } from "@shared/schema";
 
 interface MenuDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   categories?: Category[];
-  products?: Product[];
-  onAddToCart?: (productId: string, productName: string, price: number, image: string, quantity: number) => void;
-  cartItems?: { id: string; quantity: number }[];
+  onCategoryClick?: (categoryId: string) => void;
 }
 
-export default function MenuDrawer({ 
-  isOpen, 
-  onClose, 
-  categories = [], 
-  products = [],
-  onAddToCart,
-  cartItems = []
-}: MenuDrawerProps) {
+export default function MenuDrawer({ isOpen, onClose, categories = [], onCategoryClick }: MenuDrawerProps) {
   if (!isOpen) return null;
 
-  const getProductQuantity = (productId: string) => {
-    const cartItem = cartItems.find(item => item.id === productId);
-    return cartItem?.quantity || 0;
+  const handleCategoryClick = (categoryId: string) => {
+    onCategoryClick?.(categoryId);
+    onClose();
   };
-
-  const handleQuantityChange = (product: Product, newQuantity: number) => {
-    if (newQuantity < 0) return;
-    
-    const currentQuantity = getProductQuantity(product.id);
-    if (newQuantity === currentQuantity) return;
-
-    if (onAddToCart) {
-      onAddToCart(product.id, product.name, product.price, product.image, newQuantity);
-    }
-  };
-
-  const productsByCategory = categories.map(category => ({
-    category,
-    products: products.filter(p => p.categoryId === category.id)
-  }));
 
   return (
     <>
@@ -54,13 +28,13 @@ export default function MenuDrawer({
       />
 
       <div
-        className="fixed top-0 left-0 h-full w-full sm:w-[500px] bg-background z-50 shadow-lg transform transition-transform duration-300 ease-in-out"
+        className="fixed top-0 left-0 h-full w-80 bg-background z-50 shadow-lg transform transition-transform duration-300 ease-in-out"
         data-testid="menu-drawer"
       >
         <div className="flex flex-col h-full">
           <div className="flex items-center justify-between p-4 border-b">
             <h2 className="text-xl font-bold text-primary" data-testid="text-menu-title">
-              Browse Menu
+              FoodExpress Menu
             </h2>
             <Button
               variant="ghost"
@@ -72,170 +46,104 @@ export default function MenuDrawer({
             </Button>
           </div>
 
-          <Tabs defaultValue={categories[0]?.id} className="flex-1 flex flex-col">
-            <div className="border-b px-4">
-              <TabsList className="w-full justify-start h-auto p-0 bg-transparent">
-                {categories.map((category) => (
-                  <TabsTrigger
-                    key={category.id}
-                    value={category.id}
-                    className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-4 py-3"
-                    data-testid={`tab-${category.id}`}
+          <ScrollArea className="flex-1">
+            <div className="p-4 space-y-6">
+              <div>
+                <h3 className="text-sm font-semibold text-muted-foreground mb-3" data-testid="text-navigation-heading">
+                  Navigation
+                </h3>
+                <div className="space-y-1">
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start"
+                    data-testid="button-nav-home"
                   >
-                    {category.name}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </div>
-
-            <ScrollArea className="flex-1">
-              {productsByCategory.map(({ category, products: categoryProducts }) => {
-                const avgRating = categoryProducts.length > 0
-                  ? (categoryProducts.reduce((sum, p) => sum + parseFloat(p.rating), 0) / categoryProducts.length).toFixed(1)
-                  : "0.0";
-                const totalReviews = categoryProducts.reduce((sum, p) => sum + p.reviewCount, 0);
-                
-                return (
-                  <TabsContent 
-                    key={category.id} 
-                    value={category.id} 
-                    className="mt-0 space-y-4"
-                    data-testid={`content-${category.id}`}
+                    <Home className="h-4 w-4 mr-3" />
+                    Home
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start"
+                    data-testid="button-nav-orders"
                   >
-                    <div className="p-4 border-b bg-muted/30" data-testid={`header-${category.id}`}>
-                      <div className="flex items-start gap-3">
-                        <img 
-                          src={category.image} 
-                          alt={category.name}
-                          className="w-16 h-16 rounded-lg object-cover"
-                          data-testid={`img-category-${category.id}`}
-                        />
-                        <div className="flex-1">
-                          <h3 className="text-lg font-bold mb-1" data-testid={`text-category-name-${category.id}`}>
-                            {category.name}
-                          </h3>
-                          <p className="text-sm text-muted-foreground mb-2" data-testid={`text-category-description-${category.id}`}>
-                            {category.description}
-                          </p>
-                          <div className="flex items-center gap-4 text-sm">
-                            <div className="flex items-center gap-1">
-                              <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                              <span className="font-semibold" data-testid={`text-category-rating-${category.id}`}>
-                                {avgRating}
-                              </span>
-                              <span className="text-muted-foreground" data-testid={`text-category-reviews-${category.id}`}>
-                                ({totalReviews} reviews)
-                              </span>
-                            </div>
-                            <Badge variant="secondary" data-testid={`badge-item-count-${category.id}`}>
-                              {category.itemCount}
-                            </Badge>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                    <ShoppingBag className="h-4 w-4 mr-3" />
+                    My Orders
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start"
+                    data-testid="button-nav-profile"
+                  >
+                    <User className="h-4 w-4 mr-3" />
+                    Profile
+                  </Button>
+                </div>
+              </div>
 
-                    <div className="px-4 pb-4 space-y-4">
-                      {categoryProducts.length === 0 ? (
-                        <p className="text-center text-muted-foreground py-8" data-testid="text-no-products">
-                          No items available in this category
-                        </p>
-                      ) : (
-                        categoryProducts.map((product) => {
-                      const currentQuantity = getProductQuantity(product.id);
-                      return (
-                        <div
-                          key={product.id}
-                          className="border rounded-lg p-4 space-y-3 hover:shadow-md transition-shadow"
-                          data-testid={`product-card-${product.id}`}
-                        >
-                          <div className="flex gap-4">
-                            <img
-                              src={product.image}
-                              alt={product.name}
-                              className="w-20 h-20 rounded-lg object-cover"
-                              data-testid={`img-product-${product.id}`}
-                            />
-                            <div className="flex-1">
-                              <div className="flex items-start justify-between gap-2">
-                                <div>
-                                  <div className="flex items-center gap-2">
-                                    <h3 className="font-semibold text-base" data-testid={`text-name-${product.id}`}>
-                                      {product.name}
-                                    </h3>
-                                    {product.isVeg && (
-                                      <Badge variant="outline" className="text-green-600 border-green-600">
-                                        <Leaf className="h-3 w-3 mr-1" />
-                                        Veg
-                                      </Badge>
-                                    )}
-                                  </div>
-                                  <div className="flex items-center gap-1 mt-1">
-                                    <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                                    <span className="text-sm font-medium" data-testid={`text-rating-${product.id}`}>
-                                      {product.rating}
-                                    </span>
-                                    <span className="text-xs text-muted-foreground" data-testid={`text-reviews-${product.id}`}>
-                                      ({product.reviewCount})
-                                    </span>
-                                  </div>
-                                </div>
-                                <p className="font-bold text-lg" data-testid={`text-price-${product.id}`}>
-                                  ₹{product.price}
-                                </p>
-                              </div>
-                              <p className="text-sm text-muted-foreground mt-2 line-clamp-2" data-testid={`text-description-${product.id}`}>
-                                {product.description}
-                              </p>
-                            </div>
-                          </div>
+              <Separator />
 
-                          <div className="flex justify-end">
-                            {currentQuantity === 0 ? (
-                              <Button
-                                size="sm"
-                                onClick={() => handleQuantityChange(product, 1)}
-                                className="w-24"
-                                data-testid={`button-add-${product.id}`}
-                              >
-                                Add
-                              </Button>
-                            ) : (
-                              <div className="flex items-center gap-3 border rounded-md">
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  onClick={() => handleQuantityChange(product, currentQuantity - 1)}
-                                  className="h-8 w-8"
-                                  data-testid={`button-decrease-${product.id}`}
-                                >
-                                  <Minus className="h-4 w-4" />
-                                </Button>
-                                <span className="font-semibold min-w-8 text-center" data-testid={`text-quantity-${product.id}`}>
-                                  {currentQuantity}
-                                </span>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  onClick={() => handleQuantityChange(product, currentQuantity + 1)}
-                                  className="h-8 w-8"
-                                  data-testid={`button-increase-${product.id}`}
-                                >
-                                  <Plus className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })
+              <div>
+                <h3 className="text-sm font-semibold text-muted-foreground mb-3" data-testid="text-categories-heading">
+                  Categories
+                </h3>
+                <div className="space-y-1">
+                  {categories.length === 0 ? (
+                    <p className="text-sm text-muted-foreground px-3 py-2" data-testid="text-no-categories">
+                      No categories available
+                    </p>
+                  ) : (
+                    categories.map((category) => (
+                      <Button
+                        key={category.id}
+                        variant="ghost"
+                        className="w-full justify-between"
+                        onClick={() => handleCategoryClick(category.id)}
+                        data-testid={`button-category-${category.id}`}
+                      >
+                        <span className="flex items-center">
+                          <UtensilsCrossed className="h-4 w-4 mr-3" />
+                          {category.name}
+                        </span>
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    ))
                   )}
                 </div>
-              </TabsContent>
-            );
-          })}
-            </ScrollArea>
-          </Tabs>
+              </div>
+
+              <Separator />
+
+              <div>
+                <h3 className="text-sm font-semibold text-muted-foreground mb-3" data-testid="text-settings-heading">
+                  Settings
+                </h3>
+                <div className="space-y-1">
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start"
+                    data-testid="button-settings"
+                  >
+                    <Settings className="h-4 w-4 mr-3" />
+                    Settings
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start text-destructive hover:text-destructive"
+                    data-testid="button-logout"
+                  >
+                    <LogOut className="h-4 w-4 mr-3" />
+                    Logout
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </ScrollArea>
+
+          <div className="p-4 border-t">
+            <p className="text-xs text-muted-foreground text-center" data-testid="text-menu-footer">
+              © 2025 FoodExpress. All rights reserved.
+            </p>
+          </div>
         </div>
       </div>
     </>
