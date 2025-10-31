@@ -8,10 +8,11 @@ import CartSidebar from "@/components/CartSidebar";
 import CheckoutDialog from "@/components/CheckoutDialog";
 import MenuDrawer from "@/components/MenuDrawer";
 import CategoryMenuDrawer from "@/components/CategoryMenuDrawer";
+import ChefListDrawer from "@/components/ChefListDrawer";
 import Footer from "@/components/Footer";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { UtensilsCrossed, ChefHat, Hotel } from "lucide-react";
-import type { Category, Product } from "@shared/schema";
+import type { Category, Chef, Product } from "@shared/schema";
 
 interface CartItem {
   id: string;
@@ -31,14 +32,21 @@ export default function Home() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isChefListOpen, setIsChefListOpen] = useState(false);
   const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false);
+  const [selectedCategoryForChefList, setSelectedCategoryForChefList] = useState<Category | null>(null);
   const [selectedCategoryForMenu, setSelectedCategoryForMenu] = useState<Category | null>(null);
+  const [selectedChefForMenu, setSelectedChefForMenu] = useState<Chef | null>(null);
   const [selectedCategoryTab, setSelectedCategoryTab] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
 
   const { data: categories = [], isLoading: categoriesLoading } = useQuery<Category[]>({
     queryKey: ["/api/categories"],
+  });
+
+  const { data: chefs = [], isLoading: chefsLoading } = useQuery<Chef[]>({
+    queryKey: ["/api/chefs"],
   });
 
   const { data: products = [], isLoading: productsLoading } = useQuery<Product[]>({
@@ -87,15 +95,24 @@ export default function Home() {
   };
 
   const handleCategoryClick = (categoryId: string) => {
-    setSelectedCategoryTab(categoryId);
+    const category = categories.find(c => c.id === categoryId);
+    if (category) {
+      setSelectedCategoryForChefList(category);
+      setIsChefListOpen(true);
+    }
+  };
+
+  const handleChefClick = (chef: Chef) => {
+    setSelectedChefForMenu(chef);
+    setSelectedCategoryForMenu(selectedCategoryForChefList);
+    setIsCategoryMenuOpen(true);
   };
 
   const handleBrowseCategory = (categoryId: string) => {
-    setSelectedCategoryTab(categoryId);
-    // Scroll to products section
-    const productsSection = document.querySelector('[data-testid="text-popular-heading"]');
-    if (productsSection) {
-      productsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const category = categories.find(c => c.id === categoryId);
+    if (category) {
+      setSelectedCategoryForChefList(category);
+      setIsChefListOpen(true);
     }
   };
 
@@ -214,10 +231,19 @@ export default function Home() {
         onCategoryClick={handleCategoryClick}
       />
 
+      <ChefListDrawer
+        isOpen={isChefListOpen}
+        onClose={() => setIsChefListOpen(false)}
+        category={selectedCategoryForChefList}
+        chefs={chefs}
+        onChefClick={handleChefClick}
+      />
+
       <CategoryMenuDrawer
         isOpen={isCategoryMenuOpen}
         onClose={() => setIsCategoryMenuOpen(false)}
         category={selectedCategoryForMenu}
+        chef={selectedChefForMenu}
         products={products}
         onAddToCart={handleAddToCart}
         cartItems={cartItems}

@@ -32,8 +32,18 @@ export const categories = pgTable("categories", {
   itemCount: text("item_count").notNull(),
 });
 
+export const chefs = pgTable("chefs", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description").notNull(),
+  image: text("image").notNull(),
+  rating: text("rating").notNull(),
+  reviewCount: integer("review_count").notNull(),
+  categoryId: text("category_id").notNull(),
+});
+
 export const products = pgTable("products", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: text("id").primaryKey(),
   name: text("name").notNull(),
   description: text("description").notNull(),
   price: integer("price").notNull(),
@@ -43,6 +53,7 @@ export const products = pgTable("products", {
   isVeg: boolean("is_veg").notNull().default(true),
   isCustomizable: boolean("is_customizable").notNull().default(false),
   categoryId: varchar("category_id").notNull(),
+  chefId: text("chef_id"),
 });
 
 export const orders = pgTable("orders", {
@@ -73,8 +84,7 @@ export const insertOrderSchema = createInsertSchema(orders).omit({
 
 export type InsertCategory = z.infer<typeof insertCategorySchema>;
 export type Category = typeof categories.$inferSelect;
-
-export type InsertProduct = z.infer<typeof insertProductSchema>;
+export type Chef = typeof chefs.$inferSelect;
 export type Product = typeof products.$inferSelect;
 
 export type InsertOrder = z.infer<typeof insertOrderSchema>;

@@ -8,6 +8,7 @@ interface CategoryMenuDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   category: Category | null;
+  chef: { id: string; name: string } | null;
   products: Product[];
   onAddToCart?: (productId: string, productName: string, price: number, image: string, quantity: number) => void;
   cartItems?: { id: string; quantity: number }[];
@@ -17,13 +18,16 @@ export default function CategoryMenuDrawer({
   isOpen, 
   onClose, 
   category,
+  chef,
   products,
   onAddToCart,
   cartItems = []
 }: CategoryMenuDrawerProps) {
-  if (!isOpen || !category) return null;
+  if (!isOpen || !category || !chef) return null;
 
-  const categoryProducts = products.filter(p => p.categoryId === category.id);
+  const categoryProducts = products.filter(p => 
+    p.categoryId === category.id && p.chefId === chef.id
+  );
 
   const avgRating = categoryProducts.length > 0
     ? (categoryProducts.reduce((sum, p) => sum + parseFloat(p.rating), 0) / categoryProducts.length).toFixed(1)
@@ -60,9 +64,12 @@ export default function CategoryMenuDrawer({
       >
         <div className="flex flex-col h-full">
           <div className="flex items-center justify-between p-4 border-b">
-            <h2 className="text-xl font-bold text-primary" data-testid="text-category-menu-title">
-              Menu
-            </h2>
+            <div>
+              <h2 className="text-xl font-bold text-primary" data-testid="text-category-menu-title">
+                {chef.name}
+              </h2>
+              <p className="text-sm text-muted-foreground">{category.name}</p>
+            </div>
             <Button
               variant="ghost"
               size="icon"

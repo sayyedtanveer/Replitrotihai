@@ -1,5 +1,6 @@
-import { type Category, type InsertCategory, type Product, type InsertProduct, type Order, type InsertOrder, type User, type UpsertUser } from "@shared/schema";
+import { type Category, type InsertCategory, type Product, type InsertProduct, type Order, type InsertOrder, type User, type UpsertUser, type Chef } from "@shared/schema";
 import { randomUUID } from "crypto";
+import { nanoid } from "nanoid";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -16,17 +17,22 @@ export interface IStorage {
 
   createOrder(order: InsertOrder): Promise<Order>;
   getOrderById(id: string): Promise<Order | undefined>;
+
+  getChefs(): Promise<Chef[]>;
+  getChefsByCategory(categoryId: string): Promise<Chef[]>;
 }
 
 export class MemStorage implements IStorage {
   private users: Map<string, User>;
   private categories: Map<string, Category>;
+  private chefs: Chef[]; // Changed from private products to private chefs
   private products: Map<string, Product>;
   private orders: Map<string, Order>;
 
   constructor() {
     this.users = new Map();
     this.categories = new Map();
+    this.chefs = []; // Initialize chefs array
     this.products = new Map();
     this.orders = new Map();
     this.seedData();
@@ -86,50 +92,129 @@ export class MemStorage implements IStorage {
       this.categories.set(category.id, category);
     });
 
+    // Initialize chefs/hotels
+    const chefs: Omit<Chef, "id">[] = [
+      {
+        name: "Raju's Tandoor Kitchen",
+        description: "Authentic tandoori rotis made fresh",
+        image: "/assets/generated_images/Fresh_tandoori_rotis_stack_1dcda2c7.png",
+        rating: "4.8",
+        reviewCount: 245,
+        categoryId: rotiCategoryId,
+      },
+      {
+        name: "Mumbai Roti House",
+        description: "Traditional rotis and parathas",
+        image: "/assets/generated_images/Fresh_tandoori_rotis_stack_1dcda2c7.png",
+        rating: "4.6",
+        reviewCount: 189,
+        categoryId: rotiCategoryId,
+      },
+      {
+        name: "Home Kitchen by Meera",
+        description: "Home-style complete meals",
+        image: "/assets/generated_images/Complete_Indian_thali_meal_837cc17d.png",
+        rating: "4.7",
+        reviewCount: 312,
+        categoryId: mealCategoryId,
+      },
+      {
+        name: "Annapurna Tiffin Service",
+        description: "Daily fresh lunch and dinner",
+        image: "/assets/generated_images/Complete_Indian_thali_meal_837cc17d.png",
+        rating: "4.5",
+        reviewCount: 198,
+        categoryId: mealCategoryId,
+      },
+      {
+        name: "Taj Fine Dining",
+        description: "Premium restaurant experience",
+        image: "/assets/generated_images/Fine_dining_restaurant_setup_1724ed85.png",
+        rating: "4.9",
+        reviewCount: 456,
+        categoryId: hotelCategoryId,
+      },
+      {
+        name: "Royal Palace Restaurant",
+        description: "Royal Indian cuisine",
+        image: "/assets/generated_images/Fine_dining_restaurant_setup_1724ed85.png",
+        rating: "4.7",
+        reviewCount: 378,
+        categoryId: hotelCategoryId,
+      },
+    ];
+
+    this.chefs = chefs.map(chef => ({
+      ...chef,
+      id: nanoid(),
+    }));
+
+    const chefsByCategory = {
+      [rotiCategoryId]: this.chefs.filter(c => c.categoryId === rotiCategoryId),
+      [mealCategoryId]: this.chefs.filter(c => c.categoryId === mealCategoryId),
+      [hotelCategoryId]: this.chefs.filter(c => c.categoryId === hotelCategoryId),
+    };
+
     const productsData: InsertProduct[] = [
       {
         name: "Butter Naan",
-        description: "Soft and fluffy naan brushed with butter, freshly baked in tandoor",
-        price: 45,
-        image: "/assets/generated_images/Fresh_tandoori_rotis_stack_1dcda2c7.png",
-        rating: "4.7",
-        reviewCount: 128,
-        isVeg: true,
-        isCustomizable: true,
-        categoryId: rotiCategoryId,
-      },
-      {
-        name: "Tandoori Roti",
-        description: "Whole wheat roti with authentic smoky flavor from the tandoor",
-        price: 30,
+        description: "Soft and buttery Indian flatbread",
+        price: 40,
         image: "/assets/generated_images/Fresh_tandoori_rotis_stack_1dcda2c7.png",
         rating: "4.5",
-        reviewCount: 95,
+        reviewCount: 128,
         isVeg: true,
         isCustomizable: false,
         categoryId: rotiCategoryId,
+        chefId: chefsByCategory[rotiCategoryId][0]?.id,
+      },
+      {
+        name: "Tandoori Roti",
+        description: "Whole wheat bread cooked in tandoor",
+        price: 20,
+        image: "/assets/generated_images/Fresh_tandoori_rotis_stack_1dcda2c7.png",
+        rating: "4.6",
+        reviewCount: 245,
+        isVeg: true,
+        isCustomizable: false,
+        categoryId: rotiCategoryId,
+        chefId: chefsByCategory[rotiCategoryId][0]?.id,
       },
       {
         name: "Garlic Naan",
-        description: "Aromatic naan topped with fresh garlic and herbs",
+        description: "Naan topped with fresh garlic and butter",
         price: 50,
         image: "/assets/generated_images/Fresh_tandoori_rotis_stack_1dcda2c7.png",
-        rating: "4.8",
-        reviewCount: 156,
+        rating: "4.7",
+        reviewCount: 189,
+        isVeg: true,
+        isCustomizable: false,
+        categoryId: rotiCategoryId,
+        chefId: chefsByCategory[rotiCategoryId][1]?.id,
+      },
+      {
+        name: "Aloo Paratha",
+        description: "Stuffed flatbread with spiced potato filling",
+        price: 60,
+        image: "/assets/generated_images/Fresh_tandoori_rotis_stack_1dcda2c7.png",
+        rating: "4.4",
+        reviewCount: 167,
         isVeg: true,
         isCustomizable: true,
         categoryId: rotiCategoryId,
+        chefId: chefsByCategory[rotiCategoryId][1]?.id,
       },
       {
-        name: "Special Thali",
-        description: "Complete meal with dal, curry, rice, roti, and dessert",
+        name: "North Indian Thali",
+        description: "Complete meal with dal, sabzi, roti, rice and dessert",
         price: 180,
         image: "/assets/generated_images/Complete_Indian_thali_meal_837cc17d.png",
         rating: "4.8",
-        reviewCount: 210,
+        reviewCount: 234,
         isVeg: true,
         isCustomizable: true,
         categoryId: mealCategoryId,
+        chefId: chefsByCategory[mealCategoryId][0]?.id,
       },
       {
         name: "Rajasthani Thali",
@@ -141,6 +226,7 @@ export class MemStorage implements IStorage {
         isVeg: true,
         isCustomizable: false,
         categoryId: mealCategoryId,
+        chefId: chefsByCategory[mealCategoryId][0]?.id,
       },
       {
         name: "South Indian Meal",
@@ -152,6 +238,7 @@ export class MemStorage implements IStorage {
         isVeg: true,
         isCustomizable: true,
         categoryId: mealCategoryId,
+        chefId: chefsByCategory[mealCategoryId][1]?.id,
       },
       {
         name: "Paneer Tikka",
@@ -163,6 +250,7 @@ export class MemStorage implements IStorage {
         isVeg: true,
         isCustomizable: true,
         categoryId: hotelCategoryId,
+        chefId: chefsByCategory[hotelCategoryId][0]?.id,
       },
       {
         name: "Butter Chicken",
@@ -174,6 +262,7 @@ export class MemStorage implements IStorage {
         isVeg: false,
         isCustomizable: true,
         categoryId: hotelCategoryId,
+        chefId: chefsByCategory[hotelCategoryId][0]?.id,
       },
       {
         name: "Biryani Special",
@@ -185,6 +274,7 @@ export class MemStorage implements IStorage {
         isVeg: false,
         isCustomizable: true,
         categoryId: hotelCategoryId,
+        chefId: chefsByCategory[hotelCategoryId][1]?.id,
       },
     ];
 
@@ -258,6 +348,14 @@ export class MemStorage implements IStorage {
 
   async getOrderById(id: string): Promise<Order | undefined> {
     return this.orders.get(id);
+  }
+
+  async getChefs(): Promise<Chef[]> {
+    return this.chefs;
+  }
+
+  async getChefsByCategory(categoryId: string): Promise<Chef[]> {
+    return this.chefs.filter(chef => chef.categoryId === categoryId);
   }
 }
 

@@ -32,7 +32,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/products", async (req, res) => {
     try {
       const categoryId = req.query.categoryId as string | undefined;
-      
+
       if (categoryId) {
         const products = await storage.getProductsByCategoryId(categoryId);
         res.json(products);
@@ -87,6 +87,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch order" });
     }
+  });
+
+  // Get all chefs
+  app.get("/api/chefs", (_req, res) => {
+    const chefs = storage.getChefs();
+    res.json(chefs);
+  });
+
+  // Get chefs by category ID
+  app.get("/api/chefs/:categoryId", (req, res) => {
+    const { categoryId } = req.params;
+    const chefs = storage.getChefsByCategory(categoryId);
+    res.json(chefs);
   });
 
   const httpServer = createServer(app);
