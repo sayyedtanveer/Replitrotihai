@@ -43,6 +43,9 @@ export default function Home() {
 
   const handleCategoryTabChange = (value: string) => {
     setSelectedCategoryTab(value);
+    // Close drawers when changing tabs
+    setIsChefListOpen(false);
+    setIsCategoryMenuOpen(false);
     // Scroll to products section
     const productsSection = document.getElementById("products-section");
     if (productsSection) {
@@ -106,8 +109,17 @@ export default function Home() {
   const handleCategoryClick = (categoryId: string) => {
     const category = categories.find(c => c.id === categoryId);
     if (category) {
-      setSelectedCategoryForChefList(category);
-      setIsChefListOpen(true);
+      // Switch to the category tab
+      setSelectedCategoryTab(categoryId);
+      // Close menu drawer
+      setIsMenuOpen(false);
+      // Scroll to products section
+      setTimeout(() => {
+        const productsSection = document.getElementById("products-section");
+        if (productsSection) {
+          productsSection.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }, 100);
     }
   };
 
@@ -120,8 +132,17 @@ export default function Home() {
   const handleBrowseCategory = (categoryId: string) => {
     const category = categories.find(c => c.id === categoryId);
     if (category) {
-      setSelectedCategoryForChefList(category);
-      setIsChefListOpen(true);
+      // Switch to the category tab
+      setSelectedCategoryTab(categoryId);
+      // Close menu drawer
+      setIsMenuOpen(false);
+      // Scroll to products section
+      setTimeout(() => {
+        const productsSection = document.getElementById("products-section");
+        if (productsSection) {
+          productsSection.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }, 100);
     }
   };
 
@@ -150,14 +171,41 @@ export default function Home() {
         <Hero />
 
         <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+          {selectedCategoryTab === "all" && (
+            <>
+              <div className="text-center mb-8">
+                <h2 className="text-3xl sm:text-4xl font-bold mb-4" data-testid="text-categories-heading">
+                  Browse by Category
+                </h2>
+                <p className="text-lg text-muted-foreground mb-6" data-testid="text-categories-subheading">
+                  Choose from our popular categories
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-16">
+                {categoriesLoading ? (
+                  <div className="col-span-full text-center py-8 text-muted-foreground">
+                    Loading categories...
+                  </div>
+                ) : (
+                  categories.map((category) => (
+                    <CategoryCard
+                      key={category.id}
+                      id={`category-${category.id}`}
+                      title={category.name}
+                      description={category.description}
+                      itemCount={category.itemCount}
+                      image={category.image}
+                      icon={iconMap[category.iconName]}
+                      onBrowse={() => handleBrowseCategory(category.id)}
+                    />
+                  ))
+                )}
+              </div>
+            </>
+          )}
+
           <div className="text-center mb-8">
-            <h2 className="text-3xl sm:text-4xl font-bold mb-4" data-testid="text-categories-heading">
-              Browse by Category
-            </h2>
-            <p className="text-lg text-muted-foreground mb-6" data-testid="text-categories-subheading">
-              Choose from our popular categories
-            </p>
-            
             <Tabs value={selectedCategoryTab} onValueChange={handleCategoryTabChange} className="mb-8">
               <TabsList className="inline-flex" data-testid="category-tabs">
                 <TabsTrigger value="all" data-testid="tab-all">All</TabsTrigger>
@@ -168,27 +216,6 @@ export default function Home() {
                 ))}
               </TabsList>
             </Tabs>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-16">
-            {categoriesLoading ? (
-              <div className="col-span-full text-center py-8 text-muted-foreground">
-                Loading categories...
-              </div>
-            ) : (
-              categories.map((category) => (
-                <CategoryCard
-                  key={category.id}
-                  id={`category-${category.id}`}
-                  title={category.name}
-                  description={category.description}
-                  itemCount={category.itemCount}
-                  image={category.image}
-                  icon={iconMap[category.iconName]}
-                  onBrowse={() => handleBrowseCategory(category.id)}
-                />
-              ))
-            )}
           </div>
 
           <div id="products-section" className="text-center mb-8">
