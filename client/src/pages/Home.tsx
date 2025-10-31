@@ -91,10 +91,11 @@ export default function Home() {
   };
 
   const handleBrowseCategory = (categoryId: string) => {
-    const category = categories.find(c => c.id === categoryId);
-    if (category) {
-      setSelectedCategoryForMenu(category);
-      setIsCategoryMenuOpen(true);
+    setSelectedCategoryTab(categoryId);
+    // Scroll to products section
+    const productsSection = document.querySelector('[data-testid="text-popular-heading"]');
+    if (productsSection) {
+      productsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   };
 
@@ -210,6 +211,13 @@ export default function Home() {
         isOpen={isMenuOpen}
         onClose={() => setIsMenuOpen(false)}
         categories={categories}
+        onCategoryClick={handleCategoryClick}
+      />
+
+      <CategoryMenuDrawer
+        isOpen={isCategoryMenuOpen}
+        onClose={() => setIsCategoryMenuOpen(false)}
+        category={selectedCategoryForMenu}
         products={products}
         onAddToCart={handleAddToCart}
         cartItems={cartItems}
