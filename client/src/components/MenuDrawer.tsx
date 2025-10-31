@@ -2,6 +2,7 @@ import { X, Home, UtensilsCrossed, ShoppingBag, User, Settings, LogOut, ChevronR
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useLocation } from "wouter";
 import type { Category } from "@shared/schema";
 
 interface MenuDrawerProps {
@@ -12,11 +13,38 @@ interface MenuDrawerProps {
 }
 
 export default function MenuDrawer({ isOpen, onClose, categories = [], onCategoryClick }: MenuDrawerProps) {
+  const [, setLocation] = useLocation();
+  
   if (!isOpen) return null;
 
   const handleCategoryClick = (categoryId: string) => {
     onCategoryClick?.(categoryId);
     onClose();
+  };
+
+  const handleHomeClick = () => {
+    setLocation("/");
+    onClose();
+  };
+
+  const handleMyOrdersClick = () => {
+    setLocation("/orders");
+    onClose();
+  };
+
+  const handleProfileClick = () => {
+    setLocation("/profile");
+    onClose();
+  };
+
+  const handleSettingsClick = () => {
+    // TODO: Navigate to settings page when implemented
+    console.log('Settings clicked');
+    onClose();
+  };
+
+  const handleLogoutClick = () => {
+    window.location.href = "/api/logout";
   };
 
   return (
@@ -56,6 +84,7 @@ export default function MenuDrawer({ isOpen, onClose, categories = [], onCategor
                   <Button
                     variant="ghost"
                     className="w-full justify-start"
+                    onClick={handleHomeClick}
                     data-testid="button-nav-home"
                   >
                     <Home className="h-4 w-4 mr-3" />
@@ -64,6 +93,7 @@ export default function MenuDrawer({ isOpen, onClose, categories = [], onCategor
                   <Button
                     variant="ghost"
                     className="w-full justify-start"
+                    onClick={handleMyOrdersClick}
                     data-testid="button-nav-orders"
                   >
                     <ShoppingBag className="h-4 w-4 mr-3" />
@@ -72,6 +102,7 @@ export default function MenuDrawer({ isOpen, onClose, categories = [], onCategor
                   <Button
                     variant="ghost"
                     className="w-full justify-start"
+                    onClick={handleProfileClick}
                     data-testid="button-nav-profile"
                   >
                     <User className="h-4 w-4 mr-3" />
@@ -121,6 +152,7 @@ export default function MenuDrawer({ isOpen, onClose, categories = [], onCategor
                   <Button
                     variant="ghost"
                     className="w-full justify-start"
+                    onClick={handleSettingsClick}
                     data-testid="button-settings"
                   >
                     <Settings className="h-4 w-4 mr-3" />
@@ -129,6 +161,7 @@ export default function MenuDrawer({ isOpen, onClose, categories = [], onCategor
                   <Button
                     variant="ghost"
                     className="w-full justify-start text-destructive hover:text-destructive"
+                    onClick={handleLogoutClick}
                     data-testid="button-logout"
                   >
                     <LogOut className="h-4 w-4 mr-3" />

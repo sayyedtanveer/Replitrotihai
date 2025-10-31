@@ -11,6 +11,7 @@ import CategoryMenuDrawer from "@/components/CategoryMenuDrawer";
 import ChefListDrawer from "@/components/ChefListDrawer";
 import Footer from "@/components/Footer";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
 import { UtensilsCrossed, ChefHat, Hotel } from "lucide-react";
 import type { Category, Chef, Product } from "@shared/schema";
 
