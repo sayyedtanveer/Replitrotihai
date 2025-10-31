@@ -89,19 +89,59 @@ export default function MenuDrawer({
             </div>
 
             <ScrollArea className="flex-1">
-              {productsByCategory.map(({ category, products: categoryProducts }) => (
-                <TabsContent 
-                  key={category.id} 
-                  value={category.id} 
-                  className="mt-0 p-4 space-y-4"
-                  data-testid={`content-${category.id}`}
-                >
-                  {categoryProducts.length === 0 ? (
-                    <p className="text-center text-muted-foreground py-8" data-testid="text-no-products">
-                      No items available in this category
-                    </p>
-                  ) : (
-                    categoryProducts.map((product) => {
+              {productsByCategory.map(({ category, products: categoryProducts }) => {
+                const avgRating = categoryProducts.length > 0
+                  ? (categoryProducts.reduce((sum, p) => sum + parseFloat(p.rating), 0) / categoryProducts.length).toFixed(1)
+                  : "0.0";
+                const totalReviews = categoryProducts.reduce((sum, p) => sum + p.reviewCount, 0);
+                
+                return (
+                  <TabsContent 
+                    key={category.id} 
+                    value={category.id} 
+                    className="mt-0 space-y-4"
+                    data-testid={`content-${category.id}`}
+                  >
+                    <div className="p-4 border-b bg-muted/30" data-testid={`header-${category.id}`}>
+                      <div className="flex items-start gap-3">
+                        <img 
+                          src={category.image} 
+                          alt={category.name}
+                          className="w-16 h-16 rounded-lg object-cover"
+                          data-testid={`img-category-${category.id}`}
+                        />
+                        <div className="flex-1">
+                          <h3 className="text-lg font-bold mb-1" data-testid={`text-category-name-${category.id}`}>
+                            {category.name}
+                          </h3>
+                          <p className="text-sm text-muted-foreground mb-2" data-testid={`text-category-description-${category.id}`}>
+                            {category.description}
+                          </p>
+                          <div className="flex items-center gap-4 text-sm">
+                            <div className="flex items-center gap-1">
+                              <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+                              <span className="font-semibold" data-testid={`text-category-rating-${category.id}`}>
+                                {avgRating}
+                              </span>
+                              <span className="text-muted-foreground" data-testid={`text-category-reviews-${category.id}`}>
+                                ({totalReviews} reviews)
+                              </span>
+                            </div>
+                            <Badge variant="secondary" data-testid={`badge-item-count-${category.id}`}>
+                              {category.itemCount}
+                            </Badge>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="px-4 pb-4 space-y-4">
+                      {categoryProducts.length === 0 ? (
+                        <p className="text-center text-muted-foreground py-8" data-testid="text-no-products">
+                          No items available in this category
+                        </p>
+                      ) : (
+                        categoryProducts.map((product) => {
                       const currentQuantity = getProductQuantity(product.id);
                       return (
                         <div
@@ -190,8 +230,10 @@ export default function MenuDrawer({
                       );
                     })
                   )}
-                </TabsContent>
-              ))}
+                </div>
+              </TabsContent>
+            );
+          })}
             </ScrollArea>
           </Tabs>
         </div>
