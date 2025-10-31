@@ -1,18 +1,26 @@
 
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+import MenuDrawer from "@/components/MenuDrawer";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ShoppingBag } from "lucide-react";
 
 export default function MyOrders() {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  
   // TODO: Fetch actual orders from API
   const orders = [];
 
+  const { data: categories = [] } = useQuery({
+    queryKey: ["/api/categories"],
+  });
+
   return (
     <div className="min-h-screen flex flex-col">
-      <Header />
+      <Header onMenuClick={() => setIsMenuOpen(true)} />
 
       <main className="flex-1 bg-muted/30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -42,6 +50,12 @@ export default function MyOrders() {
       </main>
 
       <Footer />
+
+      <MenuDrawer
+        isOpen={isMenuOpen}
+        onClose={() => setIsMenuOpen(false)}
+        categories={categories}
+      />
     </div>
   );
 }
