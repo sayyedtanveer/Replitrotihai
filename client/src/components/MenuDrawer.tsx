@@ -2,6 +2,7 @@ import { X, Home, UtensilsCrossed, ShoppingBag, User, LogOut, ChevronRight, Sett
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useLocation } from "wouter";
 import type { Category } from "@shared/schema";
 
@@ -10,9 +11,11 @@ interface MenuDrawerProps {
   onClose: () => void;
   categories?: Category[];
   onCategoryClick?: (categoryId: string) => void;
+  selectedCategoryTab?: string;
+  onCategoryTabChange?: (value: string) => void;
 }
 
-export default function MenuDrawer({ isOpen, onClose, categories = [], onCategoryClick }: MenuDrawerProps) {
+export default function MenuDrawer({ isOpen, onClose, categories = [], onCategoryClick, selectedCategoryTab = "all", onCategoryTabChange }: MenuDrawerProps) {
   const [, setLocation] = useLocation();
   
   if (!isOpen) return null;
@@ -115,31 +118,21 @@ export default function MenuDrawer({ isOpen, onClose, categories = [], onCategor
 
               <div>
                 <h3 className="text-sm font-semibold text-muted-foreground mb-3" data-testid="text-categories-heading">
-                  Categories
+                  Browse Categories
                 </h3>
-                <div className="space-y-1">
-                  {categories.length === 0 ? (
-                    <p className="text-sm text-muted-foreground px-3 py-2" data-testid="text-no-categories">
-                      No categories available
-                    </p>
-                  ) : (
-                    categories.map((category) => (
-                      <Button
-                        key={category.id}
-                        variant="ghost"
-                        className="w-full justify-between"
-                        onClick={() => handleCategoryClick(category.id)}
-                        data-testid={`button-category-${category.id}`}
-                      >
-                        <span className="flex items-center">
-                          <UtensilsCrossed className="h-4 w-4 mr-3" />
-                          {category.name}
-                        </span>
-                        <ChevronRight className="h-4 w-4" />
-                      </Button>
-                    ))
-                  )}
-                </div>
+                <Tabs value={selectedCategoryTab} onValueChange={(value) => {
+                  onCategoryTabChange?.(value);
+                  onClose();
+                }} className="mb-4">
+                  <TabsList className="w-full flex-wrap h-auto gap-1 p-1" data-testid="category-tabs">
+                    <TabsTrigger value="all" data-testid="tab-all" className="flex-1 min-w-[80px]">All</TabsTrigger>
+                    {categories.map((category) => (
+                      <TabsTrigger key={category.id} value={category.id} data-testid={`tab-${category.id}`} className="flex-1 min-w-[80px]">
+                        {category.name}
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+                </Tabs>
               </div>
 
               <Separator />

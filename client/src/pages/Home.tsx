@@ -10,7 +10,7 @@ import MenuDrawer from "@/components/MenuDrawer";
 import CategoryMenuDrawer from "@/components/CategoryMenuDrawer";
 import ChefListDrawer from "@/components/ChefListDrawer";
 import Footer from "@/components/Footer";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
 import { Button } from "@/components/ui/button";
 import { UtensilsCrossed, ChefHat, Hotel } from "lucide-react";
 import type { Category, Chef, Product } from "@shared/schema";
@@ -206,19 +206,6 @@ export default function Home() {
             </>
           )}
 
-          <div className="text-center mb-8">
-            <Tabs value={selectedCategoryTab} onValueChange={handleCategoryTabChange} className="mb-8">
-              <TabsList className="inline-flex" data-testid="category-tabs">
-                <TabsTrigger value="all" data-testid="tab-all">All</TabsTrigger>
-                {categories.map((category) => (
-                  <TabsTrigger key={category.id} value={category.id} data-testid={`tab-${category.id}`}>
-                    {category.name}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </Tabs>
-          </div>
-
           <div id="products-section">
             {selectedCategoryTab === "all" ? (
               <>
@@ -345,6 +332,8 @@ export default function Home() {
         onClose={() => setIsMenuOpen(false)}
         categories={categories}
         onCategoryClick={handleCategoryClick}
+        selectedCategoryTab={selectedCategoryTab}
+        onCategoryTabChange={handleCategoryTabChange}
       />
 
       <ChefListDrawer
