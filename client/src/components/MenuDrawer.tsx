@@ -1,4 +1,4 @@
-import { X, Home, UtensilsCrossed, ShoppingBag, User, Settings, LogOut, ChevronRight } from "lucide-react";
+import { X, Home, UtensilsCrossed, ShoppingBag, User, LogOut, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";

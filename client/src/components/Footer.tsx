@@ -60,7 +60,7 @@ export default function Footer() {
 
         <div className="border-t mt-8 pt-8 text-center text-sm text-muted-foreground">
           <p data-testid="text-copyright">
-            © 2025 FoodExpress. All rights reserved.
+            © 2025 RotiHai. All rights reserved.
           </p>
         </div>
       </div>

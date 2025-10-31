@@ -10,8 +10,8 @@ export default function Hero() {
         className="absolute inset-0 bg-cover bg-center"
         style={{ backgroundImage: `url(${heroImage})` }}
       />
-      <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/50 to-black/70" />
-      
+      <div className="absolute inset-0 bg-gradient-to-r from-primary/15 via-primary/5 to-transparent" />
+
       <div className="relative h-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col items-center justify-center text-center">
         <h2
           className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white mb-4"

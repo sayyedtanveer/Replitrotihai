@@ -12,7 +12,7 @@ export default function Landing() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <h1 className="text-2xl font-bold text-primary" data-testid="text-logo">
-              FoodExpress
+              RotiHai
             </h1>
             <Button onClick={handleLogin} data-testid="button-signin-landing">
               Sign In
@@ -30,7 +30,7 @@ export default function Landing() {
               <span className="text-primary">Ghar Jaisa Swaad</span>
             </h1>
             <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto" data-testid="text-hero-subtitle">
-              Fresh rotis, homestyle meals, and restaurant specials in 30 minutes
+              Warm, fresh rotis and homestyle meals delivered in 30 minutes
             </p>
             <Button size="lg" onClick={handleLogin} className="text-lg px-8 py-6" data-testid="button-get-started">
               Get Started
@@ -41,7 +41,7 @@ export default function Landing() {
         <section className="py-16 px-4 sm:px-6 lg:px-8 bg-muted/50">
           <div className="max-w-7xl mx-auto">
             <h2 className="text-3xl font-bold text-center mb-12" data-testid="text-features-heading">
-              Why Choose FoodExpress?
+              Why Choose RotiHai?
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
               <div className="text-center" data-testid="feature-card-variety">
@@ -104,7 +104,7 @@ export default function Landing() {
 
       <footer className="border-t py-8 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto text-center text-sm text-muted-foreground">
-          <p data-testid="text-footer">© 2025 FoodExpress. All rights reserved.</p>
+          <p data-testid="text-footer">© 2025 RotiHai. All rights reserved.</p>
         </div>
       </footer>
     </div>
