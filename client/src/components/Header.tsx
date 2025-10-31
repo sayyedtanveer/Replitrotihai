@@ -1,7 +1,17 @@
-import { ShoppingCart, MapPin, Search, Menu } from "lucide-react";
+import { ShoppingCart, MapPin, Search, Menu, LogOut, User as UserIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useAuth } from "@/hooks/useAuth";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface HeaderProps {
   cartItemCount?: number;
@@ -12,6 +22,11 @@ interface HeaderProps {
 }
 
 export default function Header({ cartItemCount = 0, onCartClick, onMenuClick, searchQuery = "", onSearchChange }: HeaderProps) {
+  const { user } = useAuth();
+
+  const handleLogout = () => {
+    window.location.href = "/api/logout";
+  };
   return (
     <header className="sticky top-0 z-50 bg-background border-b">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -53,9 +68,35 @@ export default function Header({ cartItemCount = 0, onCartClick, onMenuClick, se
           </div>
 
           <div className="flex items-center gap-2">
-            <Button variant="ghost" className="hidden lg:flex" data-testid="button-signin">
-              Sign In
-            </Button>
+            {user && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="gap-2 hidden lg:flex" data-testid="button-user-menu">
+                    <Avatar className="h-8 w-8">
+                      <AvatarImage src={user.profileImageUrl ?? undefined} alt={user.firstName ?? "User"} />
+                      <AvatarFallback>
+                        {user.firstName?.[0]?.toUpperCase() ?? user.email?.[0]?.toUpperCase() ?? "U"}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="text-sm">
+                      {user.firstName ?? user.email}
+                    </span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" data-testid="menu-user-dropdown">
+                  <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem data-testid="menu-item-profile">
+                    <UserIcon className="h-4 w-4 mr-2" />
+                    Profile
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleLogout} data-testid="menu-item-logout">
+                    <LogOut className="h-4 w-4 mr-2" />
+                    Logout
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
             <Button
               variant="ghost"
               size="icon"
