@@ -11,8 +11,9 @@ interface CategoryMenuDrawerProps {
   chef: { id: string; name: string } | null;
   products: Product[];
   onAddToCart?: (productId: string, productName: string, price: number, image: string, quantity: number) => void;
-  cartItems?: { id: string; quantity: number }[];
+  cartItems?: { id: string; quantity: number; price: number }[]; // Added price to cartItems for totalPrice calculation
   autoCloseOnAdd?: boolean;
+  onProceedToCart?: () => void; // Added prop for proceeding to cart
 }
 
 export default function CategoryMenuDrawer({ 
@@ -23,7 +24,8 @@ export default function CategoryMenuDrawer({
   products,
   onAddToCart,
   cartItems = [],
-  autoCloseOnAdd = false
+  autoCloseOnAdd = false,
+  onProceedToCart
 }: CategoryMenuDrawerProps) {
   if (!isOpen || !category || !chef) return null;
 
@@ -43,7 +45,7 @@ export default function CategoryMenuDrawer({
 
   const handleQuantityChange = (product: Product, newQuantity: number) => {
     if (newQuantity < 0) return;
-    
+
     const currentQuantity = getProductQuantity(product.id);
     if (newQuantity === currentQuantity) return;
 
@@ -52,6 +54,10 @@ export default function CategoryMenuDrawer({
       // Don't auto-close - let users continue browsing and adding items
     }
   };
+
+  // Calculate total items and total price for the "Proceed to Cart" button
+  const totalItems = cartItems.reduce((sum, item) => sum + item.quantity, 0);
+  const totalPrice = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
   return (
     <>
@@ -214,6 +220,37 @@ export default function CategoryMenuDrawer({
               )}
             </div>
           </ScrollArea>
+
+          {/* Proceed to Cart Button */}
+          <div className="border-t p-4">
+            {totalItems > 0 ? (
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">
+                    {totalItems} {totalItems === 1 ? 'item' : 'items'} in cart
+                  </span>
+                  <span className="font-semibold text-primary">
+                    ₹{totalPrice}
+                  </span>
+                </div>
+                <Button
+                  size="lg"
+                  className="w-full"
+                  onClick={() => {
+                    onClose();
+                    onProceedToCart?.();
+                  }}
+                  data-testid="button-proceed-to-cart"
+                >
+                  Proceed to Cart
+                </Button>
+              </div>
+            ) : (
+              <div className="text-center text-sm text-muted-foreground">
+                Add items to cart to proceed
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </>

@@ -152,9 +152,9 @@ export default function Home() {
     const matchesSearch = !searchLower || 
       product.name.toLowerCase().includes(searchLower) ||
       product.description.toLowerCase().includes(searchLower);
-    
+
     const matchesCategory = selectedCategoryTab === "all" || product.categoryId === selectedCategoryTab;
-    
+
     return matchesSearch && matchesCategory;
   });
 
@@ -257,7 +257,7 @@ export default function Home() {
                   <p className="text-lg text-muted-foreground mb-6" data-testid="text-popular-subheading">
                     Select a restaurant or chef to view their menu
                   </p>
-                  
+
                   {/* Category tabs */}
                   <div className="flex justify-center mb-6">
                     <div className="inline-flex gap-2 p-1 bg-muted rounded-lg flex-wrap">
@@ -312,7 +312,7 @@ export default function Home() {
                             />
                             <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
                           </div>
-                          
+
                           <div className="p-4">
                             <h3 className="font-bold text-xl mb-2" data-testid={`text-chef-name-${chef.id}`}>
                               {chef.name}
@@ -375,8 +375,9 @@ export default function Home() {
         category={selectedCategoryForMenu}
         chef={selectedChefForMenu}
         products={products}
-        onAddToCart={handleAddToCart}
         cartItems={cartItems}
+        onAddToCart={handleAddToCart}
+        onProceedToCart={() => setIsCartOpen(true)}
       />
 
       <CartSidebar
