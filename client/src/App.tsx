@@ -23,25 +23,14 @@ function Router() {
 
   return (
     <Switch>
-      <Route path="/admin/login" component={AdminLogin} />
-      <Route path="/admin/dashboard">
-        <AdminGuard><AdminDashboard /></AdminGuard>
-      </Route>
-      <Route path="/admin/orders">
-        <AdminGuard><AdminOrders /></AdminGuard>
-      </Route>
-      <Route path="/admin/products">
-        <AdminGuard><AdminProducts /></AdminGuard>
-      </Route>
-      <Route path="/admin/categories">
-        <AdminGuard><AdminCategories /></AdminGuard>
-      </Route>
-      <Route path="/admin/users">
-        <AdminGuard><AdminUsers /></AdminGuard>
-      </Route>
-      <Route path="/admin/chefs">
-        <AdminGuard><AdminChefs /></AdminGuard>
-      </Route>
+      {/* <Route path="/admin/login" component={AdminLogin} /> */}
+      <Route path="/admin/login" component={AdminDashboard} />
+      <Route path="/admin/dashboard" component={AdminDashboard} />
+      <Route path="/admin/orders" component={AdminOrders} />
+      <Route path="/admin/products" component={AdminProducts} />
+      <Route path="/admin/categories" component={AdminCategories} />
+      <Route path="/admin/users" component={AdminUsers} />
+      <Route path="/admin/chefs" component={AdminChefs} /></Route>
       
       {isLoading || !isAuthenticated ? (
         <Route path="/" component={Landing} />
