@@ -15,6 +15,43 @@ import { adminLoginSchema, insertAdminUserSchema, insertCategorySchema, insertPr
 import { fromZodError } from "zod-validation-error";
 
 export function registerAdminRoutes(app: Express) {
+  // TEMPORARY TEST ENDPOINT - REMOVE IN PRODUCTION
+  app.post("/api/admin/auth/test-login", async (req, res) => {
+    try {
+      const admin = await storage.getAdminByUsername("admin");
+      
+      if (!admin) {
+        res.status(404).json({ message: "Default admin not found. Run create-admin script first." });
+        return;
+      }
+
+      await storage.updateAdminLastLogin(admin.id);
+
+      const accessToken = generateAccessToken(admin);
+      const refreshToken = generateRefreshToken(admin);
+
+      res.cookie("refreshToken", refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+      });
+
+      res.json({
+        accessToken,
+        admin: {
+          id: admin.id,
+          username: admin.username,
+          email: admin.email,
+          role: admin.role,
+        },
+      });
+    } catch (error) {
+      console.error("Test login error:", error);
+      res.status(500).json({ message: "Test login failed" });
+    }
+  });
+
   app.post("/api/admin/auth/login", async (req, res) => {
     try {
       const validation = adminLoginSchema.safeParse(req.body);

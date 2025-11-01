@@ -121,6 +121,52 @@ export default function AdminLogin() {
               </Button>
             </form>
           </Form>
+          
+          <div className="mt-4 pt-4 border-t">
+            <Button
+              onClick={async () => {
+                setIsLoading(true);
+                try {
+                  const response = await fetch("/api/admin/auth/test-login", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                  });
+
+                  if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.message || "Test login failed");
+                  }
+
+                  const result = await response.json();
+                  localStorage.setItem("adminToken", result.accessToken);
+                  localStorage.setItem("adminUser", JSON.stringify(result.admin));
+
+                  toast({
+                    title: "Test login successful",
+                    description: `Logged in as ${result.admin.username}`,
+                  });
+
+                  setLocation("/admin/dashboard");
+                } catch (error) {
+                  toast({
+                    title: "Test login failed",
+                    description: error instanceof Error ? error.message : "Failed to login",
+                    variant: "destructive",
+                  });
+                } finally {
+                  setIsLoading(false);
+                }
+              }}
+              variant="outline"
+              className="w-full"
+              disabled={isLoading}
+            >
+              Test Login (Bypass Auth)
+            </Button>
+            <p className="text-xs text-center mt-2 text-slate-500">
+              For testing only - uses default admin account
+            </p>
+          </div>
         </CardContent>
       </Card>
     </div>
