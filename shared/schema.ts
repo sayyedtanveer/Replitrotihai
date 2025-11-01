@@ -1,7 +1,9 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, decimal, boolean, timestamp, jsonb, index } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, decimal, boolean, timestamp, jsonb, index, pgEnum } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+
+export const adminRoleEnum = pgEnum("admin_role", ["super_admin", "manager", "viewer"]);
 
 export const sessions = pgTable(
   "sessions",
@@ -21,6 +23,16 @@ export const users = pgTable("users", {
   profileImageUrl: varchar("profile_image_url"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const adminUsers = pgTable("admin_users", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  username: varchar("username", { length: 50 }).notNull().unique(),
+  email: varchar("email", { length: 255 }).notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  role: adminRoleEnum("role").notNull().default("viewer"),
+  lastLoginAt: timestamp("last_login_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
 export const categories = pgTable("categories", {
@@ -106,3 +118,21 @@ export type Order = typeof orders.$inferSelect;
 
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
+
+export const insertAdminUserSchema = createInsertSchema(adminUsers).omit({
+  id: true,
+  passwordHash: true,
+  lastLoginAt: true,
+  createdAt: true,
+}).extend({
+  password: z.string().min(8),
+});
+
+export const adminLoginSchema = z.object({
+  username: z.string(),
+  password: z.string(),
+});
+
+export type InsertAdminUser = z.infer<typeof insertAdminUserSchema>;
+export type AdminUser = typeof adminUsers.$inferSelect;
+export type AdminLogin = z.infer<typeof adminLoginSchema>;

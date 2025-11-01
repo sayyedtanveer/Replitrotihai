@@ -3,9 +3,11 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertOrderSchema } from "@shared/schema";
 import { setupAuth, isAuthenticated } from "./replitAuth";
+import { registerAdminRoutes } from "./adminRoutes";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   await setupAuth(app);
+  registerAdminRoutes(app);
 
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
     try {

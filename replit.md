@@ -33,12 +33,21 @@ Preferred communication style: Simple, everyday language.
 
 ### Authentication & Authorization
 
-**OpenID Connect (OIDC) via Replit:**
+**Customer Authentication (OpenID Connect via Replit):**
 - Passport.js strategy for OIDC authentication
 - Session management with configurable session stores (in-memory for development)
 - User data synchronized from OIDC claims to local user records
 - Protected routes require authentication via `isAuthenticated` middleware
 - Automatic token refresh handling
+
+**Admin Authentication (JWT-based):**
+- Separate authentication system for admin users using JWT tokens
+- Username and password-based login with bcrypt password hashing
+- Access tokens (15-minute expiry) and refresh tokens (7-day expiry)
+- Refresh tokens stored in httpOnly cookies for security
+- Automatic token refresh when access token expires
+- Role-based access control with three roles: `super_admin`, `manager`, `viewer`
+- Protected admin routes with AdminGuard component
 
 **Session Management:**
 - 7-day session TTL (time-to-live)
@@ -49,13 +58,15 @@ Preferred communication style: Simple, everyday language.
 ### Data Layer Architecture
 
 **Schema Design:**
-The application uses a shared schema (`shared/schema.ts`) with Drizzle ORM defining four main entities:
+The application uses a shared schema (`shared/schema.ts`) with Drizzle ORM defining six main entities:
 
-1. **Users** - Stores user profile information from OIDC provider
-2. **Categories** - Product categorization (Rotis, Lunch & Dinner, Hotel Specials)
-3. **Products** - Food items with pricing, images, ratings, and dietary flags (vegetarian)
-4. **Orders** - Customer orders with delivery details and itemized products
-5. **Sessions** - PostgreSQL-based session persistence
+1. **Users** - Stores customer profile information from OIDC provider
+2. **Admin Users** - Stores admin accounts with username, email, password hash, and role
+3. **Categories** - Product categorization (Rotis, Lunch & Dinner, Hotel Specials)
+4. **Products** - Food items with pricing, images, ratings, and dietary flags (vegetarian)
+5. **Orders** - Customer orders with delivery details and itemized products
+6. **Sessions** - PostgreSQL-based session persistence
+7. **Chefs** - Partner chefs and restaurants with ratings and reviews
 
 **Storage Abstraction:**
 - `IStorage` interface defines all data operations
@@ -65,13 +76,36 @@ The application uses a shared schema (`shared/schema.ts`) with Drizzle ORM defin
 
 ### API Architecture
 
-**RESTful Endpoints:**
+**Customer API Endpoints:**
 - `GET /api/auth/user` - Fetch authenticated user profile (protected)
 - `GET /api/categories` - List all food categories
 - `GET /api/products` - List all products (supports `?categoryId` filter)
 - `GET /api/products/:id` - Get single product details
 - `POST /api/orders` - Create new order (protected, validated with Zod)
 - `GET /api/orders/:id` - Retrieve order details (protected)
+- `GET /api/chefs` - List all chefs/restaurants
+- `GET /api/chefs/:categoryId` - Get chefs by category
+- `POST /api/calculate-delivery` - Calculate delivery fee based on location
+
+**Admin API Endpoints:**
+- `POST /api/admin/auth/login` - Admin login with username/password
+- `POST /api/admin/auth/logout` - Admin logout
+- `POST /api/admin/auth/refresh` - Refresh access token using refresh token
+- `GET /api/admin/dashboard/metrics` - Dashboard metrics (user count, orders, revenue, etc.)
+- `GET /api/admin/orders` - List all orders
+- `PATCH /api/admin/orders/:id/status` - Update order status (manager+)
+- `GET /api/admin/categories` - List all categories
+- `POST /api/admin/categories` - Create category (manager+)
+- `PATCH /api/admin/categories/:id` - Update category (manager+)
+- `DELETE /api/admin/categories/:id` - Delete category (super_admin)
+- `GET /api/admin/products` - List all products
+- `POST /api/admin/products` - Create product (manager+)
+- `PATCH /api/admin/products/:id` - Update product (manager+)
+- `DELETE /api/admin/products/:id` - Delete product (super_admin)
+- `GET /api/admin/users` - List all customer users
+- `GET /api/admin/chefs` - List all chefs
+- `GET /api/admin/admins` - List all admin users (super_admin)
+- `POST /api/admin/admins` - Create new admin user (super_admin)
 
 **Request/Response Pattern:**
 - JSON payloads for all API communications
@@ -210,4 +244,4 @@ The application uses a shared schema (`shared/schema.ts`) with Drizzle ORM defin
 **connect-pg-simple:**
 - PostgreSQL session store for express-session
 - Enables session persistence across server restarts
-- Automatic session cleanup based on expiration
+- Automatic session cleanup based on expiration## Admin Panel\n\n### Overview\nThe admin panel provides a comprehensive management interface for the FoodExpress platform with role-based access control.\n\n### Access\n- **URL:** Visit `/admin/login` to access the admin panel\n- **Default Credentials:**\n  - Username: `admin`\n  - Password: `admin123`\n  - **Important:** Change the default password after first login\n\n### Features\n\n**Dashboard:**\n- Real-time metrics display:\n  - Total users count\n  - Total orders count\n  - Total revenue\n  - Pending orders count\n  - Completed orders count\n- Quick overview of platform statistics\n\n**Order Management:**\n- View all customer orders\n- Update order status (pending → confirmed → preparing → out_for_delivery → delivered)\n- View order details including items, customer info, and delivery address\n- Filter and sort orders by status\n\n**Product Management:**\n- Add, edit, and delete products\n- Set product pricing and descriptions\n- Upload product images\n- Mark products as vegetarian or customizable\n- Assign products to categories and chefs\n\n**Category Management:**\n- View all food categories\n- Add new categories (manager+)\n- Edit category details (manager+)\n- Delete categories (super_admin only)\n\n**User Management:**\n- View all registered customer users\n- See user registration dates and profile information\n- Monitor platform growth\n\n**Chef/Restaurant Management:**\n- View all partner chefs and restaurants\n- See ratings and review counts\n- Manage chef partnerships\n\n**Admin User Management (Super Admin Only):**\n- Create new admin users\n- Assign roles (super_admin, manager, viewer)\n- View all admin accounts\n\n### Role-Based Access Control\n\n**Viewer:**\n- Read-only access to all data\n- Can view dashboard, orders, products, categories, users, and chefs\n- Cannot create, update, or delete any data\n\n**Manager:**\n- All viewer permissions\n- Can create and update products\n- Can create and update categories\n- Can update order statuses\n- Cannot delete products/categories\n- Cannot manage admin users\n\n**Super Admin:**\n- All manager permissions\n- Can delete products and categories\n- Can create and manage admin users\n- Full access to all features\n\n### Security Features\n\n**Authentication:**\n- JWT-based authentication with short-lived access tokens (15 minutes)\n- Long-lived refresh tokens (7 days) stored in httpOnly cookies\n- Automatic token refresh before expiry\n- Secure password hashing using bcrypt\n\n**Authorization:**\n- Role-based access control enforced on both frontend and backend\n- Protected routes redirect unauthorized users to login\n- API endpoints validate JWT tokens and user roles\n- Different permission levels for different operations\n\n**Session Management:**\n- Automatic logout on token expiry\n- Secure cookie storage for refresh tokens\n- Protection against XSS attacks\n- CSRF protection with SameSite cookies

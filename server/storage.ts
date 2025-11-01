@@ -1,4 +1,4 @@
-import { type Category, type InsertCategory, type Product, type InsertProduct, type Order, type InsertOrder, type User, type UpsertUser, type Chef } from "@shared/schema";
+import { type Category, type InsertCategory, type Product, type InsertProduct, type Order, type InsertOrder, type User, type UpsertUser, type Chef, type AdminUser, type InsertAdminUser } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { nanoid } from "nanoid";
 
@@ -9,32 +9,55 @@ export interface IStorage {
   getAllCategories(): Promise<Category[]>;
   getCategoryById(id: string): Promise<Category | undefined>;
   createCategory(category: InsertCategory): Promise<Category>;
+  updateCategory(id: string, category: Partial<InsertCategory>): Promise<Category | undefined>;
+  deleteCategory(id: string): Promise<boolean>;
 
   getAllProducts(): Promise<Product[]>;
   getProductById(id: string): Promise<Product | undefined>;
   getProductsByCategoryId(categoryId: string): Promise<Product[]>;
   createProduct(product: InsertProduct): Promise<Product>;
+  updateProduct(id: string, product: Partial<InsertProduct>): Promise<Product | undefined>;
+  deleteProduct(id: string): Promise<boolean>;
 
   createOrder(order: InsertOrder): Promise<Order>;
   getOrderById(id: string): Promise<Order | undefined>;
+  getAllOrders(): Promise<Order[]>;
+  updateOrderStatus(id: string, status: string): Promise<Order | undefined>;
 
   getChefs(): Promise<Chef[]>;
   getChefsByCategory(categoryId: string): Promise<Chef[]>;
+
+  getAdminByUsername(username: string): Promise<AdminUser | undefined>;
+  getAdminById(id: string): Promise<AdminUser | undefined>;
+  createAdmin(admin: InsertAdminUser & { passwordHash: string }): Promise<AdminUser>;
+  updateAdminLastLogin(id: string): Promise<void>;
+  getAllAdmins(): Promise<AdminUser[]>;
+  getAllUsers(): Promise<User[]>;
+
+  getDashboardMetrics(): Promise<{
+    userCount: number;
+    orderCount: number;
+    totalRevenue: number;
+    pendingOrders: number;
+    completedOrders: number;
+  }>;
 }
 
 export class MemStorage implements IStorage {
   private users: Map<string, User>;
   private categories: Map<string, Category>;
-  private chefs: Chef[]; // Changed from private products to private chefs
+  private chefs: Chef[];
   private products: Map<string, Product>;
   private orders: Map<string, Order>;
+  private adminUsers: Map<string, AdminUser>;
 
   constructor() {
     this.users = new Map();
     this.categories = new Map();
-    this.chefs = []; // Initialize chefs array
+    this.chefs = [];
     this.products = new Map();
     this.orders = new Map();
+    this.adminUsers = new Map();
     this.seedData();
   }
 
@@ -356,6 +379,104 @@ export class MemStorage implements IStorage {
 
   async getChefsByCategory(categoryId: string): Promise<Chef[]> {
     return this.chefs.filter(chef => chef.categoryId === categoryId);
+  }
+
+  async updateCategory(id: string, updateData: Partial<InsertCategory>): Promise<Category | undefined> {
+    const category = this.categories.get(id);
+    if (!category) return undefined;
+    const updated: Category = { ...category, ...updateData };
+    this.categories.set(id, updated);
+    return updated;
+  }
+
+  async deleteCategory(id: string): Promise<boolean> {
+    return this.categories.delete(id);
+  }
+
+  async updateProduct(id: string, updateData: Partial<InsertProduct>): Promise<Product | undefined> {
+    const product = this.products.get(id);
+    if (!product) return undefined;
+    const updated: Product = { ...product, ...updateData };
+    this.products.set(id, updated);
+    return updated;
+  }
+
+  async deleteProduct(id: string): Promise<boolean> {
+    return this.products.delete(id);
+  }
+
+  async getAllOrders(): Promise<Order[]> {
+    return Array.from(this.orders.values());
+  }
+
+  async updateOrderStatus(id: string, status: string): Promise<Order | undefined> {
+    const order = this.orders.get(id);
+    if (!order) return undefined;
+    const updated: Order = { ...order, status };
+    this.orders.set(id, updated);
+    return updated;
+  }
+
+  async getAdminByUsername(username: string): Promise<AdminUser | undefined> {
+    return Array.from(this.adminUsers.values()).find(
+      (admin) => admin.username === username
+    );
+  }
+
+  async getAdminById(id: string): Promise<AdminUser | undefined> {
+    return this.adminUsers.get(id);
+  }
+
+  async createAdmin(adminData: InsertAdminUser & { passwordHash: string }): Promise<AdminUser> {
+    const id = randomUUID();
+    const admin: AdminUser = {
+      id,
+      username: adminData.username,
+      email: adminData.email,
+      passwordHash: adminData.passwordHash,
+      role: adminData.role || "viewer",
+      lastLoginAt: null,
+      createdAt: new Date(),
+    };
+    this.adminUsers.set(id, admin);
+    return admin;
+  }
+
+  async updateAdminLastLogin(id: string): Promise<void> {
+    const admin = this.adminUsers.get(id);
+    if (admin) {
+      admin.lastLoginAt = new Date();
+      this.adminUsers.set(id, admin);
+    }
+  }
+
+  async getAllAdmins(): Promise<AdminUser[]> {
+    return Array.from(this.adminUsers.values());
+  }
+
+  async getAllUsers(): Promise<User[]> {
+    return Array.from(this.users.values());
+  }
+
+  async getDashboardMetrics(): Promise<{
+    userCount: number;
+    orderCount: number;
+    totalRevenue: number;
+    pendingOrders: number;
+    completedOrders: number;
+  }> {
+    const orders = Array.from(this.orders.values());
+    const totalRevenue = orders.reduce((sum, order) => sum + order.total, 0);
+    const pendingOrders = orders.filter((o) => o.status === "pending").length;
+    const completedOrders = orders.filter((o) => o.status === "delivered" || o.status === "completed").length;
+
+    return {
+      userCount: this.users.size,
+      orderCount: this.orders.size,
+      totalRevenue,
+      pendingOrders,
+      completedOrders,
+    };
   }
 }
 
