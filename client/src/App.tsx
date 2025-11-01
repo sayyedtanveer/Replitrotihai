@@ -17,6 +17,7 @@ import AdminProducts from "@/pages/admin/AdminProducts";
 import AdminCategories from "@/pages/admin/AdminCategories";
 import AdminUsers from "@/pages/admin/AdminUsers";
 import AdminChefs from "@/pages/admin/AdminChefs";
+import AdminManagement from "@/pages/admin/AdminManagement";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -30,6 +31,7 @@ function Router() {
       <Route path="/admin/categories" component={AdminCategories} />
       <Route path="/admin/users" component={AdminUsers} />
       <Route path="/admin/chefs" component={AdminChefs} />
+      <Route path="/admin/admins" component={AdminManagement} />
 
       {isLoading || !isAuthenticated ? (
         <Route path="/" component={Landing} />
