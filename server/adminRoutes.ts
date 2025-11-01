@@ -419,4 +419,103 @@ export function registerAdminRoutes(app: Express) {
       res.status(500).json({ message: "Failed to fetch chefs" });
     }
   });
+
+  app.post("/api/admin/chefs", requireAdminOrManager(), async (req, res) => {
+    try {
+      const chef = await storage.createChef(req.body);
+      res.status(201).json(chef);
+    } catch (error) {
+      console.error("Create chef error:", error);
+      res.status(500).json({ message: "Failed to create chef" });
+    }
+  });
+
+  app.patch("/api/admin/chefs/:id", requireAdminOrManager(), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const chef = await storage.updateChef(id, req.body);
+      
+      if (!chef) {
+        res.status(404).json({ message: "Chef not found" });
+        return;
+      }
+
+      res.json(chef);
+    } catch (error) {
+      console.error("Update chef error:", error);
+      res.status(500).json({ message: "Failed to update chef" });
+    }
+  });
+
+  app.delete("/api/admin/chefs/:id", requireSuperAdmin(), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const deleted = await storage.deleteChef(id);
+      
+      if (!deleted) {
+        res.status(404).json({ message: "Chef not found" });
+        return;
+      }
+
+      res.json({ message: "Chef deleted successfully" });
+    } catch (error) {
+      console.error("Delete chef error:", error);
+      res.status(500).json({ message: "Failed to delete chef" });
+    }
+  });
+
+  app.patch("/api/admin/admins/:id", requireSuperAdmin(), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { role } = req.body;
+
+      if (!role) {
+        res.status(400).json({ message: "Role is required" });
+        return;
+      }
+
+      const admin = await storage.updateAdminRole(id, role);
+      
+      if (!admin) {
+        res.status(404).json({ message: "Admin not found" });
+        return;
+      }
+
+      res.json({
+        id: admin.id,
+        username: admin.username,
+        email: admin.email,
+        role: admin.role,
+        lastLoginAt: admin.lastLoginAt,
+        createdAt: admin.createdAt,
+      });
+    } catch (error) {
+      console.error("Update admin role error:", error);
+      res.status(500).json({ message: "Failed to update admin role" });
+    }
+  });
+
+  app.delete("/api/admin/admins/:id", requireSuperAdmin(), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const adminReq = req as AuthenticatedAdminRequest;
+
+      if (adminReq.admin?.adminId === id) {
+        res.status(400).json({ message: "Cannot delete your own admin account" });
+        return;
+      }
+
+      const deleted = await storage.deleteAdmin(id);
+      
+      if (!deleted) {
+        res.status(404).json({ message: "Admin not found" });
+        return;
+      }
+
+      res.json({ message: "Admin deleted successfully" });
+    } catch (error) {
+      console.error("Delete admin error:", error);
+      res.status(500).json({ message: "Failed to delete admin" });
+    }
+  });
 }

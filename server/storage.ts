@@ -28,11 +28,16 @@ export interface IStorage {
 
   getChefs(): Promise<Chef[]>;
   getChefsByCategory(categoryId: string): Promise<Chef[]>;
+  createChef(data: Omit<Chef, "id">): Promise<Chef>;
+  updateChef(id: string, data: Partial<Chef>): Promise<Chef | undefined>;
+  deleteChef(id: string): Promise<boolean>;
 
   getAdminByUsername(username: string): Promise<AdminUser | undefined>;
   getAdminById(id: string): Promise<AdminUser | undefined>;
   createAdmin(admin: InsertAdminUser & { passwordHash: string }): Promise<AdminUser>;
   updateAdminLastLogin(id: string): Promise<void>;
+  updateAdminRole(id: string, role: string): Promise<AdminUser | undefined>;
+  deleteAdmin(id: string): Promise<boolean>;
   getAllAdmins(): Promise<AdminUser[]>;
   getAllUsers(): Promise<User[]>;
 
@@ -406,6 +411,27 @@ export class MemStorage implements IStorage {
     return this.chefs.filter(chef => chef.categoryId === categoryId);
   }
 
+  async createChef(data: Omit<Chef, "id">): Promise<Chef> {
+    const id = randomUUID();
+    const chef: Chef = { id, ...data };
+    this.chefs.push(chef);
+    return chef;
+  }
+
+  async updateChef(id: string, data: Partial<Chef>): Promise<Chef | undefined> {
+    const index = this.chefs.findIndex(chef => chef.id === id);
+    if (index === -1) return undefined;
+    const updatedChef: Chef = { ...this.chefs[index], ...data, id };
+    this.chefs[index] = updatedChef;
+    return updatedChef;
+  }
+
+  async deleteChef(id: string): Promise<boolean> {
+    const initialLength = this.chefs.length;
+    this.chefs = this.chefs.filter(chef => chef.id !== id);
+    return this.chefs.length < initialLength;
+  }
+
   async updateCategory(id: string, updateData: Partial<InsertCategory>): Promise<Category | undefined> {
     const category = this.categories.get(id);
     if (!category) return undefined;
@@ -473,6 +499,18 @@ export class MemStorage implements IStorage {
       admin.lastLoginAt = new Date();
       this.adminUsers.set(id, admin);
     }
+  }
+
+  async updateAdminRole(id: string, role: string): Promise<AdminUser | undefined> {
+    const admin = this.adminUsers.get(id);
+    if (!admin) return undefined;
+    const updatedAdmin: AdminUser = { ...admin, role };
+    this.adminUsers.set(id, updatedAdmin);
+    return updatedAdmin;
+  }
+
+  async deleteAdmin(id: string): Promise<boolean> {
+    return this.adminUsers.delete(id);
   }
 
   async getAllAdmins(): Promise<AdminUser[]> {
