@@ -23,14 +23,13 @@ function Router() {
 
   return (
     <Switch>
-      {/* <Route path="/admin/login" component={AdminLogin} /> */}
-      <Route path="/admin/login" component={AdminDashboard} />
+      <Route path="/admin/login" component={AdminLogin} />
       <Route path="/admin/dashboard" component={AdminDashboard} />
       <Route path="/admin/orders" component={AdminOrders} />
       <Route path="/admin/products" component={AdminProducts} />
       <Route path="/admin/categories" component={AdminCategories} />
       <Route path="/admin/users" component={AdminUsers} />
-      <Route path="/admin/chefs" component={AdminChefs} /></Route>
+      <Route path="/admin/chefs" component={AdminChefs} />
       
       {isLoading || !isAuthenticated ? (
         <Route path="/" component={Landing} />
