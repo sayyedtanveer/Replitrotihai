@@ -18,7 +18,6 @@ async function createDefaultAdmin() {
       username,
       email,
       role: "super_admin",
-      password,
       passwordHash,
     });
 
