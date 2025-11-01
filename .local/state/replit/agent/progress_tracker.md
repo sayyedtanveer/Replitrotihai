@@ -12,3 +12,9 @@
   - [x] Admin guard for protected routes
   - [x] Automatic token refresh on expiry
   - [x] Default admin user created (username: admin, password: admin123)
+[x] 6. Fixed admin login and implemented guest browsing
+  - [x] Admin login now working with default credentials (username: admin, password: admin123)
+  - [x] Guest users can browse products without logging in
+  - [x] Checkout flow collects customer info (name, phone, optional email, address)
+  - [x] Fixed security issue: No plaintext credentials in logs
+  - [x] Simplified checkout - removed incomplete account creation feature
