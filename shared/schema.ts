@@ -72,6 +72,7 @@ export const orders = pgTable("orders", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   customerName: text("customer_name").notNull(),
   phone: text("phone").notNull(),
+  email: text("email"),
   address: text("address").notNull(),
   items: jsonb("items").notNull(),
   subtotal: integer("subtotal").notNull(),
@@ -92,6 +93,7 @@ export const insertProductSchema = createInsertSchema(products).omit({
 export const insertOrderSchema = z.object({
   customerName: z.string(),
   phone: z.string(),
+  email: z.string().email().optional(),
   address: z.string(),
   latitude: z.number().optional(),
   longitude: z.number().optional(),

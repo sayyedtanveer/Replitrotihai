@@ -20,11 +20,11 @@ import AdminChefs from "@/pages/admin/AdminChefs";
 import AdminManagement from "@/pages/admin/AdminManagement";
 
 function Router() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated } = useAuth();
 
   return (
     <Switch>
-      <Route path="/admin/login" component={() => <Redirect to="/admin/dashboard" />} />
+      <Route path="/admin/login" component={AdminLogin} />
       <Route path="/admin/dashboard" component={AdminDashboard} />
       <Route path="/admin/orders" component={AdminOrders} />
       <Route path="/admin/products" component={AdminProducts} />
@@ -33,14 +33,14 @@ function Router() {
       <Route path="/admin/chefs" component={AdminChefs} />
       <Route path="/admin/admins" component={AdminManagement} />
 
-      {isLoading || !isAuthenticated ? (
-        <Route path="/" component={Landing} />
-      ) : (
+      <Route path="/" component={Home} />
+      {isAuthenticated ? (
         <>
-          <Route path="/" component={Home} />
           <Route path="/orders" component={MyOrders} />
           <Route path="/profile" component={Profile} />
         </>
+      ) : (
+        <Route path="/orders" component={() => <Redirect to="/" />} />
       )}
       <Route component={NotFound} />
     </Switch>

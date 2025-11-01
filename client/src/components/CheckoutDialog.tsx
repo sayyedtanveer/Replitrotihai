@@ -28,6 +28,7 @@ import { CheckCircle2 } from "lucide-react";
 const checkoutSchema = z.object({
   customerName: z.string().min(2, "Name must be at least 2 characters"),
   phone: z.string().min(10, "Please enter a valid phone number"),
+  email: z.string().email("Please enter a valid email").optional().or(z.literal("")),
   address: z.string().min(10, "Please enter a complete address"),
   latitude: z.string().optional(),
   longitude: z.string().optional(),
@@ -71,6 +72,7 @@ export default function CheckoutDialog({
     defaultValues: {
       customerName: "",
       phone: "",
+      email: "",
       address: "",
       latitude: "",
       longitude: "",
@@ -82,6 +84,7 @@ export default function CheckoutDialog({
       const res = await apiRequest("POST", "/api/orders", {
         customerName: data.customerName,
         phone: data.phone,
+        email: data.email || undefined,
         address: data.address,
         latitude: data.latitude ? parseFloat(data.latitude) : undefined,
         longitude: data.longitude ? parseFloat(data.longitude) : undefined,
@@ -254,6 +257,25 @@ export default function CheckoutDialog({
                       placeholder="Enter your phone number"
                       {...field}
                       data-testid="input-phone"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="email"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Email (Optional)</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="email"
+                      placeholder="Enter your email for order updates"
+                      {...field}
+                      data-testid="input-email"
                     />
                   </FormControl>
                   <FormMessage />

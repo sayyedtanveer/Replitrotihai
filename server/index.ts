@@ -49,6 +49,26 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Create default admin user on startup
+  const { storage } = await import("./storage");
+  const { hashPassword } = await import("./adminAuth");
+  
+  try {
+    const existingAdmin = await storage.getAdminByUsername("admin");
+    if (!existingAdmin) {
+      const passwordHash = await hashPassword("admin123");
+      await storage.createAdmin({
+        username: "admin",
+        email: "admin@rotihai.com",
+        role: "super_admin",
+        passwordHash,
+      });
+      log("Default admin user created successfully");
+    }
+  } catch (error) {
+    log("Failed to create default admin user:", error);
+  }
+
   const server = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
