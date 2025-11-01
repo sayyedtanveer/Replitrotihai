@@ -21,6 +21,7 @@ export default function MenuDrawer({ isOpen, onClose, categories = [], onCategor
   if (!isOpen) return null;
 
   const handleCategoryClick = (categoryId: string) => {
+    onCategoryTabChange?.(categoryId);
     onCategoryClick?.(categoryId);
     onClose();
   };
@@ -120,19 +121,32 @@ export default function MenuDrawer({ isOpen, onClose, categories = [], onCategor
                 <h3 className="text-sm font-semibold text-muted-foreground mb-3" data-testid="text-categories-heading">
                   Browse Categories
                 </h3>
-                <Tabs value={selectedCategoryTab} onValueChange={(value) => {
-                  onCategoryTabChange?.(value);
-                  onClose();
-                }} className="mb-4">
-                  <TabsList className="w-full flex-wrap h-auto gap-1 p-1" data-testid="category-tabs">
-                    <TabsTrigger value="all" data-testid="tab-all" className="flex-1 min-w-[80px]">All</TabsTrigger>
-                    {categories.map((category) => (
-                      <TabsTrigger key={category.id} value={category.id} data-testid={`tab-${category.id}`} className="flex-1 min-w-[80px]">
-                        {category.name}
-                      </TabsTrigger>
-                    ))}
-                  </TabsList>
-                </Tabs>
+                <div className="space-y-1">
+                  <Button
+                    variant={selectedCategoryTab === "all" ? "default" : "ghost"}
+                    className="w-full justify-start"
+                    onClick={() => {
+                      onCategoryTabChange?.("all");
+                      onClose();
+                    }}
+                    data-testid="button-category-all"
+                  >
+                    <UtensilsCrossed className="h-4 w-4 mr-3" />
+                    All Categories
+                  </Button>
+                  {categories.map((category) => (
+                    <Button
+                      key={category.id}
+                      variant={selectedCategoryTab === category.id ? "default" : "ghost"}
+                      className="w-full justify-start"
+                      onClick={() => handleCategoryClick(category.id)}
+                      data-testid={`button-category-${category.id}`}
+                    >
+                      <ChevronRight className="h-4 w-4 mr-3" />
+                      {category.name}
+                    </Button>
+                  ))}
+                </div>
               </div>
 
               <Separator />

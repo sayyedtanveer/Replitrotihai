@@ -325,6 +325,40 @@ export function registerAdminRoutes(app: Express) {
     }
   });
 
+  app.patch("/api/admin/users/:id", requireAdminOrManager(), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const user = await storage.updateUser(id, req.body);
+      
+      if (!user) {
+        res.status(404).json({ message: "User not found" });
+        return;
+      }
+
+      res.json(user);
+    } catch (error) {
+      console.error("Update user error:", error);
+      res.status(500).json({ message: "Failed to update user" });
+    }
+  });
+
+  app.delete("/api/admin/users/:id", requireSuperAdmin(), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const deleted = await storage.deleteUser(id);
+      
+      if (!deleted) {
+        res.status(404).json({ message: "User not found" });
+        return;
+      }
+
+      res.json({ message: "User deleted successfully" });
+    } catch (error) {
+      console.error("Delete user error:", error);
+      res.status(500).json({ message: "Failed to delete user" });
+    }
+  });
+
   app.get("/api/admin/admins", requireSuperAdmin(), async (req, res) => {
     try {
       const admins = await storage.getAllAdmins();

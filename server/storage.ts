@@ -5,6 +5,8 @@ import { nanoid } from "nanoid";
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   upsertUser(user: UpsertUser): Promise<User>;
+  updateUser(id: string, user: Partial<UpsertUser>): Promise<User | undefined>;
+  deleteUser(id: string): Promise<boolean>;
 
   getAllCategories(): Promise<Category[]>;
   getCategoryById(id: string): Promise<Category | undefined>;
@@ -78,6 +80,29 @@ export class MemStorage implements IStorage {
     };
     this.users.set(user.id, user);
     return user;
+  }
+
+  async updateUser(id: string, userData: Partial<UpsertUser>): Promise<User | undefined> {
+    const existing = this.users.get(id);
+    if (!existing) {
+      return undefined;
+    }
+
+    const updated: User = {
+      ...existing,
+      email: userData.email !== undefined ? userData.email : existing.email,
+      firstName: userData.firstName !== undefined ? userData.firstName : existing.firstName,
+      lastName: userData.lastName !== undefined ? userData.lastName : existing.lastName,
+      profileImageUrl: userData.profileImageUrl !== undefined ? userData.profileImageUrl : existing.profileImageUrl,
+      updatedAt: new Date(),
+    };
+
+    this.users.set(id, updated);
+    return updated;
+  }
+
+  async deleteUser(id: string): Promise<boolean> {
+    return this.users.delete(id);
   }
 
   private seedData() {

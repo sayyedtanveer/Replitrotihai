@@ -49,11 +49,11 @@ export default function CategoryCard({
         <p className="text-muted-foreground mb-4" data-testid="text-category-description">
           {description}
         </p>
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <span className="text-sm font-medium text-primary" data-testid="text-item-count">
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-sm font-medium text-primary whitespace-nowrap" data-testid="text-item-count">
             {itemCount}
           </span>
-          <Button variant="ghost" className="gap-2 group-hover:gap-3 transition-all" data-testid="button-browse">
+          <Button variant="ghost" className="gap-2 group-hover:gap-3 transition-all flex-shrink-0" data-testid="button-browse">
             Browse
             <ArrowRight className="h-4 w-4" />
           </Button>
