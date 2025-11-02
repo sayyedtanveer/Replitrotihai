@@ -211,6 +211,31 @@ export default function Home() {
           )}
 
           <div id="products-section">
+            {/* Category tabs - Always visible */}
+            <div className="flex justify-center mb-8">
+              <div className="inline-flex gap-2 p-1 bg-muted rounded-lg flex-wrap">
+                <Button
+                  variant={selectedCategoryTab === "all" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => handleCategoryTabChange("all")}
+                  data-testid="tab-all"
+                >
+                  All
+                </Button>
+                {categories.map((category) => (
+                  <Button
+                    key={category.id}
+                    variant={selectedCategoryTab === category.id ? "default" : "ghost"}
+                    size="sm"
+                    onClick={() => handleCategoryTabChange(category.id)}
+                    data-testid={`tab-${category.id}`}
+                  >
+                    {category.name}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
             {selectedCategoryTab === "all" ? (
               <>
                 <div className="text-center mb-8">
@@ -261,31 +286,6 @@ export default function Home() {
                   <p className="text-lg text-muted-foreground mb-6" data-testid="text-popular-subheading">
                     Select a restaurant or chef to view their menu
                   </p>
-
-                  {/* Category tabs */}
-                  <div className="flex justify-center mb-6">
-                    <div className="inline-flex gap-2 p-1 bg-muted rounded-lg flex-wrap">
-                      <Button
-                        variant={selectedCategoryTab === "all" ? "default" : "ghost"}
-                        size="sm"
-                        onClick={() => handleCategoryTabChange("all")}
-                        data-testid="tab-all"
-                      >
-                        All
-                      </Button>
-                      {categories.map((category) => (
-                        <Button
-                          key={category.id}
-                          variant={selectedCategoryTab === category.id ? "default" : "ghost"}
-                          size="sm"
-                          onClick={() => handleCategoryTabChange(category.id)}
-                          data-testid={`tab-${category.id}`}
-                        >
-                          {category.name}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
