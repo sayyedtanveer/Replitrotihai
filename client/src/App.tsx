@@ -15,8 +15,9 @@ import AdminDashboard from "@/pages/admin/AdminDashboard";
 import AdminOrders from "@/pages/admin/AdminOrders";
 import AdminProducts from "@/pages/admin/AdminProducts";
 import AdminCategories from "@/pages/admin/AdminCategories";
-import AdminUsers from "@/pages/admin/AdminUsers";
+import AdminSubscriptions from "@/pages/admin/AdminSubscriptions";
 import AdminChefs from "@/pages/admin/AdminChefs";
+import AdminUsers from "@/pages/admin/AdminUsers";
 import AdminManagement from "@/pages/admin/AdminManagement";
 import PartnerLogin from "@/pages/partner/PartnerLogin";
 import PartnerDashboard from "@/pages/partner/PartnerDashboard";
@@ -31,9 +32,10 @@ function Router() {
       <Route path="/admin/orders" component={AdminOrders} />
       <Route path="/admin/products" component={AdminProducts} />
       <Route path="/admin/categories" component={AdminCategories} />
-      <Route path="/admin/users" component={AdminUsers} />
+      <Route path="/admin/subscriptions" component={AdminSubscriptions} />
       <Route path="/admin/chefs" component={AdminChefs} />
       <Route path="/admin/admins" component={AdminManagement} />
+      <Route path="/admin/users" component={AdminUsers} />
 
       <Route path="/partner/login" component={PartnerLogin} />
       <Route path="/partner/dashboard" component={PartnerDashboard} />

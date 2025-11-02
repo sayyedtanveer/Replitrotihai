@@ -19,7 +19,7 @@ export function registerAdminRoutes(app: Express) {
   app.post("/api/admin/auth/test-login", async (req, res) => {
     try {
       const admin = await storage.getAdminByUsername("admin");
-      
+
       if (!admin) {
         res.status(404).json({ message: "Default admin not found. Run create-admin script first." });
         return;
@@ -225,7 +225,7 @@ export function registerAdminRoutes(app: Express) {
     try {
       const { id } = req.params;
       const category = await storage.updateCategory(id, req.body);
-      
+
       if (!category) {
         res.status(404).json({ message: "Category not found" });
         return;
@@ -242,7 +242,7 @@ export function registerAdminRoutes(app: Express) {
     try {
       const { id } = req.params;
       const deleted = await storage.deleteCategory(id);
-      
+
       if (!deleted) {
         res.status(404).json({ message: "Category not found" });
         return;
@@ -285,7 +285,7 @@ export function registerAdminRoutes(app: Express) {
     try {
       const { id } = req.params;
       const product = await storage.updateProduct(id, req.body);
-      
+
       if (!product) {
         res.status(404).json({ message: "Product not found" });
         return;
@@ -302,7 +302,7 @@ export function registerAdminRoutes(app: Express) {
     try {
       const { id } = req.params;
       const deleted = await storage.deleteProduct(id);
-      
+
       if (!deleted) {
         res.status(404).json({ message: "Product not found" });
         return;
@@ -329,7 +329,7 @@ export function registerAdminRoutes(app: Express) {
     try {
       const { id } = req.params;
       const user = await storage.updateUser(id, req.body);
-      
+
       if (!user) {
         res.status(404).json({ message: "User not found" });
         return;
@@ -346,7 +346,7 @@ export function registerAdminRoutes(app: Express) {
     try {
       const { id } = req.params;
       const deleted = await storage.deleteUser(id);
-      
+
       if (!deleted) {
         res.status(404).json({ message: "User not found" });
         return;
@@ -434,7 +434,7 @@ export function registerAdminRoutes(app: Express) {
     try {
       const { id } = req.params;
       const chef = await storage.updateChef(id, req.body);
-      
+
       if (!chef) {
         res.status(404).json({ message: "Chef not found" });
         return;
@@ -451,7 +451,7 @@ export function registerAdminRoutes(app: Express) {
     try {
       const { id } = req.params;
       const deleted = await storage.deleteChef(id);
-      
+
       if (!deleted) {
         res.status(404).json({ message: "Chef not found" });
         return;
@@ -517,7 +517,7 @@ export function registerAdminRoutes(app: Express) {
       }
 
       const admin = await storage.updateAdminRole(id, role);
-      
+
       if (!admin) {
         res.status(404).json({ message: "Admin not found" });
         return;
@@ -548,7 +548,7 @@ export function registerAdminRoutes(app: Express) {
       }
 
       const deleted = await storage.deleteAdmin(id);
-      
+
       if (!deleted) {
         res.status(404).json({ message: "Admin not found" });
         return;
@@ -558,6 +558,72 @@ export function registerAdminRoutes(app: Express) {
     } catch (error) {
       console.error("Delete admin error:", error);
       res.status(500).json({ message: "Failed to delete admin" });
+    }
+  });
+
+  // Subscription Plans
+  app.get("/api/admin/subscription-plans", requireAdmin(), async (req, res) => {
+    try {
+      const plans = await storage.getSubscriptionPlans();
+      res.json(plans);
+    } catch (error) {
+      console.error("Get subscription plans error:", error);
+      res.status(500).json({ message: "Failed to fetch subscription plans" });
+    }
+  });
+
+  app.post("/api/admin/subscription-plans", requireAdminOrManager(), async (req, res) => {
+    try {
+      const plan = await storage.createSubscriptionPlan(req.body);
+      res.status(201).json(plan);
+    } catch (error) {
+      console.error("Create subscription plan error:", error);
+      res.status(500).json({ message: "Failed to create subscription plan" });
+    }
+  });
+
+  app.patch("/api/admin/subscription-plans/:id", requireAdminOrManager(), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const plan = await storage.updateSubscriptionPlan(id, req.body);
+
+      if (!plan) {
+        res.status(404).json({ message: "Subscription plan not found" });
+        return;
+      }
+
+      res.json(plan);
+    } catch (error) {
+      console.error("Update subscription plan error:", error);
+      res.status(500).json({ message: "Failed to update subscription plan" });
+    }
+  });
+
+  app.delete("/api/admin/subscription-plans/:id", requireSuperAdmin(), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const deleted = await storage.deleteSubscriptionPlan(id);
+
+      if (!deleted) {
+        res.status(404).json({ message: "Subscription plan not found" });
+        return;
+      }
+
+      res.json({ message: "Subscription plan deleted successfully" });
+    } catch (error) {
+      console.error("Delete subscription plan error:", error);
+      res.status(500).json({ message: "Failed to delete subscription plan" });
+    }
+  });
+
+  // Active Subscriptions
+  app.get("/api/admin/subscriptions", requireAdmin(), async (req, res) => {
+    try {
+      const subscriptions = await storage.getSubscriptions();
+      res.json(subscriptions);
+    } catch (error) {
+      console.error("Get subscriptions error:", error);
+      res.status(500).json({ message: "Failed to fetch subscriptions" });
     }
   });
 }

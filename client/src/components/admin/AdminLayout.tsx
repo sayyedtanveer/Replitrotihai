@@ -11,6 +11,8 @@ import {
   X,
   ShieldCheck,
   FolderKanban,
+  Grid3x3,
+  Calendar,
 } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -111,6 +113,12 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                 </Link>
               );
             })}
+            <Link href="/admin/subscriptions">
+              <a className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${location === "/admin/subscriptions" ? "bg-primary text-primary-foreground" : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"}`}>
+                <Calendar className="w-5 h-5" />
+                <span>Subscriptions</span>
+              </a>
+            </Link>
           </nav>
 
           <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-slate-200 dark:border-slate-700">

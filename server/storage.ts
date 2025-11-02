@@ -28,6 +28,7 @@ export interface IStorage {
   getOrderById(id: string): Promise<Order | undefined>;
   getAllOrders(): Promise<Order[]>;
   updateOrderStatus(id: string, status: string): Promise<Order | undefined>;
+  deleteOrder(id: string): Promise<void>;
 
   getChefs(): Promise<Chef[]>;
   getChefsByCategory(categoryId: string): Promise<Chef[]>;
@@ -59,15 +60,30 @@ export interface IStorage {
     pendingOrders: number;
     completedOrders: number;
   }>;
+
+  // Subscription methods
+  getSubscriptionPlans(): Promise<any[]>;
+  getSubscriptionPlan(id: string): Promise<any | undefined>;
+  createSubscriptionPlan(data: any): Promise<any>;
+  updateSubscriptionPlan(id: string, data: any): Promise<any | undefined>;
+  deleteSubscriptionPlan(id: string): Promise<void>;
+
+  getSubscriptions(): Promise<any[]>;
+  getSubscription(id: string): Promise<any | undefined>;
+  createSubscription(data: any): Promise<any>;
+  updateSubscription(id: string, data: any): Promise<any | undefined>;
+  deleteSubscription(id: string): Promise<void>;
 }
 
 export class MemStorage implements IStorage {
   private users: Map<string, User>;
-  private categories: Map<string, Category>;
-  private chefsData: Map<string, Chef>; // Renamed from 'chefs' to 'chefsData' for clarity
-  private products: Map<string, Product>;
-  private orders: Map<string, Order>;
-  private adminUsers: Map<string, AdminUser>;
+  private categories: Map<string, Category> = new Map();
+  private chefsData: Map<string, Chef> = new Map(); // Renamed from 'chefs' to 'chefsData' for clarity
+  private products: Map<string, Product> = new Map();
+  private orders: Map<string, Order> = new Map();
+  private adminUsers: Map<string, AdminUser> = new Map();
+  private subscriptionPlans: Map<string, any> = new Map();
+  private subscriptions: Map<string, any> = new Map();
 
   constructor() {
     this.users = new Map();
@@ -76,6 +92,8 @@ export class MemStorage implements IStorage {
     this.products = new Map();
     this.orders = new Map();
     this.adminUsers = new Map();
+    this.subscriptionPlans = new Map();
+    this.subscriptions = new Map();
     this.seedData();
   }
 
@@ -614,6 +632,88 @@ export class MemStorage implements IStorage {
       pendingOrders,
       completedOrders,
     };
+  }
+
+  async deleteOrder(id: string): Promise<void> {
+    this.orders.delete(id);
+  }
+
+  // Subscription Plans
+  async getSubscriptionPlans(): Promise<any[]> {
+    return Array.from(this.subscriptionPlans.values());
+  }
+
+  async getSubscriptionPlan(id: string): Promise<any | undefined> {
+    return this.subscriptionPlans.get(id);
+  }
+
+  async createSubscriptionPlan(data: any): Promise<any> {
+    const id = crypto.randomUUID();
+    const plan = {
+      ...data,
+      id,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.subscriptionPlans.set(id, plan);
+    return plan;
+  }
+
+  async updateSubscriptionPlan(id: string, data: any): Promise<any | undefined> {
+    const existing = this.subscriptionPlans.get(id);
+    if (!existing) throw new Error("Subscription plan not found");
+
+    const updated = {
+      ...existing,
+      ...data,
+      id,
+      updatedAt: new Date(),
+    };
+    this.subscriptionPlans.set(id, updated);
+    return updated;
+  }
+
+  async deleteSubscriptionPlan(id: string): Promise<void> {
+    this.subscriptionPlans.delete(id);
+  }
+
+  // Subscriptions
+  async getSubscriptions(): Promise<any[]> {
+    return Array.from(this.subscriptions.values());
+  }
+
+  async getSubscription(id: string): Promise<any | undefined> {
+    return this.subscriptions.get(id);
+  }
+
+  async createSubscription(data: any): Promise<any> {
+    const id = crypto.randomUUID();
+    const subscription = {
+      ...data,
+      id,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.subscriptions.set(id, subscription);
+    return subscription;
+  }
+
+  async updateSubscription(id: string, data: any): Promise<any | undefined> {
+    const existing = this.subscriptions.get(id);
+    if (!existing) throw new Error("Subscription not found");
+
+    const updated = {
+      ...existing,
+      ...data,
+      id,
+      updatedAt: new Date(),
+    };
+    this.subscriptions.set(id, updated);
+    return updated;
+  }
+
+  async deleteSubscription(id: string): Promise<void> {
+    this.subscriptions.delete(id);
   }
 }
 
