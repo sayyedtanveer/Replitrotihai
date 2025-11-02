@@ -135,6 +135,10 @@ export const insertProductSchema = createInsertSchema(products).omit({
   id: true,
 });
 
+export const insertChefSchema = createInsertSchema(chefs).omit({
+  id: true,
+});
+
 export const insertOrderSchema = z.object({
   customerName: z.string(),
   phone: z.string(),
@@ -158,7 +162,9 @@ export const insertOrderSchema = z.object({
 
 export type InsertCategory = z.infer<typeof insertCategorySchema>;
 export type Category = typeof categories.$inferSelect;
+export type InsertChef = z.infer<typeof insertChefSchema>;
 export type Chef = typeof chefs.$inferSelect;
+export type InsertProduct = z.infer<typeof insertProductSchema>;
 export type Product = typeof products.$inferSelect;
 
 export type InsertOrder = z.infer<typeof insertOrderSchema>;
