@@ -126,12 +126,23 @@ export default function Hero() {
   };
 
   const handleSearchFood = () => {
+    // If location is already detected (auto-detected), just scroll to products
+    if (location && localStorage.getItem('userLatitude') && localStorage.getItem('userLongitude')) {
+      setTimeout(() => {
+        const productsSection = document.getElementById("products-section");
+        if (productsSection) {
+          productsSection.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }, 100);
+      return;
+    }
+
     const locationLower = location.toLowerCase().trim();
 
     if (!locationLower) {
       toast({
         title: "Location Required",
-        description: "Please enter your delivery location",
+        description: "Please detect your location or enter it manually",
         variant: "destructive",
       });
       return;
@@ -236,49 +247,95 @@ export default function Hero() {
 
         <div className="w-full max-w-2xl bg-white/10 backdrop-blur-md rounded-lg p-3 sm:p-4 border border-white/20">
           <div className="flex flex-col gap-2 sm:gap-3">
-            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-              <div className="flex-1 relative">
-                <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white" />
-                <Input
-                  placeholder="Enter delivery location (Kurla, Mumbai)"
-                  className="pl-9 h-9 sm:h-10 bg-white/90 border-white/30 text-foreground placeholder:text-muted-foreground text-sm"
-                  data-testid="input-location"
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSearchFood()}
-                />
+            {location ? (
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 items-start sm:items-center">
+                <div className="flex-1 bg-white/95 rounded-md p-3 w-full">
+                  <div className="flex items-center gap-2">
+                    <MapPin className="h-5 w-5 text-primary flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">{location}</p>
+                      <p className="text-xs text-muted-foreground">Auto-detected delivery location</p>
+                    </div>
+                  </div>
+                </div>
+                <Button 
+                  size="default"
+                  variant="outline" 
+                  className="gap-2 h-auto py-2 px-4 text-sm whitespace-nowrap bg-white/90 hover:bg-white" 
+                  onClick={() => {
+                    setLocation("");
+                    localStorage.removeItem('userLatitude');
+                    localStorage.removeItem('userLongitude');
+                    setDeliveryAvailable(null);
+                  }}
+                >
+                  Change
+                </Button>
               </div>
-              <Button 
-                size="default"
-                variant="default" 
-                className="gap-2 h-9 sm:h-10 text-sm" 
-                data-testid="button-search-food"
-                onClick={handleSearchFood}
-              >
-                <Search className="h-4 w-4" />
-                Search Food
-              </Button>
-            </div>
-            <Button
-              size="default"
-              variant="outline"
-              onClick={getUserLocation}
-              disabled={isGettingLocation}
-              className="w-full h-9 sm:h-10 text-sm"
-              data-testid="button-get-location"
-            >
-              {isGettingLocation ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Getting Location...
-                </>
-              ) : (
-                <>
-                  <MapPin className="h-4 w-4 mr-2" />
-                  Use My Location
-                </>
-              )}
-            </Button>
+            ) : (
+              <div className="flex flex-col gap-2">
+                <div className="bg-white/95 rounded-md p-4 text-center">
+                  <MapPin className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+                  <p className="text-sm font-medium text-foreground mb-1">
+                    Enable location access
+                  </p>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    We'll detect your location automatically for faster delivery
+                  </p>
+                  <Button
+                    size="default"
+                    variant="default"
+                    onClick={getUserLocation}
+                    disabled={isGettingLocation}
+                    className="w-full h-9 sm:h-10 text-sm"
+                    data-testid="button-get-location"
+                  >
+                    {isGettingLocation ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Detecting Location...
+                      </>
+                    ) : (
+                      <>
+                        <MapPin className="h-4 w-4 mr-2" />
+                        Detect My Location
+                      </>
+                    )}
+                  </Button>
+                </div>
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t border-white/30" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-white/10 px-2 text-white/70">Or enter manually</span>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <div className="flex-1 relative">
+                    <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Enter Kurla address (e.g., Kurla West)"
+                      className="pl-9 h-9 sm:h-10 bg-white/90 border-white/30 text-foreground placeholder:text-muted-foreground text-sm"
+                      data-testid="input-location"
+                      value={location}
+                      onChange={(e) => setLocation(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleSearchFood()}
+                    />
+                  </div>
+                  <Button 
+                    size="default"
+                    variant="default" 
+                    className="gap-2 h-9 sm:h-10 text-sm" 
+                    data-testid="button-search-food"
+                    onClick={handleSearchFood}
+                  >
+                    <Search className="h-4 w-4" />
+                    Search
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
