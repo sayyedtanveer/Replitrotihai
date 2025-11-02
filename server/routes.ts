@@ -162,6 +162,139 @@ export async function registerRoutes(app: Express): Promise<Server> {
     return degrees * (Math.PI / 180);
   }
 
+  // Get all subscription plans
+  app.get("/api/subscription-plans", async (_req, res) => {
+    try {
+      const plans = await storage.getSubscriptionPlans();
+      res.json(plans);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch subscription plans" });
+    }
+  });
+
+  // Get user's subscriptions
+  app.get("/api/subscriptions", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const allSubscriptions = await storage.getSubscriptions();
+      const userSubscriptions = allSubscriptions.filter(s => s.userId === userId);
+      res.json(userSubscriptions);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch subscriptions" });
+    }
+  });
+
+  // Create a subscription
+  app.post("/api/subscriptions", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { planId } = req.body;
+
+      const plan = await storage.getSubscriptionPlan(planId);
+      if (!plan) {
+        res.status(404).json({ message: "Subscription plan not found" });
+        return;
+      }
+
+      const user = await storage.getUser(userId);
+      if (!user) {
+        res.status(404).json({ message: "User not found" });
+        return;
+      }
+
+      const now = new Date();
+      const nextDelivery = new Date(now);
+      nextDelivery.setDate(nextDelivery.getDate() + 1);
+
+      const subscription = await storage.createSubscription({
+        userId,
+        planId,
+        customerName: `${user.firstName} ${user.lastName}`,
+        phone: "",
+        email: user.email || "",
+        address: "",
+        status: "active",
+        startDate: now,
+        nextDeliveryDate: nextDelivery,
+        customItems: null,
+      });
+
+      res.status(201).json(subscription);
+    } catch (error) {
+      console.error("Error creating subscription:", error);
+      res.status(500).json({ message: "Failed to create subscription" });
+    }
+  });
+
+  // Pause a subscription
+  app.post("/api/subscriptions/:id/pause", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const subscription = await storage.getSubscription(req.params.id);
+
+      if (!subscription) {
+        res.status(404).json({ message: "Subscription not found" });
+        return;
+      }
+
+      if (subscription.userId !== userId) {
+        res.status(403).json({ message: "Unauthorized" });
+        return;
+      }
+
+      const updated = await storage.updateSubscription(req.params.id, { status: "paused" });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to pause subscription" });
+    }
+  });
+
+  // Resume a subscription
+  app.post("/api/subscriptions/:id/resume", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const subscription = await storage.getSubscription(req.params.id);
+
+      if (!subscription) {
+        res.status(404).json({ message: "Subscription not found" });
+        return;
+      }
+
+      if (subscription.userId !== userId) {
+        res.status(403).json({ message: "Unauthorized" });
+        return;
+      }
+
+      const updated = await storage.updateSubscription(req.params.id, { status: "active" });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to resume subscription" });
+    }
+  });
+
+  // Cancel a subscription
+  app.delete("/api/subscriptions/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const subscription = await storage.getSubscription(req.params.id);
+
+      if (!subscription) {
+        res.status(404).json({ message: "Subscription not found" });
+        return;
+      }
+
+      if (subscription.userId !== userId) {
+        res.status(403).json({ message: "Unauthorized" });
+        return;
+      }
+
+      await storage.deleteSubscription(req.params.id);
+      res.json({ message: "Subscription cancelled" });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to cancel subscription" });
+    }
+  });
+
   const httpServer = createServer(app);
 
   return httpServer;
