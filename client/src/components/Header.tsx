@@ -33,27 +33,28 @@ export default function Header({ cartItemCount = 0, onCartClick, onMenuClick, se
   };
   return (
     <header className="sticky top-0 z-50 bg-background border-b">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between gap-4 h-16">
-          <div className="flex items-center gap-4 flex-wrap">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8">
+        <div className="flex items-center justify-between gap-2 sm:gap-4 h-14 sm:h-16">
+          <div className="flex items-center gap-2 sm:gap-4">
             <Button
               size="icon"
               variant="ghost"
               onClick={onMenuClick}
               data-testid="button-menu"
+              className="h-8 w-8 sm:h-10 sm:w-10"
             >
-              <Menu className="h-5 w-5" />
+              <Menu className="h-4 w-4 sm:h-5 sm:w-5" />
             </Button>
-            <h1 className="text-2xl font-bold text-primary" data-testid="text-logo">
+            <h1 className="text-xl sm:text-2xl font-bold text-primary" data-testid="text-logo">
               RotiHai
             </h1>
             <Button
               variant="ghost"
-              className="hidden lg:flex items-center gap-2"
+              className="hidden lg:flex items-center gap-2 h-9 text-sm"
               data-testid="button-location"
             >
               <MapPin className="h-4 w-4" />
-              <span className="text-sm">Delivering to Kurla</span>
+              <span>Delivering to Kurla</span>
             </Button>
           </div>
 
@@ -71,14 +72,14 @@ export default function Header({ cartItemCount = 0, onCartClick, onMenuClick, se
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 sm:gap-2">
             {user && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="gap-2 hidden lg:flex" data-testid="button-user-menu">
-                    <Avatar className="h-8 w-8">
+                  <Button variant="ghost" className="gap-2 hidden lg:flex h-9 text-sm" data-testid="button-user-menu">
+                    <Avatar className="h-7 w-7">
                       <AvatarImage src={user.profileImageUrl ?? undefined} alt={user.firstName ?? "User"} />
-                      <AvatarFallback>
+                      <AvatarFallback className="text-xs">
                         {user.firstName?.[0]?.toUpperCase() ?? user.email?.[0]?.toUpperCase() ?? "U"}
                       </AvatarFallback>
                     </Avatar>
@@ -104,23 +105,23 @@ export default function Header({ cartItemCount = 0, onCartClick, onMenuClick, se
             <Button
               variant="ghost"
               size="icon"
-              className="relative"
+              className="relative h-8 w-8 sm:h-10 sm:w-10"
               onClick={onCartClick}
               data-testid="button-cart"
             >
-              <ShoppingCart className="h-5 w-5" />
+              <ShoppingCart className="h-4 w-4 sm:h-5 sm:w-5" />
               {cartItemCount > 0 && (
                 <Badge
                   variant="destructive"
-                  className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs"
+                  className="absolute -top-1 -right-1 h-4 w-4 sm:h-5 sm:w-5 flex items-center justify-center p-0 text-[10px] sm:text-xs"
                   data-testid="badge-cart-count"
                 >
                   {cartItemCount}
                 </Badge>
               )}
             </Button>
-            <Button variant="ghost" size="icon" onClick={onChefListClick} data-testid="button-chefs">
-              <ChefHat className="h-5 w-5" />
+            <Button variant="ghost" size="icon" onClick={onChefListClick} data-testid="button-chefs" className="h-8 w-8 sm:h-10 sm:w-10">
+              <ChefHat className="h-4 w-4 sm:h-5 sm:w-5" />
             </Button>
             {isAuthenticated && (
               <Button variant="ghost" size="icon" onClick={onSubscriptionClick} data-testid="button-subscriptions">

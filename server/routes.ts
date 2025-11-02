@@ -120,9 +120,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return;
       }
 
-      // Store location (you can change this in shared/deliveryUtils.ts)
-      const STORE_LAT = 28.6139;
-      const STORE_LON = 77.2090;
+      // Store location - Kurla West, Mumbai
+      const STORE_LAT = 19.0728;
+      const STORE_LON = 72.8826;
 
       // Calculate distance using Haversine formula
       const R = 6371; // Earth's radius in km
