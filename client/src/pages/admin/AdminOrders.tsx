@@ -24,6 +24,18 @@ export default function AdminOrders() {
     },
   });
 
+  const { data: chefs } = useQuery({
+    queryKey: ["/api/admin", "chefs"],
+    queryFn: async () => {
+      const token = localStorage.getItem("adminToken");
+      const response = await fetch("/api/admin/chefs", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error("Failed to fetch chefs");
+      return response.json();
+    },
+  });
+
   const updateStatusMutation = useMutation({
     mutationFn: async ({ orderId, status }: { orderId: string; status: string }) => {
       const token = localStorage.getItem("adminToken");
@@ -112,6 +124,11 @@ export default function AdminOrders() {
                       <p className="text-sm text-slate-600 dark:text-slate-400">
                         {format(new Date(order.createdAt), "PPp")}
                       </p>
+                      {order.chefId && chefs && (
+                        <p className="text-sm font-medium text-primary mt-1">
+                          Chef: {chefs.find((c: any) => c.id === order.chefId)?.name || "Unknown"}
+                        </p>
+                      )}
                     </div>
                     <Badge className={getStatusColor(order.status)} data-testid={`badge-status-${order.id}`}>
                       {order.status.replace("_", " ").toUpperCase()}

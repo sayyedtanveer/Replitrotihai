@@ -35,6 +35,16 @@ export const adminUsers = pgTable("admin_users", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+export const partnerUsers = pgTable("partner_users", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  chefId: text("chef_id").notNull().unique(),
+  username: varchar("username", { length: 50 }).notNull().unique(),
+  email: varchar("email", { length: 255 }).notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  lastLoginAt: timestamp("last_login_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export const categories = pgTable("categories", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
@@ -79,6 +89,7 @@ export const orders = pgTable("orders", {
   deliveryFee: integer("delivery_fee").notNull(),
   total: integer("total").notNull(),
   status: text("status").notNull().default("pending"),
+  chefId: text("chef_id"),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 
@@ -108,6 +119,7 @@ export const insertOrderSchema = z.object({
   distance: z.number().optional(),
   total: z.number(),
   status: z.string(),
+  chefId: z.string().optional(),
 });
 
 export type InsertCategory = z.infer<typeof insertCategorySchema>;
@@ -138,3 +150,21 @@ export const adminLoginSchema = z.object({
 export type InsertAdminUser = z.infer<typeof insertAdminUserSchema>;
 export type AdminUser = typeof adminUsers.$inferSelect;
 export type AdminLogin = z.infer<typeof adminLoginSchema>;
+
+export const insertPartnerUserSchema = createInsertSchema(partnerUsers).omit({
+  id: true,
+  passwordHash: true,
+  lastLoginAt: true,
+  createdAt: true,
+}).extend({
+  password: z.string().min(8),
+});
+
+export const partnerLoginSchema = z.object({
+  username: z.string(),
+  password: z.string(),
+});
+
+export type InsertPartnerUser = z.infer<typeof insertPartnerUserSchema>;
+export type PartnerUser = typeof partnerUsers.$inferSelect;
+export type PartnerLogin = z.infer<typeof partnerLoginSchema>;

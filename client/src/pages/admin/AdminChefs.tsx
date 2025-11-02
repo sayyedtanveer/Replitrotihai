@@ -204,6 +204,9 @@ export default function AdminChefs() {
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Partner portal access can be created from Admin Management
+                  </p>
                 </CardContent>
               </Card>
             ))}

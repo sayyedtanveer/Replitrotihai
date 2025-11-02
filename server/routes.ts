@@ -4,10 +4,12 @@ import { storage } from "./storage";
 import { insertOrderSchema } from "@shared/schema";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { registerAdminRoutes } from "./adminRoutes";
+import { registerPartnerRoutes } from "./partnerRoutes";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   await setupAuth(app);
   registerAdminRoutes(app);
+  registerPartnerRoutes(app);
 
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
     try {

@@ -1,6 +1,9 @@
-import { type Category, type InsertCategory, type Product, type InsertProduct, type Order, type InsertOrder, type User, type UpsertUser, type Chef, type AdminUser, type InsertAdminUser } from "@shared/schema";
+import { type Category, type InsertCategory, type Product, type InsertProduct, type Order, type InsertOrder, type User, type UpsertUser, type Chef, type AdminUser, type InsertAdminUser, type PartnerUser } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { nanoid } from "nanoid";
+import { desc } from "drizzle-orm";
+import { users, categories, products, orders, chefs, adminUsers, partnerUsers } from "@shared/schema";
+import type { UpsertUser, User, Category, Product, Order, Chef, AdminUser, PartnerUser } from "@shared/schema";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -28,6 +31,7 @@ export interface IStorage {
 
   getChefs(): Promise<Chef[]>;
   getChefsByCategory(categoryId: string): Promise<Chef[]>;
+  getChefById(id: string): Promise<Chef | null>;
   createChef(data: Omit<Chef, "id">): Promise<Chef>;
   updateChef(id: string, data: Partial<Chef>): Promise<Chef | undefined>;
   deleteChef(id: string): Promise<boolean>;
@@ -41,6 +45,13 @@ export interface IStorage {
   getAllAdmins(): Promise<AdminUser[]>;
   getAllUsers(): Promise<User[]>;
 
+  getPartnerByUsername(username: string): Promise<PartnerUser | null>;
+  getPartnerById(id: string): Promise<PartnerUser | null>;
+  createPartner(data: Omit<PartnerUser, "id" | "createdAt" | "lastLoginAt">): Promise<PartnerUser>;
+  updatePartnerLastLogin(id: string): Promise<void>;
+  getOrdersByChefId(chefId: string): Promise<Order[]>;
+  getPartnerDashboardMetrics(chefId: string);
+
   getDashboardMetrics(): Promise<{
     userCount: number;
     orderCount: number;
@@ -53,7 +64,7 @@ export interface IStorage {
 export class MemStorage implements IStorage {
   private users: Map<string, User>;
   private categories: Map<string, Category>;
-  private chefs: Chef[];
+  private chefsData: Map<string, Chef>; // Renamed from 'chefs' to 'chefsData' for clarity
   private products: Map<string, Product>;
   private orders: Map<string, Order>;
   private adminUsers: Map<string, AdminUser>;
@@ -61,7 +72,7 @@ export class MemStorage implements IStorage {
   constructor() {
     this.users = new Map();
     this.categories = new Map();
-    this.chefs = [];
+    this.chefsData = new Map(); // Initialize chefsData
     this.products = new Map();
     this.orders = new Map();
     this.adminUsers = new Map();
@@ -197,16 +208,10 @@ export class MemStorage implements IStorage {
       },
     ];
 
-    this.chefs = chefs.map(chef => ({
-      ...chef,
-      id: nanoid(),
-    }));
-
-    const chefsByCategory = {
-      [rotiCategoryId]: this.chefs.filter(c => c.categoryId === rotiCategoryId),
-      [mealCategoryId]: this.chefs.filter(c => c.categoryId === mealCategoryId),
-      [hotelCategoryId]: this.chefs.filter(c => c.categoryId === hotelCategoryId),
-    };
+    chefs.forEach(chef => {
+      const chefWithId: Chef = { ...chef, id: nanoid() };
+      this.chefsData.set(chefWithId.id, chefWithId);
+    });
 
     const productsData: InsertProduct[] = [
       {
@@ -219,7 +224,7 @@ export class MemStorage implements IStorage {
         isVeg: true,
         isCustomizable: false,
         categoryId: rotiCategoryId,
-        chefId: chefsByCategory[rotiCategoryId][0]?.id,
+        chefId: Array.from(this.chefsData.values()).find(c => c.categoryId === rotiCategoryId)?.id,
       },
       {
         name: "Tandoori Roti",
@@ -231,7 +236,7 @@ export class MemStorage implements IStorage {
         isVeg: true,
         isCustomizable: false,
         categoryId: rotiCategoryId,
-        chefId: chefsByCategory[rotiCategoryId][0]?.id,
+        chefId: Array.from(this.chefsData.values()).find(c => c.categoryId === rotiCategoryId)?.id,
       },
       {
         name: "Garlic Naan",
@@ -243,7 +248,7 @@ export class MemStorage implements IStorage {
         isVeg: true,
         isCustomizable: false,
         categoryId: rotiCategoryId,
-        chefId: chefsByCategory[rotiCategoryId][1]?.id,
+        chefId: Array.from(this.chefsData.values()).find(c => c.categoryId === rotiCategoryId && c.name === "Mumbai Roti House")?.id,
       },
       {
         name: "Aloo Paratha",
@@ -255,7 +260,7 @@ export class MemStorage implements IStorage {
         isVeg: true,
         isCustomizable: true,
         categoryId: rotiCategoryId,
-        chefId: chefsByCategory[rotiCategoryId][1]?.id,
+        chefId: Array.from(this.chefsData.values()).find(c => c.categoryId === rotiCategoryId && c.name === "Mumbai Roti House")?.id,
       },
       {
         name: "North Indian Thali",
@@ -267,7 +272,7 @@ export class MemStorage implements IStorage {
         isVeg: true,
         isCustomizable: true,
         categoryId: mealCategoryId,
-        chefId: chefsByCategory[mealCategoryId][0]?.id,
+        chefId: Array.from(this.chefsData.values()).find(c => c.categoryId === mealCategoryId)?.id,
       },
       {
         name: "Rajasthani Thali",
@@ -279,7 +284,7 @@ export class MemStorage implements IStorage {
         isVeg: true,
         isCustomizable: false,
         categoryId: mealCategoryId,
-        chefId: chefsByCategory[mealCategoryId][0]?.id,
+        chefId: Array.from(this.chefsData.values()).find(c => c.categoryId === mealCategoryId)?.id,
       },
       {
         name: "South Indian Meal",
@@ -291,7 +296,7 @@ export class MemStorage implements IStorage {
         isVeg: true,
         isCustomizable: true,
         categoryId: mealCategoryId,
-        chefId: chefsByCategory[mealCategoryId][1]?.id,
+        chefId: Array.from(this.chefsData.values()).find(c => c.categoryId === mealCategoryId && c.name === "Annapurna Tiffin Service")?.id,
       },
       {
         name: "Paneer Tikka",
@@ -303,7 +308,7 @@ export class MemStorage implements IStorage {
         isVeg: true,
         isCustomizable: true,
         categoryId: hotelCategoryId,
-        chefId: chefsByCategory[hotelCategoryId][0]?.id,
+        chefId: Array.from(this.chefsData.values()).find(c => c.categoryId === hotelCategoryId)?.id,
       },
       {
         name: "Butter Chicken",
@@ -315,7 +320,7 @@ export class MemStorage implements IStorage {
         isVeg: false,
         isCustomizable: true,
         categoryId: hotelCategoryId,
-        chefId: chefsByCategory[hotelCategoryId][0]?.id,
+        chefId: Array.from(this.chefsData.values()).find(c => c.categoryId === hotelCategoryId)?.id,
       },
       {
         name: "Biryani Special",
@@ -327,7 +332,7 @@ export class MemStorage implements IStorage {
         isVeg: false,
         isCustomizable: true,
         categoryId: hotelCategoryId,
-        chefId: chefsByCategory[hotelCategoryId][1]?.id,
+        chefId: Array.from(this.chefsData.values()).find(c => c.categoryId === hotelCategoryId && c.name === "Royal Palace Restaurant")?.id,
       },
     ];
 
@@ -404,32 +409,34 @@ export class MemStorage implements IStorage {
   }
 
   async getChefs(): Promise<Chef[]> {
-    return this.chefs;
+    return Array.from(this.chefsData.values());
+  }
+
+  async getChefById(id: string): Promise<Chef | null> {
+    return this.chefsData.get(id) || null;
   }
 
   async getChefsByCategory(categoryId: string): Promise<Chef[]> {
-    return this.chefs.filter(chef => chef.categoryId === categoryId);
+    return Array.from(this.chefsData.values()).filter(chef => chef.categoryId === categoryId);
   }
 
   async createChef(data: Omit<Chef, "id">): Promise<Chef> {
-    const id = randomUUID();
+    const id = nanoid();
     const chef: Chef = { id, ...data };
-    this.chefs.push(chef);
+    this.chefsData.set(id, chef);
     return chef;
   }
 
   async updateChef(id: string, data: Partial<Chef>): Promise<Chef | undefined> {
-    const index = this.chefs.findIndex(chef => chef.id === id);
-    if (index === -1) return undefined;
-    const updatedChef: Chef = { ...this.chefs[index], ...data, id };
-    this.chefs[index] = updatedChef;
+    const existingChef = this.chefsData.get(id);
+    if (!existingChef) return undefined;
+    const updatedChef: Chef = { ...existingChef, ...data, id };
+    this.chefsData.set(id, updatedChef);
     return updatedChef;
   }
 
   async deleteChef(id: string): Promise<boolean> {
-    const initialLength = this.chefs.length;
-    this.chefs = this.chefs.filter(chef => chef.id !== id);
-    return this.chefs.length < initialLength;
+    return this.chefsData.delete(id);
   }
 
   async updateCategory(id: string, updateData: Partial<InsertCategory>): Promise<Category | undefined> {
@@ -520,6 +527,73 @@ export class MemStorage implements IStorage {
   async getAllUsers(): Promise<User[]> {
     return Array.from(this.users.values());
   }
+
+  async getPartnerByUsername(username: string): Promise<PartnerUser | null> {
+    // This implementation uses a Map for partners, consistent with other in-memory storage.
+    // If using a database, this would involve a DB query.
+    // For now, assuming a simple Map-based approach for consistency.
+    // In a real scenario, you'd have a `private partners: Map<string, PartnerUser>;`
+    // and seed it accordingly.
+    // Placeholder implementation:
+    return null; // Replace with actual lookup if partner storage is implemented
+  }
+
+  async getPartnerById(id: string): Promise<PartnerUser | null> {
+    // Placeholder implementation:
+    return null; // Replace with actual lookup if partner storage is implemented
+  }
+
+  async createPartner(data: Omit<PartnerUser, "id" | "createdAt" | "lastLoginAt">): Promise<PartnerUser> {
+    // Placeholder implementation:
+    // In a real scenario, you'd generate an ID, set createdAt, and return the created partner.
+    const newPartner: PartnerUser = {
+      id: randomUUID(), // Example ID generation
+      ...data,
+      createdAt: new Date(),
+      lastLoginAt: null,
+    };
+    return newPartner; // Replace with actual storage and return
+  }
+
+  async updatePartnerLastLogin(id: string): Promise<void> {
+    // Placeholder implementation:
+    // In a real scenario, find the partner by ID and update its lastLoginAt.
+    console.log(`Updating last login for partner ID: ${id}`);
+  }
+
+  async getOrdersByChefId(chefId: string): Promise<Order[]> {
+    // This method should retrieve orders associated with a specific chef.
+    // In-memory implementation:
+    return Array.from(this.orders.values()).filter(order => order.chefId === chefId);
+  }
+
+  async getPartnerDashboardMetrics(chefId: string) {
+    const chefOrders = await this.getOrdersByChefId(chefId);
+
+    const totalOrders = chefOrders.length;
+    const totalRevenue = chefOrders.reduce((sum, order) => sum + order.total, 0); // Using 'total' from Order type
+
+    const statusCounts = chefOrders.reduce((acc, order) => {
+      acc[order.status] = (acc[order.status] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayOrders = chefOrders.filter(order =>
+      new Date(order.createdAt) >= today
+    ).length;
+
+    return {
+      totalOrders,
+      totalRevenue,
+      pendingOrders: statusCounts.pending || 0,
+      completedOrders: statusCounts.completed || 0,
+      todayOrders,
+      statusBreakdown: statusCounts,
+    };
+  }
+
 
   async getDashboardMetrics(): Promise<{
     userCount: number;

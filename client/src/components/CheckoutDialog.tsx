@@ -44,6 +44,7 @@ interface CheckoutDialogProps {
     name: string;
     price: number;
     quantity: number;
+    chefId?: string; // Added chefId to the item interface
   }>;
   subtotal: number;
   deliveryFee: number;
@@ -81,6 +82,9 @@ export default function CheckoutDialog({
 
   const placeOrderMutation = useMutation({
     mutationFn: async (data: CheckoutFormData) => {
+      // Extract chefId from the first item, assuming all items in a cart belong to the same chef/restaurant
+      const chefId = cartItems.length > 0 ? cartItems[0].chefId : null;
+
       const res = await apiRequest("POST", "/api/orders", {
         customerName: data.customerName,
         phone: data.phone,
@@ -88,12 +92,18 @@ export default function CheckoutDialog({
         address: data.address,
         latitude: data.latitude ? parseFloat(data.latitude) : undefined,
         longitude: data.longitude ? parseFloat(data.longitude) : undefined,
-        items: cartItems,
+        items: cartItems.map(item => ({
+          id: item.id,
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity,
+        })),
         subtotal,
         deliveryFee: calculatedDeliveryFee,
         distance: calculatedDistance || undefined,
         total: subtotal + calculatedDeliveryFee,
         status: "pending",
+        chefId: chefId, // Include chefId in the order data
       });
       return await res.json();
     },
@@ -119,7 +129,7 @@ export default function CheckoutDialog({
     const latitude = form.getValues("latitude");
     const longitude = form.getValues("longitude");
     const address = form.getValues("address");
-    
+
     // Check if address contains Kurla
     const addressLower = address.toLowerCase().trim();
     if (!addressLower.includes("kurla")) {
@@ -130,7 +140,7 @@ export default function CheckoutDialog({
       });
       return;
     }
-    
+
     if (!latitude || !longitude) {
       toast({
         title: "Location required",
@@ -141,14 +151,14 @@ export default function CheckoutDialog({
     }
 
     setIsCalculatingDistance(true);
-    
+
     try {
       const res = await apiRequest("POST", "/api/calculate-delivery", {
         latitude: parseFloat(latitude),
         longitude: parseFloat(longitude),
       });
       const result = await res.json();
-      
+
       // Additional validation based on distance
       if (result.distance > 10) {
         toast({
@@ -158,10 +168,10 @@ export default function CheckoutDialog({
         });
         return;
       }
-      
+
       setCalculatedDistance(result.distance);
       setCalculatedDeliveryFee(result.deliveryFee);
-      
+
       toast({
         title: "Delivery fee calculated",
         description: `Distance: ${result.distance}km | Fee: ₹${result.deliveryFee}`,

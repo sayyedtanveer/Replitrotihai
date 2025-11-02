@@ -464,6 +464,48 @@ export function registerAdminRoutes(app: Express) {
     }
   });
 
+  app.post("/api/admin/partners", requireAdminOrManager(), async (req, res) => {
+    try {
+      const { chefId, username, email, password } = req.body;
+
+      if (!chefId || !username || !email || !password) {
+        res.status(400).json({ message: "All fields are required" });
+        return;
+      }
+
+      const chef = await storage.getChefById(chefId);
+      if (!chef) {
+        res.status(404).json({ message: "Chef not found" });
+        return;
+      }
+
+      const existingPartner = await storage.getPartnerByUsername(username);
+      if (existingPartner) {
+        res.status(409).json({ message: "Username already exists" });
+        return;
+      }
+
+      const passwordHash = await hashPassword(password);
+      const partner = await storage.createPartner({
+        chefId,
+        username,
+        email,
+        passwordHash,
+      });
+
+      res.status(201).json({
+        id: partner.id,
+        username: partner.username,
+        email: partner.email,
+        chefId: partner.chefId,
+        createdAt: partner.createdAt,
+      });
+    } catch (error) {
+      console.error("Create partner error:", error);
+      res.status(500).json({ message: "Failed to create partner account" });
+    }
+  });
+
   app.patch("/api/admin/admins/:id", requireSuperAdmin(), async (req, res) => {
     try {
       const { id } = req.params;
