@@ -4,6 +4,9 @@ import { useState } from "react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import MenuDrawer from "@/components/MenuDrawer";
+import CartSidebar from "@/components/CartSidebar";
+import ChefListDrawer from "@/components/ChefListDrawer";
+import SubscriptionDrawer from "@/components/SubscriptionDrawer";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ShoppingBag, Package, Clock, CheckCircle, XCircle } from "lucide-react";
@@ -12,6 +15,9 @@ import { format } from "date-fns";
 
 export default function MyOrders() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isCartOpen, setIsCartOpen] = useState(false);
+  const [isChefListOpen, setIsChefListOpen] = useState(false);
+  const [isSubscriptionOpen, setIsSubscriptionOpen] = useState(false);
   const { user } = useAuth();
 
   const { data: orders = [], isLoading } = useQuery({
@@ -61,7 +67,12 @@ export default function MyOrders() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <Header onMenuClick={() => setIsMenuOpen(true)} />
+      <Header 
+        onMenuClick={() => setIsMenuOpen(true)}
+        onCartClick={() => setIsCartOpen(true)}
+        onChefListClick={() => setIsChefListOpen(true)}
+        onSubscriptionClick={() => setIsSubscriptionOpen(true)}
+      />
 
       <main className="flex-1 bg-muted/30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -158,6 +169,25 @@ export default function MyOrders() {
         isOpen={isMenuOpen}
         onClose={() => setIsMenuOpen(false)}
         categories={categories}
+        onSubscriptionClick={() => {
+          setIsMenuOpen(false);
+          setIsSubscriptionOpen(true);
+        }}
+      />
+
+      <CartSidebar
+        isOpen={isCartOpen}
+        onClose={() => setIsCartOpen(false)}
+      />
+
+      <ChefListDrawer
+        isOpen={isChefListOpen}
+        onClose={() => setIsChefListOpen(false)}
+      />
+
+      <SubscriptionDrawer
+        isOpen={isSubscriptionOpen}
+        onClose={() => setIsSubscriptionOpen(false)}
       />
     </div>
   );

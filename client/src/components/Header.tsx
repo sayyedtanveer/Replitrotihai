@@ -91,7 +91,7 @@ export default function Header({ cartItemCount = 0, onCartClick, onMenuClick, se
                 <DropdownMenuContent align="end" data-testid="menu-user-dropdown">
                   <DropdownMenuLabel>My Account</DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem data-testid="menu-item-profile">
+                  <DropdownMenuItem onClick={() => window.location.href = '/profile'} data-testid="menu-item-profile">
                     <UserIcon className="h-4 w-4 mr-2" />
                     Profile
                   </DropdownMenuItem>

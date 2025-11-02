@@ -1,7 +1,13 @@
 
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+import MenuDrawer from "@/components/MenuDrawer";
+import CartSidebar from "@/components/CartSidebar";
+import ChefListDrawer from "@/components/ChefListDrawer";
+import SubscriptionDrawer from "@/components/SubscriptionDrawer";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -12,6 +18,14 @@ import { User, Mail, MapPin, Phone, LogOut } from "lucide-react";
 
 export default function Profile() {
   const { user } = useAuth();
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isCartOpen, setIsCartOpen] = useState(false);
+  const [isChefListOpen, setIsChefListOpen] = useState(false);
+  const [isSubscriptionOpen, setIsSubscriptionOpen] = useState(false);
+
+  const { data: categories = [] } = useQuery({
+    queryKey: ["/api/categories"],
+  });
 
   const handleLogout = () => {
     window.location.href = "/api/logout";
@@ -23,7 +37,12 @@ export default function Profile() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <Header />
+      <Header 
+        onMenuClick={() => setIsMenuOpen(true)}
+        onCartClick={() => setIsCartOpen(true)}
+        onChefListClick={() => setIsChefListOpen(true)}
+        onSubscriptionClick={() => setIsSubscriptionOpen(true)}
+      />
 
       <main className="flex-1 bg-muted/30">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -115,6 +134,31 @@ export default function Profile() {
       </main>
 
       <Footer />
+
+      <MenuDrawer
+        isOpen={isMenuOpen}
+        onClose={() => setIsMenuOpen(false)}
+        categories={categories}
+        onSubscriptionClick={() => {
+          setIsMenuOpen(false);
+          setIsSubscriptionOpen(true);
+        }}
+      />
+
+      <CartSidebar
+        isOpen={isCartOpen}
+        onClose={() => setIsCartOpen(false)}
+      />
+
+      <ChefListDrawer
+        isOpen={isChefListOpen}
+        onClose={() => setIsChefListOpen(false)}
+      />
+
+      <SubscriptionDrawer
+        isOpen={isSubscriptionOpen}
+        onClose={() => setIsSubscriptionOpen(false)}
+      />
     </div>
   );
 }
