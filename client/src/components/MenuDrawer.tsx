@@ -28,18 +28,18 @@ export default function MenuDrawer({ isOpen, onClose, categories = [], onCategor
   };
 
   const handleHomeClick = () => {
-    setLocation("/");
     onClose();
+    setTimeout(() => setLocation("/"), 100);
   };
 
   const handleMyOrdersClick = () => {
-    setLocation("/orders");
     onClose();
+    setTimeout(() => setLocation("/orders"), 100);
   };
 
   const handleProfileClick = () => {
-    setLocation("/profile");
     onClose();
+    setTimeout(() => setLocation("/profile"), 100);
   };
 
   const handleSettingsClick = () => {
