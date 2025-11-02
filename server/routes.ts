@@ -79,6 +79,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get user's orders
+  app.get("/api/orders", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      if (!user) {
+        res.status(404).json({ message: "User not found" });
+        return;
+      }
+      
+      const allOrders = await storage.getAllOrders();
+      // Filter orders by user's email or phone
+      const userOrders = allOrders.filter(order => 
+        order.email === user.email || order.phone === user.email
+      );
+      res.json(userOrders);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch orders" });
+    }
+  });
+
   // Get order by ID
   app.get("/api/orders/:id", async (req, res) => {
     try {
