@@ -23,9 +23,12 @@ export default function Hero() {
         const lng = parseFloat(savedLng);
         const deliveryCheck = getDeliveryMessage(lat, lng);
         setDeliveryAvailable(deliveryCheck.available);
-        setLocation(`${lat.toFixed(4)}, ${lng.toFixed(4)}`);
         
-        if (!deliveryCheck.available) {
+        // Display user-friendly location
+        if (deliveryCheck.available) {
+          setLocation(`📍 Kurla, Mumbai (${deliveryCheck.distance.toFixed(1)}km away)`);
+        } else {
+          setLocation(`${lat.toFixed(4)}, ${lng.toFixed(4)}`);
           toast({
             title: "Coming Soon to Your Area",
             description: deliveryCheck.message,
@@ -49,12 +52,19 @@ export default function Hero() {
         const { latitude, longitude } = position.coords;
         localStorage.setItem('userLatitude', latitude.toString());
         localStorage.setItem('userLongitude', longitude.toString());
-        setLocation(`${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
 
         const deliveryCheck = getDeliveryMessage(latitude, longitude);
         setDeliveryAvailable(deliveryCheck.available);
 
-        if (!deliveryCheck.available) {
+        // Set a user-friendly location message
+        if (deliveryCheck.available) {
+          setLocation(`📍 Kurla, Mumbai (${deliveryCheck.distance.toFixed(1)}km away)`);
+          toast({
+            title: "Location Detected",
+            description: deliveryCheck.message,
+          });
+        } else {
+          setLocation(`${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
           toast({
             title: "Coming Soon to Your Area",
             description: deliveryCheck.message,
@@ -85,10 +95,16 @@ export default function Hero() {
         const { latitude, longitude } = position.coords;
         localStorage.setItem('userLatitude', latitude.toString());
         localStorage.setItem('userLongitude', longitude.toString());
-        setLocation(`${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
 
         const deliveryCheck = getDeliveryMessage(latitude, longitude);
         setDeliveryAvailable(deliveryCheck.available);
+
+        // Set user-friendly location message
+        if (deliveryCheck.available) {
+          setLocation(`📍 Kurla, Mumbai (${deliveryCheck.distance.toFixed(1)}km away)`);
+        } else {
+          setLocation(`${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
+        }
 
         toast({
           title: deliveryCheck.available ? "Location Detected" : "Coming Soon to Your Area",
