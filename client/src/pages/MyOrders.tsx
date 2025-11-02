@@ -81,7 +81,19 @@ export default function MyOrders() {
             <p className="text-muted-foreground">Track and manage your orders</p>
           </div>
 
-          {isLoading ? (
+          {!user ? (
+            <Card className="text-center py-12">
+              <CardContent className="flex flex-col items-center gap-4">
+                <ShoppingBag className="h-16 w-16 text-muted-foreground" />
+                <div>
+                  <CardTitle className="mb-2">Please log in</CardTitle>
+                  <CardDescription>
+                    Sign in with Replit to view your orders
+                  </CardDescription>
+                </div>
+              </CardContent>
+            </Card>
+          ) : isLoading ? (
             <Card className="text-center py-12">
               <CardContent>
                 <p className="text-muted-foreground">Loading your orders...</p>

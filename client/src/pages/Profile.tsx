@@ -31,10 +31,6 @@ export default function Profile() {
     window.location.href = "/api/logout";
   };
 
-  if (!user) {
-    return null;
-  }
-
   return (
     <div className="min-h-screen flex flex-col">
       <Header 
@@ -51,6 +47,19 @@ export default function Profile() {
             <p className="text-muted-foreground">Manage your account information</p>
           </div>
 
+          {!user ? (
+            <Card className="text-center py-12">
+              <CardContent className="flex flex-col items-center gap-4">
+                <User className="h-16 w-16 text-muted-foreground" />
+                <div>
+                  <CardTitle className="mb-2">Please log in</CardTitle>
+                  <CardDescription>
+                    Sign in with Replit to view your profile
+                  </CardDescription>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
           <div className="grid gap-6">
             <Card>
               <CardHeader>
@@ -130,6 +139,7 @@ export default function Profile() {
               </CardContent>
             </Card>
           </div>
+          )}
         </div>
       </main>
 
