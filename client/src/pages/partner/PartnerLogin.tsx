@@ -1,6 +1,6 @@
 
 import { useState } from "react";
-import { useNavigate } from "wouter";
+import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,7 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ChefHat } from "lucide-react";
 
 export default function PartnerLogin() {
-  const [, navigate] = useNavigate();
+  const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -41,7 +41,7 @@ export default function PartnerLogin() {
         description: `Welcome back, ${data.partner.chefName}!`,
       });
 
-      navigate("/partner/dashboard");
+      setLocation("/partner/dashboard");
     } catch (error) {
       toast({
         title: "Login failed",
