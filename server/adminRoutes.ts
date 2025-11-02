@@ -626,4 +626,57 @@ export function registerAdminRoutes(app: Express) {
       res.status(500).json({ message: "Failed to fetch subscriptions" });
     }
   });
+
+  // Reports
+  app.get("/api/admin/reports/sales", requireAdmin(), async (req, res) => {
+    try {
+      const { from, to } = req.query;
+      const report = await storage.getSalesReport(
+        from ? new Date(from as string) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+        to ? new Date(to as string) : new Date()
+      );
+      res.json(report);
+    } catch (error) {
+      console.error("Get sales report error:", error);
+      res.status(500).json({ message: "Failed to fetch sales report" });
+    }
+  });
+
+  app.get("/api/admin/reports/users", requireAdmin(), async (req, res) => {
+    try {
+      const { from, to } = req.query;
+      const report = await storage.getUserReport(
+        from ? new Date(from as string) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+        to ? new Date(to as string) : new Date()
+      );
+      res.json(report);
+    } catch (error) {
+      console.error("Get user report error:", error);
+      res.status(500).json({ message: "Failed to fetch user report" });
+    }
+  });
+
+  app.get("/api/admin/reports/inventory", requireAdmin(), async (req, res) => {
+    try {
+      const report = await storage.getInventoryReport();
+      res.json(report);
+    } catch (error) {
+      console.error("Get inventory report error:", error);
+      res.status(500).json({ message: "Failed to fetch inventory report" });
+    }
+  });
+
+  app.get("/api/admin/reports/subscriptions", requireAdmin(), async (req, res) => {
+    try {
+      const { from, to } = req.query;
+      const report = await storage.getSubscriptionReport(
+        from ? new Date(from as string) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+        to ? new Date(to as string) : new Date()
+      );
+      res.json(report);
+    } catch (error) {
+      console.error("Get subscription report error:", error);
+      res.status(500).json({ message: "Failed to fetch subscription report" });
+    }
+  });
 }

@@ -3,7 +3,8 @@ import { randomUUID } from "crypto";
 import { nanoid } from "nanoid";
 import { desc } from "drizzle-orm";
 import { users, categories, products, orders, chefs, adminUsers, partnerUsers } from "@shared/schema";
-import type { UpsertUser, User, Category, Product, Order, Chef, AdminUser, PartnerUser } from "@shared/schema";
+import type { UpsertUser, User, Category, Product, Order, Chef, AdminUser, PartnerUser, Subscription, SubscriptionPlan } from "@shared/schema";
+import { db, sql, orders as ordersTable, products as productsTable, categories as categoriesTable, subscriptions, subscriptionPlans } from "@shared/db";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -62,17 +63,23 @@ export interface IStorage {
   }>;
 
   // Subscription methods
-  getSubscriptionPlans(): Promise<any[]>;
-  getSubscriptionPlan(id: string): Promise<any | undefined>;
-  createSubscriptionPlan(data: any): Promise<any>;
-  updateSubscriptionPlan(id: string, data: any): Promise<any | undefined>;
+  getSubscriptionPlans(): Promise<SubscriptionPlan[]>;
+  getSubscriptionPlan(id: string): Promise<SubscriptionPlan | undefined>;
+  createSubscriptionPlan(data: Omit<SubscriptionPlan, "id" | "createdAt" | "updatedAt">): Promise<SubscriptionPlan>;
+  updateSubscriptionPlan(id: string, data: Partial<SubscriptionPlan>): Promise<SubscriptionPlan | undefined>;
   deleteSubscriptionPlan(id: string): Promise<void>;
 
-  getSubscriptions(): Promise<any[]>;
-  getSubscription(id: string): Promise<any | undefined>;
-  createSubscription(data: any): Promise<any>;
-  updateSubscription(id: string, data: any): Promise<any | undefined>;
+  getSubscriptions(): Promise<Subscription[]>;
+  getSubscription(id: string): Promise<Subscription | undefined>;
+  createSubscription(data: Omit<Subscription, "id" | "createdAt" | "updatedAt">): Promise<Subscription>;
+  updateSubscription(id: string, data: Partial<Subscription>): Promise<Subscription | undefined>;
   deleteSubscription(id: string): Promise<void>;
+
+  // Report methods
+  getSalesReport(from: Date, to: Date);
+  getUserReport(from: Date, to: Date);
+  getInventoryReport();
+  getSubscriptionReport(from: Date, to: Date);
 }
 
 export class MemStorage implements IStorage {
@@ -82,8 +89,8 @@ export class MemStorage implements IStorage {
   private products: Map<string, Product> = new Map();
   private orders: Map<string, Order> = new Map();
   private adminUsers: Map<string, AdminUser> = new Map();
-  private subscriptionPlans: Map<string, any> = new Map();
-  private subscriptions: Map<string, any> = new Map();
+  private subscriptionPlans: Map<string, SubscriptionPlan> = new Map();
+  private subscriptions: Map<string, Subscription> = new Map();
 
   constructor() {
     this.users = new Map();
@@ -94,15 +101,15 @@ export class MemStorage implements IStorage {
     this.adminUsers = new Map();
     this.subscriptionPlans = new Map();
     this.subscriptions = new Map();
-    this.seedData();
+    // this.seedData(); // Seed data is not directly applicable to the DB-backed storage
   }
 
   async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
+    return db.query.users.findFirst({ where: (u, { eq }) => eq(u.id, id) });
   }
 
   async upsertUser(userData: UpsertUser): Promise<User> {
-    const existing = this.users.get(userData.id!);
+    const existing = await this.getUser(userData.id!);
     const user: User = {
       id: userData.id!,
       email: userData.email || null,
@@ -112,288 +119,58 @@ export class MemStorage implements IStorage {
       createdAt: existing?.createdAt || new Date(),
       updatedAt: new Date(),
     };
-    this.users.set(user.id, user);
+    await db.insert(users).values(user).onConflictDoUpdate({
+      target: users.id,
+      set: { ...user, createdAt: users.createdAt } // Preserve original createdAt
+    });
     return user;
   }
 
   async updateUser(id: string, userData: Partial<UpsertUser>): Promise<User | undefined> {
-    const existing = this.users.get(id);
-    if (!existing) {
-      return undefined;
-    }
-
-    const updated: User = {
-      ...existing,
-      email: userData.email !== undefined ? userData.email : existing.email,
-      firstName: userData.firstName !== undefined ? userData.firstName : existing.firstName,
-      lastName: userData.lastName !== undefined ? userData.lastName : existing.lastName,
-      profileImageUrl: userData.profileImageUrl !== undefined ? userData.profileImageUrl : existing.profileImageUrl,
-      updatedAt: new Date(),
-    };
-
-    this.users.set(id, updated);
-    return updated;
+    await db.update(users).set({ ...userData, updatedAt: new Date() }).where(eq(users.id, id));
+    return this.getUser(id);
   }
 
   async deleteUser(id: string): Promise<boolean> {
-    return this.users.delete(id);
-  }
-
-  private seedData() {
-    const rotiCategoryId = randomUUID();
-    const mealCategoryId = randomUUID();
-    const hotelCategoryId = randomUUID();
-
-    const categoriesData: InsertCategory[] = [
-      {
-        name: "Fresh Rotis & Breads",
-        description: "Tandoori rotis, naan, and more freshly baked",
-        itemCount: "20+ varieties",
-        image: "/assets/generated_images/Fresh_tandoori_rotis_stack_1dcda2c7.png",
-        iconName: "UtensilsCrossed",
-      },
-      {
-        name: "Lunch & Dinner",
-        description: "Complete meals with rice, curry, and sides",
-        itemCount: "50+ dishes",
-        image: "/assets/generated_images/Complete_Indian_thali_meal_837cc17d.png",
-        iconName: "ChefHat",
-      },
-      {
-        name: "Hotel Specials",
-        description: "Restaurant quality dishes delivered to you",
-        itemCount: "30+ partners",
-        image: "/assets/generated_images/Fine_dining_restaurant_setup_1724ed85.png",
-        iconName: "Hotel",
-      },
-    ];
-
-    const categoryIds = [rotiCategoryId, mealCategoryId, hotelCategoryId];
-    categoriesData.forEach((cat, index) => {
-      const category: Category = { ...cat, id: categoryIds[index] };
-      this.categories.set(category.id, category);
-    });
-
-    // Initialize chefs/hotels
-    const chefs: Omit<Chef, "id">[] = [
-      {
-        name: "Raju's Tandoor Kitchen",
-        description: "Authentic tandoori rotis made fresh",
-        image: "/assets/generated_images/Fresh_tandoori_rotis_stack_1dcda2c7.png",
-        rating: "4.8",
-        reviewCount: 245,
-        categoryId: rotiCategoryId,
-      },
-      {
-        name: "Mumbai Roti House",
-        description: "Traditional rotis and parathas",
-        image: "/assets/generated_images/Fresh_tandoori_rotis_stack_1dcda2c7.png",
-        rating: "4.6",
-        reviewCount: 189,
-        categoryId: rotiCategoryId,
-      },
-      {
-        name: "Home Kitchen by Meera",
-        description: "Home-style complete meals",
-        image: "/assets/generated_images/Complete_Indian_thali_meal_837cc17d.png",
-        rating: "4.7",
-        reviewCount: 312,
-        categoryId: mealCategoryId,
-      },
-      {
-        name: "Annapurna Tiffin Service",
-        description: "Daily fresh lunch and dinner",
-        image: "/assets/generated_images/Complete_Indian_thali_meal_837cc17d.png",
-        rating: "4.5",
-        reviewCount: 198,
-        categoryId: mealCategoryId,
-      },
-      {
-        name: "Taj Fine Dining",
-        description: "Premium restaurant experience",
-        image: "/assets/generated_images/Fine_dining_restaurant_setup_1724ed85.png",
-        rating: "4.9",
-        reviewCount: 456,
-        categoryId: hotelCategoryId,
-      },
-      {
-        name: "Royal Palace Restaurant",
-        description: "Royal Indian cuisine",
-        image: "/assets/generated_images/Fine_dining_restaurant_setup_1724ed85.png",
-        rating: "4.7",
-        reviewCount: 378,
-        categoryId: hotelCategoryId,
-      },
-    ];
-
-    chefs.forEach(chef => {
-      const chefWithId: Chef = { ...chef, id: nanoid() };
-      this.chefsData.set(chefWithId.id, chefWithId);
-    });
-
-    const productsData: InsertProduct[] = [
-      {
-        name: "Butter Naan",
-        description: "Soft and buttery Indian flatbread",
-        price: 40,
-        image: "/assets/generated_images/Fresh_tandoori_rotis_stack_1dcda2c7.png",
-        rating: "4.5",
-        reviewCount: 128,
-        isVeg: true,
-        isCustomizable: false,
-        categoryId: rotiCategoryId,
-        chefId: Array.from(this.chefsData.values()).find(c => c.categoryId === rotiCategoryId)?.id,
-      },
-      {
-        name: "Tandoori Roti",
-        description: "Whole wheat bread cooked in tandoor",
-        price: 20,
-        image: "/assets/generated_images/Fresh_tandoori_rotis_stack_1dcda2c7.png",
-        rating: "4.6",
-        reviewCount: 245,
-        isVeg: true,
-        isCustomizable: false,
-        categoryId: rotiCategoryId,
-        chefId: Array.from(this.chefsData.values()).find(c => c.categoryId === rotiCategoryId)?.id,
-      },
-      {
-        name: "Garlic Naan",
-        description: "Naan topped with fresh garlic and butter",
-        price: 50,
-        image: "/assets/generated_images/Fresh_tandoori_rotis_stack_1dcda2c7.png",
-        rating: "4.7",
-        reviewCount: 189,
-        isVeg: true,
-        isCustomizable: false,
-        categoryId: rotiCategoryId,
-        chefId: Array.from(this.chefsData.values()).find(c => c.categoryId === rotiCategoryId && c.name === "Mumbai Roti House")?.id,
-      },
-      {
-        name: "Aloo Paratha",
-        description: "Stuffed flatbread with spiced potato filling",
-        price: 60,
-        image: "/assets/generated_images/Fresh_tandoori_rotis_stack_1dcda2c7.png",
-        rating: "4.4",
-        reviewCount: 167,
-        isVeg: true,
-        isCustomizable: true,
-        categoryId: rotiCategoryId,
-        chefId: Array.from(this.chefsData.values()).find(c => c.categoryId === rotiCategoryId && c.name === "Mumbai Roti House")?.id,
-      },
-      {
-        name: "North Indian Thali",
-        description: "Complete meal with dal, sabzi, roti, rice and dessert",
-        price: 180,
-        image: "/assets/generated_images/Complete_Indian_thali_meal_837cc17d.png",
-        rating: "4.8",
-        reviewCount: 234,
-        isVeg: true,
-        isCustomizable: true,
-        categoryId: mealCategoryId,
-        chefId: Array.from(this.chefsData.values()).find(c => c.categoryId === mealCategoryId)?.id,
-      },
-      {
-        name: "Rajasthani Thali",
-        description: "Traditional Rajasthani meal with dal baati churma and more",
-        price: 220,
-        image: "/assets/generated_images/Complete_Indian_thali_meal_837cc17d.png",
-        rating: "4.6",
-        reviewCount: 89,
-        isVeg: true,
-        isCustomizable: false,
-        categoryId: mealCategoryId,
-        chefId: Array.from(this.chefsData.values()).find(c => c.categoryId === mealCategoryId)?.id,
-      },
-      {
-        name: "South Indian Meal",
-        description: "Rice, sambar, rasam, vegetables and curd",
-        price: 150,
-        image: "/assets/generated_images/Complete_Indian_thali_meal_837cc17d.png",
-        rating: "4.7",
-        reviewCount: 142,
-        isVeg: true,
-        isCustomizable: true,
-        categoryId: mealCategoryId,
-        chefId: Array.from(this.chefsData.values()).find(c => c.categoryId === mealCategoryId && c.name === "Annapurna Tiffin Service")?.id,
-      },
-      {
-        name: "Paneer Tikka",
-        description: "Grilled cottage cheese marinated in Indian spices",
-        price: 220,
-        image: "/assets/generated_images/Fine_dining_restaurant_setup_1724ed85.png",
-        rating: "4.6",
-        reviewCount: 156,
-        isVeg: true,
-        isCustomizable: true,
-        categoryId: hotelCategoryId,
-        chefId: Array.from(this.chefsData.values()).find(c => c.categoryId === hotelCategoryId)?.id,
-      },
-      {
-        name: "Butter Chicken",
-        description: "Tender chicken in creamy tomato-based curry",
-        price: 280,
-        image: "/assets/generated_images/Fine_dining_restaurant_setup_1724ed85.png",
-        rating: "4.9",
-        reviewCount: 312,
-        isVeg: false,
-        isCustomizable: true,
-        categoryId: hotelCategoryId,
-        chefId: Array.from(this.chefsData.values()).find(c => c.categoryId === hotelCategoryId)?.id,
-      },
-      {
-        name: "Biryani Special",
-        description: "Aromatic basmati rice with spices and your choice of protein",
-        price: 250,
-        image: "/assets/generated_images/Fine_dining_restaurant_setup_1724ed85.png",
-        rating: "4.8",
-        reviewCount: 278,
-        isVeg: false,
-        isCustomizable: true,
-        categoryId: hotelCategoryId,
-        chefId: Array.from(this.chefsData.values()).find(c => c.categoryId === hotelCategoryId && c.name === "Royal Palace Restaurant")?.id,
-      },
-    ];
-
-    productsData.forEach((prod) => {
-      const product: Product = {
-        ...prod,
-        id: randomUUID(),
-        rating: prod.rating || "4.5",
-        reviewCount: prod.reviewCount || 0,
-        isVeg: prod.isVeg !== undefined ? prod.isVeg : true,
-        isCustomizable: prod.isCustomizable !== undefined ? prod.isCustomizable : false,
-      };
-      this.products.set(product.id, product);
-    });
+    const result = await db.delete(users).where(eq(users.id, id));
+    return result.count > 0;
   }
 
   async getAllCategories(): Promise<Category[]> {
-    return Array.from(this.categories.values());
+    return db.query.categories.findMany();
   }
 
   async getCategoryById(id: string): Promise<Category | undefined> {
-    return this.categories.get(id);
+    return db.query.categories.findFirst({ where: (c, { eq }) => eq(c.id, id) });
   }
 
   async createCategory(insertCategory: InsertCategory): Promise<Category> {
     const id = randomUUID();
     const category: Category = { ...insertCategory, id };
-    this.categories.set(id, category);
+    await db.insert(categories).values(category);
     return category;
   }
 
+  async updateCategory(id: string, updateData: Partial<InsertCategory>): Promise<Category | undefined> {
+    await db.update(categories).set({ ...updateData, updatedAt: new Date() }).where(eq(categories.id, id));
+    return this.getCategoryById(id);
+  }
+
+  async deleteCategory(id: string): Promise<boolean> {
+    const result = await db.delete(categories).where(eq(categories.id, id));
+    return result.count > 0;
+  }
+
   async getAllProducts(): Promise<Product[]> {
-    return Array.from(this.products.values());
+    return db.query.products.findMany();
   }
 
   async getProductById(id: string): Promise<Product | undefined> {
-    return this.products.get(id);
+    return db.query.products.findFirst({ where: (p, { eq }) => eq(p.id, id) });
   }
 
   async getProductsByCategoryId(categoryId: string): Promise<Product[]> {
-    return Array.from(this.products.values()).filter(
-      (product) => product.categoryId === categoryId
-    );
+    return db.query.products.findMany({ where: (p, { eq }) => eq(p.categoryId, categoryId) });
   }
 
   async createProduct(insertProduct: InsertProduct): Promise<Product> {
@@ -406,8 +183,18 @@ export class MemStorage implements IStorage {
       isVeg: insertProduct.isVeg !== undefined ? insertProduct.isVeg : true,
       isCustomizable: insertProduct.isCustomizable !== undefined ? insertProduct.isCustomizable : false,
     };
-    this.products.set(id, product);
+    await db.insert(products).values(product);
     return product;
+  }
+
+  async updateProduct(id: string, updateData: Partial<InsertProduct>): Promise<Product | undefined> {
+    await db.update(products).set({ ...updateData, updatedAt: new Date() }).where(eq(products.id, id));
+    return this.getProductById(id);
+  }
+
+  async deleteProduct(id: string): Promise<boolean> {
+    const result = await db.delete(products).where(eq(products.id, id));
+    return result.count > 0;
   }
 
   async createOrder(insertOrder: InsertOrder): Promise<Order> {
@@ -418,89 +205,63 @@ export class MemStorage implements IStorage {
       status: insertOrder.status || "pending",
       createdAt: new Date(),
     };
-    this.orders.set(id, order);
+    await db.insert(orders).values(order);
     return order;
   }
 
   async getOrderById(id: string): Promise<Order | undefined> {
-    return this.orders.get(id);
+    return db.query.orders.findFirst({ where: (o, { eq }) => eq(o.id, id) });
+  }
+
+  async getAllOrders(): Promise<Order[]> {
+    return db.query.orders.findMany();
+  }
+
+  async updateOrderStatus(id: string, status: string): Promise<Order | undefined> {
+    await db.update(orders).set({ status, updatedAt: new Date() }).where(eq(orders.id, id));
+    return this.getOrderById(id);
+  }
+
+  async deleteOrder(id: string): Promise<void> {
+    await db.delete(orders).where(eq(orders.id, id));
   }
 
   async getChefs(): Promise<Chef[]> {
-    return Array.from(this.chefsData.values());
+    return db.query.chefs.findMany();
   }
 
   async getChefById(id: string): Promise<Chef | null> {
-    return this.chefsData.get(id) || null;
+    const chef = await db.query.chefs.findFirst({ where: (c, { eq }) => eq(c.id, id) });
+    return chef || null;
   }
 
   async getChefsByCategory(categoryId: string): Promise<Chef[]> {
-    return Array.from(this.chefsData.values()).filter(chef => chef.categoryId === categoryId);
+    return db.query.chefs.findMany({ where: (c, { eq }) => eq(c.categoryId, categoryId) });
   }
 
   async createChef(data: Omit<Chef, "id">): Promise<Chef> {
     const id = nanoid();
     const chef: Chef = { id, ...data };
-    this.chefsData.set(id, chef);
+    await db.insert(chefs).values(chef);
     return chef;
   }
 
   async updateChef(id: string, data: Partial<Chef>): Promise<Chef | undefined> {
-    const existingChef = this.chefsData.get(id);
-    if (!existingChef) return undefined;
-    const updatedChef: Chef = { ...existingChef, ...data, id };
-    this.chefsData.set(id, updatedChef);
-    return updatedChef;
+    await db.update(chefs).set({ ...data, updatedAt: new Date() }).where(eq(chefs.id, id));
+    return this.getChefById(id);
   }
 
   async deleteChef(id: string): Promise<boolean> {
-    return this.chefsData.delete(id);
-  }
-
-  async updateCategory(id: string, updateData: Partial<InsertCategory>): Promise<Category | undefined> {
-    const category = this.categories.get(id);
-    if (!category) return undefined;
-    const updated: Category = { ...category, ...updateData };
-    this.categories.set(id, updated);
-    return updated;
-  }
-
-  async deleteCategory(id: string): Promise<boolean> {
-    return this.categories.delete(id);
-  }
-
-  async updateProduct(id: string, updateData: Partial<InsertProduct>): Promise<Product | undefined> {
-    const product = this.products.get(id);
-    if (!product) return undefined;
-    const updated: Product = { ...product, ...updateData };
-    this.products.set(id, updated);
-    return updated;
-  }
-
-  async deleteProduct(id: string): Promise<boolean> {
-    return this.products.delete(id);
-  }
-
-  async getAllOrders(): Promise<Order[]> {
-    return Array.from(this.orders.values());
-  }
-
-  async updateOrderStatus(id: string, status: string): Promise<Order | undefined> {
-    const order = this.orders.get(id);
-    if (!order) return undefined;
-    const updated: Order = { ...order, status };
-    this.orders.set(id, updated);
-    return updated;
+    const result = await db.delete(chefs).where(eq(chefs.id, id));
+    return result.count > 0;
   }
 
   async getAdminByUsername(username: string): Promise<AdminUser | undefined> {
-    return Array.from(this.adminUsers.values()).find(
-      (admin) => admin.username === username
-    );
+    return db.query.adminUsers.findFirst({ where: (admin, { eq }) => eq(admin.username, username) });
   }
 
   async getAdminById(id: string): Promise<AdminUser | undefined> {
-    return this.adminUsers.get(id);
+    return db.query.adminUsers.findFirst({ where: (admin, { eq }) => eq(admin.id, id) });
   }
 
   async createAdmin(adminData: InsertAdminUser & { passwordHash: string }): Promise<AdminUser> {
@@ -514,82 +275,67 @@ export class MemStorage implements IStorage {
       lastLoginAt: null,
       createdAt: new Date(),
     };
-    this.adminUsers.set(id, admin);
+    await db.insert(adminUsers).values(admin);
     return admin;
   }
 
   async updateAdminLastLogin(id: string): Promise<void> {
-    const admin = this.adminUsers.get(id);
-    if (admin) {
-      admin.lastLoginAt = new Date();
-      this.adminUsers.set(id, admin);
-    }
+    await db.update(adminUsers).set({ lastLoginAt: new Date() }).where(eq(adminUsers.id, id));
   }
 
   async updateAdminRole(id: string, role: string): Promise<AdminUser | undefined> {
-    const admin = this.adminUsers.get(id);
-    if (!admin) return undefined;
-    const updatedAdmin: AdminUser = { ...admin, role };
-    this.adminUsers.set(id, updatedAdmin);
-    return updatedAdmin;
+    await db.update(adminUsers).set({ role, updatedAt: new Date() }).where(eq(adminUsers.id, id));
+    return this.getAdminById(id);
   }
 
   async deleteAdmin(id: string): Promise<boolean> {
-    return this.adminUsers.delete(id);
+    const result = await db.delete(adminUsers).where(eq(adminUsers.id, id));
+    return result.count > 0;
   }
 
   async getAllAdmins(): Promise<AdminUser[]> {
-    return Array.from(this.adminUsers.values());
+    return db.query.adminUsers.findMany();
   }
 
   async getAllUsers(): Promise<User[]> {
-    return Array.from(this.users.values());
+    return db.query.users.findMany();
   }
 
   async getPartnerByUsername(username: string): Promise<PartnerUser | null> {
-    // This implementation uses a Map for partners, consistent with other in-memory storage.
-    // If using a database, this would involve a DB query.
-    // For now, assuming a simple Map-based approach for consistency.
-    // In a real scenario, you'd have a `private partners: Map<string, PartnerUser>;`
-    // and seed it accordingly.
-    // Placeholder implementation:
-    return null; // Replace with actual lookup if partner storage is implemented
+    const partner = await db.query.partnerUsers.findFirst({ where: (p, { eq }) => eq(p.username, username) });
+    return partner || null;
   }
 
   async getPartnerById(id: string): Promise<PartnerUser | null> {
-    // Placeholder implementation:
-    return null; // Replace with actual lookup if partner storage is implemented
+    const partner = await db.query.partnerUsers.findFirst({ where: (p, { eq }) => eq(p.id, id) });
+    return partner || null;
   }
 
   async createPartner(data: Omit<PartnerUser, "id" | "createdAt" | "lastLoginAt">): Promise<PartnerUser> {
-    // Placeholder implementation:
-    // In a real scenario, you'd generate an ID, set createdAt, and return the created partner.
+    const id = randomUUID();
     const newPartner: PartnerUser = {
-      id: randomUUID(), // Example ID generation
+      id,
       ...data,
       createdAt: new Date(),
       lastLoginAt: null,
     };
-    return newPartner; // Replace with actual storage and return
+    await db.insert(partnerUsers).values(newPartner);
+    return newPartner;
   }
 
   async updatePartnerLastLogin(id: string): Promise<void> {
-    // Placeholder implementation:
-    // In a real scenario, find the partner by ID and update its lastLoginAt.
-    console.log(`Updating last login for partner ID: ${id}`);
+    await db.update(partnerUsers).set({ lastLoginAt: new Date() }).where(eq(partnerUsers.id, id));
   }
 
   async getOrdersByChefId(chefId: string): Promise<Order[]> {
-    // This method should retrieve orders associated with a specific chef.
-    // In-memory implementation:
-    return Array.from(this.orders.values()).filter(order => order.chefId === chefId);
+    return db.query.orders.findMany({ where: (o, { eq }) => eq(o.chefId, chefId) });
   }
 
   async getPartnerDashboardMetrics(chefId: string) {
     const chefOrders = await this.getOrdersByChefId(chefId);
 
     const totalOrders = chefOrders.length;
-    const totalRevenue = chefOrders.reduce((sum, order) => sum + order.total, 0); // Using 'total' from Order type
+    const totalRevenue = chefOrders.reduce((sum, order) => sum + order.total, 0);
 
     const statusCounts = chefOrders.reduce((acc, order) => {
       acc[order.status] = (acc[order.status] || 0) + 1;
@@ -612,7 +358,6 @@ export class MemStorage implements IStorage {
     };
   }
 
-
   async getDashboardMetrics(): Promise<{
     userCount: number;
     orderCount: number;
@@ -620,100 +365,200 @@ export class MemStorage implements IStorage {
     pendingOrders: number;
     completedOrders: number;
   }> {
-    const orders = Array.from(this.orders.values());
+    const orderCount = await db.query.orders.count();
+    const orders = await db.query.orders.findMany();
     const totalRevenue = orders.reduce((sum, order) => sum + order.total, 0);
     const pendingOrders = orders.filter((o) => o.status === "pending").length;
     const completedOrders = orders.filter((o) => o.status === "delivered" || o.status === "completed").length;
+    const userCount = await db.query.users.count();
 
     return {
-      userCount: this.users.size,
-      orderCount: this.orders.size,
+      userCount,
+      orderCount,
       totalRevenue,
       pendingOrders,
       completedOrders,
     };
   }
 
-  async deleteOrder(id: string): Promise<void> {
-    this.orders.delete(id);
-  }
-
   // Subscription Plans
-  async getSubscriptionPlans(): Promise<any[]> {
-    return Array.from(this.subscriptionPlans.values());
+  async getSubscriptionPlans(): Promise<SubscriptionPlan[]> {
+    return db.query.subscriptionPlans.findMany();
   }
 
-  async getSubscriptionPlan(id: string): Promise<any | undefined> {
-    return this.subscriptionPlans.get(id);
+  async getSubscriptionPlan(id: string): Promise<SubscriptionPlan | undefined> {
+    return db.query.subscriptionPlans.findFirst({ where: (sp, { eq }) => eq(sp.id, id) });
   }
 
-  async createSubscriptionPlan(data: any): Promise<any> {
-    const id = crypto.randomUUID();
-    const plan = {
+  async createSubscriptionPlan(data: Omit<SubscriptionPlan, "id" | "createdAt" | "updatedAt">): Promise<SubscriptionPlan> {
+    const id = randomUUID();
+    const plan: SubscriptionPlan = {
       ...data,
       id,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
-    this.subscriptionPlans.set(id, plan);
+    await db.insert(subscriptionPlans).values(plan);
     return plan;
   }
 
-  async updateSubscriptionPlan(id: string, data: any): Promise<any | undefined> {
-    const existing = this.subscriptionPlans.get(id);
-    if (!existing) throw new Error("Subscription plan not found");
-
-    const updated = {
-      ...existing,
-      ...data,
-      id,
-      updatedAt: new Date(),
-    };
-    this.subscriptionPlans.set(id, updated);
-    return updated;
+  async updateSubscriptionPlan(id: string, data: Partial<SubscriptionPlan>): Promise<SubscriptionPlan | undefined> {
+    await db.update(subscriptionPlans).set({ ...data, updatedAt: new Date() }).where(eq(subscriptionPlans.id, id));
+    return this.getSubscriptionPlan(id);
   }
 
   async deleteSubscriptionPlan(id: string): Promise<void> {
-    this.subscriptionPlans.delete(id);
+    await db.delete(subscriptionPlans).where(eq(subscriptionPlans.id, id));
   }
 
   // Subscriptions
-  async getSubscriptions(): Promise<any[]> {
-    return Array.from(this.subscriptions.values());
+  async getSubscriptions(): Promise<Subscription[]> {
+    return db.query.subscriptions.findMany();
   }
 
-  async getSubscription(id: string): Promise<any | undefined> {
-    return this.subscriptions.get(id);
+  async getSubscription(id: string): Promise<Subscription | undefined> {
+    return db.query.subscriptions.findFirst({ where: (s, { eq }) => eq(s.id, id) });
   }
 
-  async createSubscription(data: any): Promise<any> {
-    const id = crypto.randomUUID();
-    const subscription = {
+  async createSubscription(data: Omit<Subscription, "id" | "createdAt" | "updatedAt">): Promise<Subscription> {
+    const id = randomUUID();
+    const subscription: Subscription = {
       ...data,
       id,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
-    this.subscriptions.set(id, subscription);
+    await db.insert(subscriptions).values(subscription);
     return subscription;
   }
 
-  async updateSubscription(id: string, data: any): Promise<any | undefined> {
-    const existing = this.subscriptions.get(id);
-    if (!existing) throw new Error("Subscription not found");
-
-    const updated = {
-      ...existing,
-      ...data,
-      id,
-      updatedAt: new Date(),
-    };
-    this.subscriptions.set(id, updated);
-    return updated;
+  async updateSubscription(id: string, data: Partial<Subscription>): Promise<Subscription | undefined> {
+    await db.update(subscriptions).set({ ...data, updatedAt: new Date() }).where(eq(subscriptions.id, id));
+    return this.getSubscription(id);
   }
 
   async deleteSubscription(id: string): Promise<void> {
-    this.subscriptions.delete(id);
+    await db.delete(subscriptions).where(eq(subscriptions.id, id));
+  }
+
+  async getSalesReport(from: Date, to: Date) {
+    const orders = await db.select().from(ordersTable)
+      .where(sql`${ordersTable.createdAt} >= ${from.toISOString()} AND ${ordersTable.createdAt} <= ${to.toISOString()}`);
+
+    const totalRevenue = orders.reduce((sum, order) => sum + order.total, 0);
+    const totalOrders = orders.length;
+    const averageOrderValue = totalOrders > 0 ? Math.round(totalRevenue / totalOrders) : 0;
+
+    const productSales = new Map<string, { name: string; quantity: number; revenue: number }>();
+    for (const order of orders) {
+      for (const item of order.items as any[]) {
+        const existing = productSales.get(item.id) || { name: item.name, quantity: 0, revenue: 0 };
+        productSales.set(item.id, {
+          name: item.name,
+          quantity: existing.quantity + item.quantity,
+          revenue: existing.revenue + (item.price * item.quantity),
+        });
+      }
+    }
+
+    const topProducts = Array.from(productSales.entries())
+      .map(([id, data]) => ({ id, ...data }))
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 5);
+
+    return {
+      totalRevenue,
+      totalOrders,
+      averageOrderValue,
+      topProducts,
+      revenueChange: 0,
+      ordersChange: 0,
+    };
+  }
+
+  async getUserReport(from: Date, to: Date) {
+    const allUsers = await db.select().from(users);
+    const newUsers = allUsers.filter(u => new Date(u.createdAt) >= from && new Date(u.createdAt) <= to);
+
+    const userOrders = await db.select({
+      userId: ordersTable.userId,
+      total: ordersTable.total,
+    }).from(ordersTable);
+
+    const userSpending = new Map<string, { totalSpent: number; orderCount: number }>();
+    for (const order of userOrders) {
+      const existing = userSpending.get(order.userId) || { totalSpent: 0, orderCount: 0 };
+      userSpending.set(order.userId, {
+        totalSpent: existing.totalSpent + order.total,
+        orderCount: existing.orderCount + 1,
+      });
+    }
+
+    const topCustomers = Array.from(userSpending.entries())
+      .map(([userId, data]) => {
+        const user = allUsers.find(u => u.id === userId);
+        return {
+          id: userId,
+          name: user?.name || 'Unknown',
+          email: user?.email || '',
+          ...data,
+        };
+      })
+      .sort((a, b) => b.totalSpent - a.totalSpent)
+      .slice(0, 5);
+
+    return {
+      totalUsers: allUsers.length,
+      newUsers: newUsers.length,
+      activeUsers: userSpending.size,
+      userGrowth: 0,
+      topCustomers,
+    };
+  }
+
+  async getInventoryReport() {
+    const products = await db.select().from(productsTable);
+    const categories = await db.select().from(categoriesTable);
+
+    const categoryStats = categories.map(cat => {
+      const catProducts = products.filter(p => p.categoryId === cat.id);
+      return {
+        name: cat.name,
+        productCount: catProducts.length,
+        revenue: 0,
+      };
+    });
+
+    return {
+      totalProducts: products.length,
+      lowStock: 0,
+      outOfStock: 0,
+      categories: categoryStats,
+    };
+  }
+
+  async getSubscriptionReport(from: Date, to: Date) {
+    const subs = await db.select().from(subscriptions);
+    const plans = await db.select().from(subscriptionPlans);
+
+    const planStats = plans.map(plan => {
+      const planSubs = subs.filter(s => s.planId === plan.id);
+      return {
+        id: plan.id,
+        name: plan.name,
+        subscriberCount: planSubs.length,
+        revenue: planSubs.length * plan.price,
+      };
+    });
+
+    return {
+      totalSubscriptions: subs.length,
+      activeSubscriptions: subs.filter(s => s.status === 'active').length,
+      pausedSubscriptions: subs.filter(s => s.status === 'paused').length,
+      cancelledSubscriptions: subs.filter(s => s.status === 'cancelled').length,
+      subscriptionRevenue: planStats.reduce((sum, p) => sum + p.revenue, 0),
+      topPlans: planStats.sort((a, b) => b.revenue - a.revenue).slice(0, 5),
+    };
   }
 }
 

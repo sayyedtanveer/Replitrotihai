@@ -18,7 +18,7 @@ interface SubscriptionDrawerProps {
   onClose: () => void;
 }
 
-export function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
+export default function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
   const { toast } = useToast();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 

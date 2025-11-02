@@ -15,7 +15,8 @@ import AdminDashboard from "@/pages/admin/AdminDashboard";
 import AdminOrders from "@/pages/admin/AdminOrders";
 import AdminProducts from "@/pages/admin/AdminProducts";
 import AdminCategories from "@/pages/admin/AdminCategories";
-import AdminSubscriptions from "@/pages/admin/AdminSubscriptions";
+import AdminSubscriptions from "./pages/admin/AdminSubscriptions";
+import AdminReports from "./pages/admin/AdminReports";
 import AdminChefs from "@/pages/admin/AdminChefs";
 import AdminUsers from "@/pages/admin/AdminUsers";
 import AdminManagement from "@/pages/admin/AdminManagement";
@@ -33,6 +34,7 @@ function Router() {
       <Route path="/admin/products" component={AdminProducts} />
       <Route path="/admin/categories" component={AdminCategories} />
       <Route path="/admin/subscriptions" component={AdminSubscriptions} />
+      <Route path="/admin/reports" component={AdminReports} />
       <Route path="/admin/chefs" component={AdminChefs} />
       <Route path="/admin/admins" component={AdminManagement} />
       <Route path="/admin/users" component={AdminUsers} />
