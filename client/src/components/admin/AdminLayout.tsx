@@ -18,13 +18,7 @@ import {
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 
-// Assuming SubscriptionDrawer is a named export from the original file
-// If it was intended to be a default export, the export in SubscriptionDrawer.tsx
-// would need to be changed from `export { SubscriptionDrawer };` to `export default SubscriptionDrawer;`
-// And the import here would change from `import { SubscriptionDrawer } from "@/components/SubscriptionDrawer";`
-// to `import SubscriptionDrawer from "@/components/SubscriptionDrawer";`
-// For now, assuming the fix is to change the import to match the named export.
-import { SubscriptionDrawer } from "@/components/SubscriptionDrawer";
+import SubscriptionDrawer from "@/components/SubscriptionDrawer";
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -164,10 +158,6 @@ export function AdminLayout({ children }: AdminLayoutProps) {
           <main className="p-6">{children}</main>
         </div>
       </div>
-      {/* Render SubscriptionDrawer here or wherever it's intended to be used */}
-      {/* If SubscriptionDrawer is meant to be a modal or part of a page, it should be rendered accordingly */}
-      {/* For now, placing it here as an example. Adjust as needed. */}
-      <SubscriptionDrawer />
     </div>
   );
 }
