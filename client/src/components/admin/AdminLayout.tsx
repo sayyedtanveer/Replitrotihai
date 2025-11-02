@@ -14,6 +14,7 @@ import {
   Grid3x3,
   Calendar,
   BarChart3,
+  Boxes,
 } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -50,10 +51,11 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     { name: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
     { name: "Orders", href: "/admin/orders", icon: ShoppingBag },
     { name: "Products", href: "/admin/products", icon: Package },
+    { name: "Inventory", href: "/admin/inventory", icon: Boxes },
     { name: "Categories", href: "/admin/categories", icon: FolderKanban },
     { name: "Chefs", href: "/admin/chefs", icon: ChefHat },
     { name: "Users", href: "/admin/users", icon: Users },
-    { name: "Reports", href: "/admin/reports", icon: BarChart3 }, // Added Reports module
+    { name: "Reports", href: "/admin/reports", icon: BarChart3 },
   ];
 
   if (adminUser.role === "super_admin") {

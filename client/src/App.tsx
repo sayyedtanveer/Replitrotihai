@@ -14,6 +14,7 @@ import AdminLogin from "@/pages/admin/AdminLogin";
 import AdminDashboard from "@/pages/admin/AdminDashboard";
 import AdminOrders from "@/pages/admin/AdminOrders";
 import AdminProducts from "@/pages/admin/AdminProducts";
+import AdminInventory from "@/pages/admin/AdminInventory";
 import AdminCategories from "@/pages/admin/AdminCategories";
 import AdminSubscriptions from "./pages/admin/AdminSubscriptions";
 import AdminReports from "./pages/admin/AdminReports";
@@ -32,6 +33,7 @@ function Router() {
       <Route path="/admin/dashboard" component={AdminDashboard} />
       <Route path="/admin/orders" component={AdminOrders} />
       <Route path="/admin/products" component={AdminProducts} />
+      <Route path="/admin/inventory" component={AdminInventory} />
       <Route path="/admin/categories" component={AdminCategories} />
       <Route path="/admin/subscriptions" component={AdminSubscriptions} />
       <Route path="/admin/reports" component={AdminReports} />

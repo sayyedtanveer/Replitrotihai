@@ -76,6 +76,9 @@ export const products = pgTable("products", {
   isCustomizable: boolean("is_customizable").notNull().default(false),
   categoryId: varchar("category_id").notNull(),
   chefId: text("chef_id"),
+  stockQuantity: integer("stock_quantity").notNull().default(100),
+  lowStockThreshold: integer("low_stock_threshold").notNull().default(20),
+  isAvailable: boolean("is_available").notNull().default(true),
 });
 
 export const orders = pgTable("orders", {
