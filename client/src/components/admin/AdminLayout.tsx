@@ -15,6 +15,7 @@ import {
   Calendar,
   BarChart3,
   Boxes,
+  Bell,
 } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -55,6 +56,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     { name: "Categories", href: "/admin/categories", icon: FolderKanban },
     { name: "Chefs", href: "/admin/chefs", icon: ChefHat },
     { name: "Users", href: "/admin/users", icon: Users },
+    { name: "Notifications", href: "/admin/notifications", icon: Bell },
     { name: "Reports", href: "/admin/reports", icon: BarChart3 },
   ];
 
