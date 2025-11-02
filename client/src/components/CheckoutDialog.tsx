@@ -94,10 +94,11 @@ export default function CheckoutDialog({
     if (!navigator.geolocation) {
       toast({
         title: "Geolocation not supported",
-        description: "Your browser doesn't support geolocation",
+        description: "Your browser doesn't support geolocation. Using default delivery fee.",
         variant: "destructive",
       });
       setIsGettingLocation(false);
+      setCalculatedDeliveryFee(40);
       return;
     }
 
@@ -112,12 +113,18 @@ export default function CheckoutDialog({
         setIsGettingLocation(false);
       },
       (error) => {
+        console.error("Geolocation error:", error);
         toast({
-          title: "Location error",
-          description: "Please enable location access to calculate delivery fee",
-          variant: "destructive",
+          title: "Location access denied",
+          description: "Using default delivery fee of ₹40. Enable location for accurate pricing.",
         });
         setIsGettingLocation(false);
+        setCalculatedDeliveryFee(40);
+      },
+      {
+        timeout: 10000,
+        maximumAge: 60000,
+        enableHighAccuracy: false
       }
     );
   };
@@ -208,15 +215,6 @@ export default function CheckoutDialog({
   });
 
   const onSubmit = (data: CheckoutFormData) => {
-    if (!userLocation) {
-      toast({
-        title: "Location required",
-        description: "Please allow location access to calculate delivery fee",
-        variant: "destructive",
-      });
-      return;
-    }
-
     const addressLower = data.address.toLowerCase().trim();
     if (!addressLower.includes("kurla")) {
       toast({
@@ -352,25 +350,30 @@ export default function CheckoutDialog({
             />
 
             {!userLocation && (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={getUserLocation}
-                disabled={isGettingLocation}
-                className="w-full"
-              >
-                {isGettingLocation ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Getting Location...
-                  </>
-                ) : (
-                  <>
-                    <MapPin className="h-4 w-4 mr-2" />
-                    Enable Location for Delivery Fee
-                  </>
-                )}
-              </Button>
+              <div className="space-y-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={getUserLocation}
+                  disabled={isGettingLocation}
+                  className="w-full"
+                >
+                  {isGettingLocation ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Getting Location...
+                    </>
+                  ) : (
+                    <>
+                      <MapPin className="h-4 w-4 mr-2" />
+                      Enable Location for Accurate Delivery Fee
+                    </>
+                  )}
+                </Button>
+                <p className="text-xs text-muted-foreground text-center">
+                  Optional: Get precise delivery fee based on your location
+                </p>
+              </div>
             )}
 
             {userLocation && (
@@ -423,7 +426,7 @@ export default function CheckoutDialog({
               <Button
                 type="submit"
                 className="flex-1"
-                disabled={placeOrderMutation.isPending || !userLocation}
+                disabled={placeOrderMutation.isPending}
                 data-testid="button-place-order"
               >
                 {placeOrderMutation.isPending ? "Placing Order..." : "Place Order"}
