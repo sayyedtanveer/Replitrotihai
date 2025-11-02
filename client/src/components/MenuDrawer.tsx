@@ -1,4 +1,4 @@
-import { X, Home, UtensilsCrossed, ShoppingBag, User, LogOut, ChevronRight, Settings } from "lucide-react";
+import { X, Home, UtensilsCrossed, ShoppingBag, User, LogOut, ChevronRight, Settings, Calendar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -13,11 +13,12 @@ interface MenuDrawerProps {
   onCategoryClick?: (categoryId: string) => void;
   selectedCategoryTab?: string;
   onCategoryTabChange?: (value: string) => void;
+  onSubscriptionClick?: () => void;
 }
 
-export default function MenuDrawer({ isOpen, onClose, categories = [], onCategoryClick, selectedCategoryTab = "all", onCategoryTabChange }: MenuDrawerProps) {
+export default function MenuDrawer({ isOpen, onClose, categories = [], onCategoryClick, selectedCategoryTab = "all", onCategoryTabChange, onSubscriptionClick }: MenuDrawerProps) {
   const [, setLocation] = useLocation();
-  
+
   if (!isOpen) return null;
 
   const handleCategoryClick = (categoryId: string) => {
@@ -164,6 +165,15 @@ export default function MenuDrawer({ isOpen, onClose, categories = [], onCategor
                   >
                     <Settings className="h-4 w-4 mr-3" />
                     Settings
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start"
+                    onClick={onSubscriptionClick}
+                    data-testid="button-subscription"
+                  >
+                    <Calendar className="h-4 w-4 mr-3" />
+                    Subscription
                   </Button>
                   <Button
                     variant="ghost"

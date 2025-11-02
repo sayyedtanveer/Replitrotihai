@@ -1,4 +1,4 @@
-import { ShoppingCart, MapPin, Search, Menu, LogOut, User as UserIcon } from "lucide-react";
+import { ShoppingCart, MapPin, Search, Menu, LogOut, User as UserIcon, ChefHat, Calendar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useLocation } from "wouter";
 
 interface HeaderProps {
   cartItemCount?: number;
@@ -19,10 +20,13 @@ interface HeaderProps {
   onMenuClick?: () => void;
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
+  onChefListClick: () => void;
+  onSubscriptionClick: () => void;
 }
 
-export default function Header({ cartItemCount = 0, onCartClick, onMenuClick, searchQuery = "", onSearchChange }: HeaderProps) {
+export default function Header({ cartItemCount = 0, onCartClick, onMenuClick, searchQuery = "", onSearchChange, onChefListClick, onSubscriptionClick }: HeaderProps) {
   const { user } = useAuth();
+  const isAuthenticated = !!user;
 
   const handleLogout = () => {
     window.location.href = "/api/logout";
@@ -115,6 +119,14 @@ export default function Header({ cartItemCount = 0, onCartClick, onMenuClick, se
                 </Badge>
               )}
             </Button>
+            <Button variant="ghost" size="icon" onClick={onChefListClick} data-testid="button-chefs">
+              <ChefHat className="h-5 w-5" />
+            </Button>
+            {isAuthenticated && (
+              <Button variant="ghost" size="icon" onClick={onSubscriptionClick} data-testid="button-subscriptions">
+                <Calendar className="h-5 w-5" />
+              </Button>
+            )}
           </div>
         </div>
 

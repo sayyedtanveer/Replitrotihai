@@ -9,6 +9,7 @@ import CheckoutDialog from "@/components/CheckoutDialog";
 import MenuDrawer from "@/components/MenuDrawer";
 import CategoryMenuDrawer from "@/components/CategoryMenuDrawer";
 import ChefListDrawer from "@/components/ChefListDrawer";
+import SubscriptionDrawer from "@/components/SubscriptionDrawer"; // Import SubscriptionDrawer
 import Footer from "@/components/Footer";
 
 import { Button } from "@/components/ui/button";
@@ -33,8 +34,9 @@ export default function Home() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isChefListOpen, setIsChefListOpen] = useState(false);
   const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false);
+  const [isChefListOpen, setIsChefListOpen] = useState(false);
+  const [isSubscriptionOpen, setIsSubscriptionOpen] = useState(false); // State for subscription drawer
   const [selectedCategoryForChefList, setSelectedCategoryForChefList] = useState<Category | null>(null);
   const [selectedCategoryForMenu, setSelectedCategoryForMenu] = useState<Category | null>(null);
   const [selectedChefForMenu, setSelectedChefForMenu] = useState<Chef | null>(null);
@@ -164,6 +166,8 @@ export default function Home() {
         cartItemCount={totalItems}
         onCartClick={() => setIsCartOpen(true)}
         onMenuClick={() => setIsMenuOpen(true)}
+        onChefListClick={() => setIsChefListOpen(true)}
+        onSubscriptionClick={() => setIsSubscriptionOpen(true)} // Added subscription click handler
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
       />
@@ -359,6 +363,7 @@ export default function Home() {
         onCategoryClick={handleCategoryClick}
         selectedCategoryTab={selectedCategoryTab}
         onCategoryTabChange={handleCategoryTabChange}
+        onSubscriptionClick={() => setIsSubscriptionOpen(true)} // Pass subscription handler
       />
 
       <ChefListDrawer
@@ -396,6 +401,11 @@ export default function Home() {
         deliveryFee={deliveryFee}
         total={total}
         onOrderSuccess={handleOrderSuccess}
+      />
+
+      <SubscriptionDrawer
+        isOpen={isSubscriptionOpen}
+        onClose={() => setIsSubscriptionOpen(false)}
       />
     </div>
   );
