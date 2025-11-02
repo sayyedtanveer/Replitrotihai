@@ -33,12 +33,13 @@ export default function Hero() {
           });
         }
       } else {
+        // Auto-detect location on first load
         getUserLocationSilently();
       }
     };
 
     checkLocationOnLoad();
-  }, []);
+  }, [toast]);
 
   const getUserLocationSilently = () => {
     if (!navigator.geolocation) return;

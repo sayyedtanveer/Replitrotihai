@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { MapPin, Loader2, Navigation } from "lucide-react";
+import { MapPin } from "lucide-react";
 import { calculateDistance, isInDeliveryZone, getDeliveryMessage } from "@/lib/locationUtils";
 
 interface CheckoutDialogProps {
@@ -27,85 +27,11 @@ export default function CheckoutDialog({ isOpen, onClose, cartItems, onOrderSucc
   });
 
   const [deliveryInfo, setDeliveryInfo] = useState<{ distance: number; fee: number; time: number } | null>(null);
-  const [locationStatus, setLocationStatus] = useState<string>("");
-  const [isLocating, setIsLocating] = useState(false);
   const { toast } = useToast();
 
   const subtotal = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const deliveryFee = deliveryInfo?.fee || 0;
   const total = subtotal + deliveryFee;
-
-  const getLocation = () => {
-    if (!navigator.geolocation) {
-      toast({
-        title: "Geolocation not supported",
-        description: "Your browser doesn't support geolocation. Please enter coordinates manually.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsLocating(true);
-    setLocationStatus("Getting your location...");
-
-    const options = {
-      enableHighAccuracy: true,
-      timeout: 10000,
-      maximumAge: 0
-    };
-
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const lat = position.coords.latitude;
-        const lon = position.coords.longitude;
-
-        setFormData(prev => ({
-          ...prev,
-          latitude: lat.toString(),
-          longitude: lon.toString(),
-        }));
-
-        const deliveryCheck = getDeliveryMessage(lat, lon);
-        setLocationStatus(deliveryCheck.message);
-
-        if (deliveryCheck.available) {
-          calculateDeliveryFee(lat, lon);
-        }
-
-        setIsLocating(false);
-        toast({
-          title: "Location detected",
-          description: `Latitude: ${lat.toFixed(4)}, Longitude: ${lon.toFixed(4)}`,
-        });
-      },
-      (error) => {
-        setIsLocating(false);
-        let errorMessage = "Unable to get location. ";
-
-        switch(error.code) {
-          case error.PERMISSION_DENIED:
-            errorMessage += "Please allow location access in your browser settings.";
-            break;
-          case error.POSITION_UNAVAILABLE:
-            errorMessage += "Location information is unavailable.";
-            break;
-          case error.TIMEOUT:
-            errorMessage += "Location request timed out. Please try again.";
-            break;
-          default:
-            errorMessage += "An unknown error occurred.";
-        }
-
-        setLocationStatus(errorMessage);
-        toast({
-          title: "Location Error",
-          description: errorMessage,
-          variant: "destructive",
-        });
-      },
-      options
-    );
-  };
 
   const calculateDeliveryFee = async (lat: number, lon: number) => {
     try {
@@ -210,6 +136,22 @@ export default function CheckoutDialog({ isOpen, onClose, cartItems, onOrderSucc
   };
 
   useEffect(() => {
+    // Auto-populate coordinates from localStorage when dialog opens
+    if (isOpen) {
+      const savedLat = localStorage.getItem('userLatitude');
+      const savedLng = localStorage.getItem('userLongitude');
+      
+      if (savedLat && savedLng) {
+        setFormData(prev => ({
+          ...prev,
+          latitude: savedLat,
+          longitude: savedLng,
+        }));
+      }
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
     if (formData.latitude && formData.longitude) {
       const lat = parseFloat(formData.latitude);
       const lon = parseFloat(formData.longitude);
@@ -272,32 +214,10 @@ export default function CheckoutDialog({ isOpen, onClose, cartItems, onOrderSucc
             </div>
 
             <div className="space-y-2">
-              <Label>Location *</Label>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={getLocation}
-                disabled={isLocating}
-                className="w-full"
-              >
-                {isLocating ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Getting location...
-                  </>
-                ) : (
-                  <>
-                    <Navigation className="mr-2 h-4 w-4" />
-                    Get My Location
-                  </>
-                )}
-              </Button>
-              {locationStatus && (
-                <p className={`text-sm ${locationStatus.includes("Great") ? "text-green-600" : "text-muted-foreground"}`}>
-                  {locationStatus}
-                </p>
-              )}
-
+              <Label>Location Coordinates *</Label>
+              <p className="text-xs text-muted-foreground">
+                Your location was detected on the home page. Verify the coordinates below.
+              </p>
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <Label htmlFor="latitude" className="text-xs">Latitude</Label>
