@@ -53,7 +53,10 @@ function Router() {
           <Route path="/profile" component={Profile} />
         </>
       ) : (
-        <Route path="/orders" component={() => <Redirect to="/" />} />
+        <>
+          <Route path="/orders" component={() => <Redirect to="/" />} />
+          <Route path="/profile" component={() => <Redirect to="/" />} />
+        </>
       )}
       <Route component={NotFound} />
     </Switch>
