@@ -1,10 +1,8 @@
-import { type Category, type InsertCategory, type Product, type InsertProduct, type Order, type InsertOrder, type User, type UpsertUser, type Chef, type AdminUser, type InsertAdminUser, type PartnerUser } from "@shared/schema";
+import { type Category, type InsertCategory, type Product, type InsertProduct, type Order, type InsertOrder, type User, type UpsertUser, type Chef, type AdminUser, type InsertAdminUser, type PartnerUser, type Subscription, type SubscriptionPlan } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { nanoid } from "nanoid";
-import { desc } from "drizzle-orm";
-import { users, categories, products, orders, chefs, adminUsers, partnerUsers } from "@shared/schema";
-import type { UpsertUser, User, Category, Product, Order, Chef, AdminUser, PartnerUser, Subscription, SubscriptionPlan } from "@shared/schema";
-import { db, sql, orders as ordersTable, products as productsTable, categories as categoriesTable, subscriptions, subscriptionPlans } from "@shared/db";
+import { eq } from "drizzle-orm";
+import { db, sql, users, categories, products, orders, chefs, adminUsers, partnerUsers, subscriptions, subscriptionPlans } from "@shared/db";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
