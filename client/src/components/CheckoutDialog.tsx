@@ -1,4 +1,5 @@
-import { useState } from "react";
+
+import { useState, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -23,15 +24,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, MapPin, Loader2 } from "lucide-react";
 
 const checkoutSchema = z.object({
   customerName: z.string().min(2, "Name must be at least 2 characters"),
   phone: z.string().min(10, "Please enter a valid phone number"),
   email: z.string().email("Please enter a valid email").optional().or(z.literal("")),
   address: z.string().min(10, "Please enter a complete address"),
-  latitude: z.string().optional(),
-  longitude: z.string().optional(),
 });
 
 type CheckoutFormData = z.infer<typeof checkoutSchema>;
@@ -44,7 +43,7 @@ interface CheckoutDialogProps {
     name: string;
     price: number;
     quantity: number;
-    chefId?: string; // Added chefId to the item interface
+    chefId?: string;
   }>;
   subtotal: number;
   deliveryFee: number;
@@ -57,16 +56,16 @@ export default function CheckoutDialog({
   onClose,
   cartItems,
   subtotal,
-  deliveryFee: initialDeliveryFee,
-  total: initialTotal,
   onOrderSuccess,
 }: CheckoutDialogProps) {
   const { toast } = useToast();
   const [orderPlaced, setOrderPlaced] = useState(false);
   const [orderId, setOrderId] = useState<string>("");
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [calculatedDistance, setCalculatedDistance] = useState<number | null>(null);
-  const [calculatedDeliveryFee, setCalculatedDeliveryFee] = useState(initialDeliveryFee);
+  const [calculatedDeliveryFee, setCalculatedDeliveryFee] = useState(40);
   const [isCalculatingDistance, setIsCalculatingDistance] = useState(false);
+  const [isGettingLocation, setIsGettingLocation] = useState(false);
 
   const form = useForm<CheckoutFormData>({
     resolver: zodResolver(checkoutSchema),
@@ -75,14 +74,97 @@ export default function CheckoutDialog({
       phone: "",
       email: "",
       address: "",
-      latitude: "",
-      longitude: "",
     },
   });
 
+  useEffect(() => {
+    // Check if location is already stored
+    const lat = localStorage.getItem('userLatitude');
+    const lng = localStorage.getItem('userLongitude');
+    
+    if (lat && lng) {
+      setUserLocation({ lat: parseFloat(lat), lng: parseFloat(lng) });
+      calculateDeliveryFee(parseFloat(lat), parseFloat(lng));
+    }
+  }, [isOpen]);
+
+  const getUserLocation = () => {
+    setIsGettingLocation(true);
+    
+    if (!navigator.geolocation) {
+      toast({
+        title: "Geolocation not supported",
+        description: "Your browser doesn't support geolocation",
+        variant: "destructive",
+      });
+      setIsGettingLocation(false);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        setUserLocation({ lat: latitude, lng: longitude });
+        localStorage.setItem('userLatitude', latitude.toString());
+        localStorage.setItem('userLongitude', longitude.toString());
+        
+        calculateDeliveryFee(latitude, longitude);
+        setIsGettingLocation(false);
+      },
+      (error) => {
+        toast({
+          title: "Location error",
+          description: "Please enable location access to calculate delivery fee",
+          variant: "destructive",
+        });
+        setIsGettingLocation(false);
+      }
+    );
+  };
+
+  const calculateDeliveryFee = async (latitude: number, longitude: number) => {
+    setIsCalculatingDistance(true);
+
+    try {
+      const res = await apiRequest("POST", "/api/calculate-delivery", {
+        latitude,
+        longitude,
+      });
+      const result = await res.json();
+
+      if (result.distance > 10) {
+        toast({
+          title: "Location Too Far",
+          description: "The location seems outside our Kurla delivery area.",
+          variant: "destructive",
+        });
+        setCalculatedDistance(null);
+        setCalculatedDeliveryFee(40);
+        return;
+      }
+
+      setCalculatedDistance(result.distance);
+      setCalculatedDeliveryFee(result.deliveryFee);
+
+      toast({
+        title: "Delivery fee calculated",
+        description: `Distance: ${result.distance}km | Fee: ₹${result.deliveryFee}`,
+      });
+    } catch (error) {
+      toast({
+        title: "Calculation failed",
+        description: "Could not calculate delivery fee. Using default fee.",
+        variant: "destructive",
+      });
+      setCalculatedDistance(null);
+      setCalculatedDeliveryFee(40);
+    } finally {
+      setIsCalculatingDistance(false);
+    }
+  };
+
   const placeOrderMutation = useMutation({
     mutationFn: async (data: CheckoutFormData) => {
-      // Extract chefId from the first item, assuming all items in a cart belong to the same chef/restaurant
       const chefId = cartItems.length > 0 ? cartItems[0].chefId : null;
 
       const res = await apiRequest("POST", "/api/orders", {
@@ -90,8 +172,8 @@ export default function CheckoutDialog({
         phone: data.phone,
         email: data.email || undefined,
         address: data.address,
-        latitude: data.latitude ? parseFloat(data.latitude) : undefined,
-        longitude: data.longitude ? parseFloat(data.longitude) : undefined,
+        latitude: userLocation?.lat,
+        longitude: userLocation?.lng,
         items: cartItems.map(item => ({
           id: item.id,
           name: item.name,
@@ -103,7 +185,7 @@ export default function CheckoutDialog({
         distance: calculatedDistance || undefined,
         total: subtotal + calculatedDeliveryFee,
         status: "pending",
-        chefId: chefId, // Include chefId in the order data
+        chefId: chefId,
       });
       return await res.json();
     },
@@ -125,13 +207,17 @@ export default function CheckoutDialog({
     },
   });
 
-  const calculateDistanceAndFee = async () => {
-    const latitude = form.getValues("latitude");
-    const longitude = form.getValues("longitude");
-    const address = form.getValues("address");
+  const onSubmit = (data: CheckoutFormData) => {
+    if (!userLocation) {
+      toast({
+        title: "Location required",
+        description: "Please allow location access to calculate delivery fee",
+        variant: "destructive",
+      });
+      return;
+    }
 
-    // Check if address contains Kurla
-    const addressLower = address.toLowerCase().trim();
+    const addressLower = data.address.toLowerCase().trim();
     if (!addressLower.includes("kurla")) {
       toast({
         title: "Delivery Not Available",
@@ -141,53 +227,6 @@ export default function CheckoutDialog({
       return;
     }
 
-    if (!latitude || !longitude) {
-      toast({
-        title: "Location required",
-        description: "Please enter your delivery coordinates to calculate delivery fee",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsCalculatingDistance(true);
-
-    try {
-      const res = await apiRequest("POST", "/api/calculate-delivery", {
-        latitude: parseFloat(latitude),
-        longitude: parseFloat(longitude),
-      });
-      const result = await res.json();
-
-      // Additional validation based on distance
-      if (result.distance > 10) {
-        toast({
-          title: "Location Too Far",
-          description: "The location seems outside our Kurla delivery area. Please verify your address.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      setCalculatedDistance(result.distance);
-      setCalculatedDeliveryFee(result.deliveryFee);
-
-      toast({
-        title: "Delivery fee calculated",
-        description: `Distance: ${result.distance}km | Fee: ₹${result.deliveryFee}`,
-      });
-    } catch (error) {
-      toast({
-        title: "Calculation failed",
-        description: "Could not calculate delivery fee. Using default fee.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsCalculatingDistance(false);
-    }
-  };
-
-  const onSubmit = (data: CheckoutFormData) => {
     placeOrderMutation.mutate(data);
   };
 
@@ -201,8 +240,8 @@ export default function CheckoutDialog({
   if (orderPlaced) {
     return (
       <Dialog open={isOpen} onOpenChange={handleClose}>
-        <DialogContent data-testid="dialog-order-success">
-          <div className="text-center py-8">
+        <DialogContent data-testid="dialog-order-success" className="sm:max-w-md">
+          <div className="text-center py-6">
             <CheckCircle2 className="h-16 w-16 text-green-500 mx-auto mb-4" />
             <DialogTitle className="text-2xl mb-2" data-testid="text-success-title">
               Order Placed Successfully!
@@ -215,9 +254,9 @@ export default function CheckoutDialog({
                 <p>Delivery distance: {calculatedDistance} km</p>
               )}
               <p>Estimated delivery time: {calculatedDistance ? `${Math.ceil(calculatedDistance * 2 + 15)}-${Math.ceil(calculatedDistance * 2 + 20)}` : '25-30'} minutes</p>
-              <p>Total amount: ₹{subtotal + calculatedDeliveryFee}</p>
+              <p className="text-lg font-semibold text-foreground">Total: ₹{subtotal + calculatedDeliveryFee}</p>
             </div>
-            <Button onClick={handleClose} data-testid="button-close-success">
+            <Button onClick={handleClose} data-testid="button-close-success" className="w-full">
               Continue Shopping
             </Button>
           </div>
@@ -228,7 +267,7 @@ export default function CheckoutDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="max-w-md" data-testid="dialog-checkout">
+      <DialogContent className="sm:max-w-md" data-testid="dialog-checkout">
         <DialogHeader>
           <DialogTitle data-testid="text-checkout-title">Complete Your Order</DialogTitle>
           <DialogDescription data-testid="text-checkout-description">
@@ -304,6 +343,7 @@ export default function CheckoutDialog({
                       placeholder="Enter your complete delivery address in Kurla, Mumbai"
                       {...field}
                       data-testid="input-address"
+                      rows={3}
                     />
                   </FormControl>
                   <FormMessage />
@@ -311,61 +351,47 @@ export default function CheckoutDialog({
               )}
             />
 
-            <div className="grid grid-cols-2 gap-3">
-              <FormField
-                control={form.control}
-                name="latitude"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Latitude</FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="e.g., 28.6139"
-                        {...field}
-                        data-testid="input-latitude"
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
+            {!userLocation && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={getUserLocation}
+                disabled={isGettingLocation}
+                className="w-full"
+              >
+                {isGettingLocation ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Getting Location...
+                  </>
+                ) : (
+                  <>
+                    <MapPin className="h-4 w-4 mr-2" />
+                    Enable Location for Delivery Fee
+                  </>
                 )}
-              />
+              </Button>
+            )}
 
-              <FormField
-                control={form.control}
-                name="longitude"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Longitude</FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="e.g., 77.2090"
-                        {...field}
-                        data-testid="input-longitude"
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <Button
-              type="button"
-              variant="outline"
-              onClick={calculateDistanceAndFee}
-              disabled={isCalculatingDistance}
-              className="w-full"
-              data-testid="button-calculate-delivery"
-            >
-              {isCalculatingDistance ? "Calculating..." : "Calculate Delivery Fee"}
-            </Button>
-
-            {calculatedDistance !== null && (
-              <div className="bg-muted p-3 rounded-md text-sm">
-                <p className="font-medium">Distance: {calculatedDistance} km</p>
-                <p className="text-muted-foreground text-xs mt-1">
-                  Delivery time: {Math.ceil(calculatedDistance * 2 + 15)}-{Math.ceil(calculatedDistance * 2 + 20)} minutes
-                </p>
+            {userLocation && (
+              <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 p-4 rounded-md">
+                <div className="flex items-center gap-2 text-green-700 dark:text-green-400 mb-2">
+                  <MapPin className="h-4 w-4" />
+                  <span className="font-medium">Location Detected</span>
+                </div>
+                {isCalculatingDistance ? (
+                  <div className="text-sm text-muted-foreground flex items-center gap-2">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Calculating delivery fee...
+                  </div>
+                ) : calculatedDistance !== null ? (
+                  <div className="text-sm space-y-1">
+                    <p className="font-medium">Distance: {calculatedDistance} km</p>
+                    <p className="text-muted-foreground">
+                      Delivery time: {Math.ceil(calculatedDistance * 2 + 15)}-{Math.ceil(calculatedDistance * 2 + 20)} minutes
+                    </p>
+                  </div>
+                ) : null}
               </div>
             )}
 
@@ -384,7 +410,7 @@ export default function CheckoutDialog({
               </div>
             </div>
 
-            <div className="flex gap-3 pt-4">
+            <div className="flex gap-3 pt-2">
               <Button
                 type="button"
                 variant="outline"
@@ -397,7 +423,7 @@ export default function CheckoutDialog({
               <Button
                 type="submit"
                 className="flex-1"
-                disabled={placeOrderMutation.isPending}
+                disabled={placeOrderMutation.isPending || !userLocation}
                 data-testid="button-place-order"
               >
                 {placeOrderMutation.isPending ? "Placing Order..." : "Place Order"}

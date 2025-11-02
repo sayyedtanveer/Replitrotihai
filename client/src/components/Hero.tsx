@@ -1,17 +1,58 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { MapPin, Search } from "lucide-react";
+import { MapPin, Search, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import heroImage from '@assets/generated_images/Indian_food_spread_hero_01f8cdab.png';
 
 export default function Hero() {
   const [location, setLocation] = useState("");
+  const [isGettingLocation, setIsGettingLocation] = useState(false);
   const { toast } = useToast();
+
+  const getUserLocation = () => {
+    setIsGettingLocation(true);
+
+    if (!navigator.geolocation) {
+      toast({
+        title: "Geolocation not supported",
+        description: "Your browser doesn't support geolocation",
+        variant: "destructive",
+      });
+      setIsGettingLocation(false);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        localStorage.setItem('userLatitude', latitude.toString());
+        localStorage.setItem('userLongitude', longitude.toString());
+
+        // Reverse geocoding to get address (you can use a service like Google Maps API)
+        setLocation(`${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
+
+        toast({
+          title: "Location detected",
+          description: "Your delivery location has been set",
+        });
+
+        setIsGettingLocation(false);
+      },
+      (error) => {
+        toast({
+          title: "Location error",
+          description: "Please enable location access or enter your address manually",
+          variant: "destructive",
+        });
+        setIsGettingLocation(false);
+      }
+    );
+  };
 
   const handleSearchFood = () => {
     const locationLower = location.toLowerCase().trim();
-    
+
     if (!locationLower) {
       toast({
         title: "Location Required",
@@ -88,6 +129,20 @@ export default function Hero() {
             >
               <Search className="h-5 w-5" />
               Search Food
+            </Button>
+            <Button
+              size="lg"
+              variant="outline"
+              onClick={getUserLocation}
+              disabled={isGettingLocation}
+              data-testid="button-get-location"
+            >
+              {isGettingLocation ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <MapPin className="h-5 w-5" />
+              )}
+              Use My Location
             </Button>
           </div>
         </div>
