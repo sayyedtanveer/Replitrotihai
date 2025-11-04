@@ -25,6 +25,7 @@ import AdminManagement from "@/pages/admin/AdminManagement";
 import PartnerLogin from "@/pages/partner/PartnerLogin";
 import PartnerDashboard from "@/pages/partner/PartnerDashboard";
 import AdminDeliverySettings from "@/pages/admin/AdminDeliverySettings";
+import AdminPayments from "./pages/admin/AdminPayments";
 
 function Router() {
   const { isAuthenticated } = useAuth();
@@ -34,6 +35,7 @@ function Router() {
       <Route path="/admin/login" component={AdminLogin} />
       <Route path="/admin/dashboard" component={AdminDashboard} />
       <Route path="/admin/orders" component={AdminOrders} />
+      <Route path="/admin/payments" component={AdminPayments} />
       <Route path="/admin/products" component={AdminProducts} />
       <Route path="/admin/inventory" component={AdminInventory} />
       <Route path="/admin/notifications" component={AdminNotifications} />

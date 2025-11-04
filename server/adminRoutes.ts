@@ -164,7 +164,16 @@ export function registerAdminRoutes(app: Express) {
 
   app.get("/api/admin/orders", requireAdmin(), async (req, res) => {
     try {
-      const orders = await storage.getAllOrders();
+      const { paymentPending } = req.query;
+      let orders = await storage.getAllOrders();
+      
+      // Filter for pending payments if requested
+      if (paymentPending === "true") {
+        orders = orders.filter(order => 
+          order.paymentStatus === "pending" || order.paymentStatus === "paid"
+        );
+      }
+      
       res.json(orders);
     } catch (error) {
       console.error("Get orders error:", error);

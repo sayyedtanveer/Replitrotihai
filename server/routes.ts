@@ -11,6 +11,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerAdminRoutes(app);
   registerPartnerRoutes(app);
 
+  // Register AdminPayment page route
+  app.get('/api/admin/payments', isAuthenticated, async (req, res) => {
+    // This route should serve the AdminPayments component
+    // For now, we'll just return a placeholder or redirect if needed
+    // In a full-stack app, this might be handled by a frontend router
+    // or by serving an index.html that includes AdminPayments.
+    console.log("Accessed Admin Payments route");
+    // Example: If you are serving static files and AdminPayments is a page
+    // res.sendFile(path.join(__dirname, '../public/admin-payments.html'));
+    // Or if it's an API endpoint that returns data for the page:
+    try {
+      // Fetch payment data or configuration here
+      res.json({ message: "Admin payments page data endpoint" });
+    } catch (error) {
+      console.error("Error in admin payments route:", error);
+      res.status(500).json({ message: "Failed to load admin payments data" });
+    }
+  });
+
+
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
@@ -73,8 +93,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const order = await storage.createOrder(result.data);
+
+      // Send WhatsApp notification to admin
+      const adminPhone = process.env.ADMIN_WHATSAPP || "919876543210"; // Configure this in secrets
+      const message = `🔔 New Order Received!\n\nOrder ID: ${order.id.slice(0, 8)}\nCustomer: ${order.customerName}\nPhone: ${order.phone}\nAmount: ₹${order.total}\nPayment: ${order.paymentStatus}\n\nPlease check admin panel for details.`;
+
+      // Log the WhatsApp message (you can integrate with WhatsApp Business API)
+      console.log(`[WhatsApp] Sending to ${adminPhone}:`, message);
+
+      // For now, we'll just log it. To actually send WhatsApp messages, you need to:
+      // 1. Set up WhatsApp Business API
+      // 2. Use a service like Twilio, MessageBird, or WhatsApp Cloud API
+      // Example with Twilio (after installing twilio package):
+      // const twilio = require('twilio');
+      // const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+      // await client.messages.create({
+      //   body: message,
+      //   from: 'whatsapp:+14155238886', // Twilio sandbox or your WhatsApp number
+      //   to: `whatsapp:+${adminPhone}`
+      // });
+
       res.status(201).json(order);
     } catch (error) {
+      console.error("Create order error:", error);
       res.status(500).json({ message: "Failed to create order" });
     }
   });
@@ -88,7 +129,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.status(404).json({ message: "User not found" });
         return;
       }
-      
+
       const allOrders = await storage.getAllOrders();
       // Filter orders by user's email or phone
       const userOrders = allOrders.filter(order => 
@@ -135,7 +176,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/calculate-delivery", async (req, res) => {
     try {
       const { latitude, longitude } = req.body;
-      
+
       if (!latitude || !longitude) {
         res.status(400).json({ message: "Latitude and longitude are required" });
         return;
@@ -149,21 +190,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const R = 6371; // Earth's radius in km
       const dLat = toRad(latitude - STORE_LAT);
       const dLon = toRad(longitude - STORE_LON);
-      
+
       const a =
         Math.sin(dLat / 2) * Math.sin(dLat / 2) +
         Math.cos(toRad(STORE_LAT)) *
         Math.cos(toRad(latitude)) *
         Math.sin(dLon / 2) *
         Math.sin(dLon / 2);
-      
+
       const c = 2 * Math.asin(Math.sqrt(a));
       const distance = parseFloat((R * c).toFixed(2));
 
       // Calculate delivery fee
       const baseFee = 20;
       let deliveryFee = baseFee;
-      
+
       if (distance > 2) {
         deliveryFee = baseFee + Math.ceil(distance - 2) * 10;
       }
