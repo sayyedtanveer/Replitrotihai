@@ -195,6 +195,29 @@ export function registerAdminRoutes(app: Express) {
     }
   });
 
+  app.patch("/api/admin/orders/:id/payment", requireAdminOrManager(), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { paymentStatus } = req.body;
+
+      if (!paymentStatus) {
+        res.status(400).json({ message: "Payment status is required" });
+        return;
+      }
+
+      const order = await storage.updateOrderPaymentStatus(id, paymentStatus);
+      if (!order) {
+        res.status(404).json({ message: "Order not found" });
+        return;
+      }
+
+      res.json(order);
+    } catch (error) {
+      console.error("Update payment status error:", error);
+      res.status(500).json({ message: "Failed to update payment status" });
+    }
+  });
+
   app.get("/api/admin/categories", requireAdmin(), async (req, res) => {
     try {
       const categories = await storage.getAllCategories();
@@ -677,6 +700,61 @@ export function registerAdminRoutes(app: Express) {
     } catch (error) {
       console.error("Get subscription report error:", error);
       res.status(500).json({ message: "Failed to fetch subscription report" });
+    }
+  });
+
+  // Delivery Settings
+  app.get("/api/admin/delivery-settings", requireAdmin(), async (req, res) => {
+    try {
+      const settings = await storage.getDeliverySettings();
+      res.json(settings);
+    } catch (error) {
+      console.error("Get delivery settings error:", error);
+      res.status(500).json({ message: "Failed to fetch delivery settings" });
+    }
+  });
+
+  app.post("/api/admin/delivery-settings", requireAdminOrManager(), async (req, res) => {
+    try {
+      const setting = await storage.createDeliverySetting(req.body);
+      res.status(201).json(setting);
+    } catch (error) {
+      console.error("Create delivery setting error:", error);
+      res.status(500).json({ message: "Failed to create delivery setting" });
+    }
+  });
+
+  app.patch("/api/admin/delivery-settings/:id", requireAdminOrManager(), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const setting = await storage.updateDeliverySetting(id, req.body);
+
+      if (!setting) {
+        res.status(404).json({ message: "Delivery setting not found" });
+        return;
+      }
+
+      res.json(setting);
+    } catch (error) {
+      console.error("Update delivery setting error:", error);
+      res.status(500).json({ message: "Failed to update delivery setting" });
+    }
+  });
+
+  app.delete("/api/admin/delivery-settings/:id", requireSuperAdmin(), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const deleted = await storage.deleteDeliverySetting(id);
+
+      if (!deleted) {
+        res.status(404).json({ message: "Delivery setting not found" });
+        return;
+      }
+
+      res.json({ message: "Delivery setting deleted successfully" });
+    } catch (error) {
+      console.error("Delete delivery setting error:", error);
+      res.status(500).json({ message: "Failed to delete delivery setting" });
     }
   });
 }

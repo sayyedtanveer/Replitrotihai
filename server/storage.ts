@@ -1,7 +1,7 @@
 import { type Category, type InsertCategory, type Product, type InsertProduct, type Order, type InsertOrder, type User, type UpsertUser, type Chef, type AdminUser, type InsertAdminUser, type PartnerUser, type Subscription, type SubscriptionPlan, type DeliverySetting, type InsertDeliverySetting } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { nanoid } from "nanoid";
-import { eq } from "drizzle-orm";
+import { eq, and, gte, lte } from "drizzle-orm";
 import { db, sql, users, categories, products, orders, chefs, adminUsers, partnerUsers, subscriptions, subscriptionPlans, deliverySettings } from "@shared/db";
 
 export interface IStorage {
@@ -27,7 +27,7 @@ export interface IStorage {
   getOrderById(id: string): Promise<Order | undefined>;
   getAllOrders(): Promise<Order[]>;
   updateOrderStatus(id: string, status: string): Promise<Order | undefined>;
-  updateOrderPaymentStatus(id: string, paymentStatus: string): Promise<Order | undefined>;
+  updateOrderPaymentStatus(id: string, paymentStatus: "pending" | "paid" | "confirmed"): Promise<Order | undefined>;
   deleteOrder(id: string): Promise<void>;
 
   getChefs(): Promise<Chef[]>;
@@ -238,13 +238,21 @@ export class MemStorage implements IStorage {
   }
 
   async updateOrderStatus(id: string, status: string): Promise<Order | undefined> {
-    await db.update(orders).set({ status }).where(eq(orders.id, id));
-    return this.getOrderById(id);
+    const [order] = await db
+      .update(orders)
+      .set({ status })
+      .where(eq(orders.id, id))
+      .returning();
+    return order;
   }
 
-  async updateOrderPaymentStatus(id: string, paymentStatus: string): Promise<Order | undefined> {
-    await db.update(orders).set({ paymentStatus: paymentStatus as "pending" | "paid" | "confirmed" }).where(eq(orders.id, id));
-    return this.getOrderById(id);
+  async updateOrderPaymentStatus(id: string, paymentStatus: "pending" | "paid" | "confirmed"): Promise<Order | undefined> {
+    const [order] = await db
+      .update(orders)
+      .set({ paymentStatus })
+      .where(eq(orders.id, id))
+      .returning();
+    return order;
   }
 
   async deleteOrder(id: string): Promise<void> {

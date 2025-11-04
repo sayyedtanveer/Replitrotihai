@@ -16,6 +16,8 @@ import {
   BarChart3,
   Boxes,
   Bell,
+  CreditCard,
+  Truck,
 } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -51,6 +53,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const navigation = [
     { name: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
     { name: "Orders", href: "/admin/orders", icon: ShoppingBag },
+    { name: "Payments", href: "/admin/payments", icon: CreditCard },
     { name: "Products", href: "/admin/products", icon: Package },
     { name: "Inventory", href: "/admin/inventory", icon: Boxes },
     { name: "Categories", href: "/admin/categories", icon: FolderKanban },
@@ -125,6 +128,12 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               <a className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${location === "/admin/subscriptions" ? "bg-primary text-primary-foreground" : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"}`}>
                 <Calendar className="w-5 h-5" />
                 <span>Subscriptions</span>
+              </a>
+            </Link>
+            <Link href="/admin/delivery-settings">
+              <a className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${location === "/admin/delivery-settings" ? "bg-primary text-primary-foreground" : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"}`}>
+                <Truck className="w-5 h-5" />
+                <span>Delivery Settings</span>
               </a>
             </Link>
           </nav>

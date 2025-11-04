@@ -24,6 +24,7 @@ import AdminUsers from "@/pages/admin/AdminUsers";
 import AdminManagement from "@/pages/admin/AdminManagement";
 import PartnerLogin from "@/pages/partner/PartnerLogin";
 import PartnerDashboard from "@/pages/partner/PartnerDashboard";
+import AdminDeliverySettings from "@/pages/admin/AdminDeliverySettings";
 
 function Router() {
   const { isAuthenticated } = useAuth();
@@ -42,6 +43,7 @@ function Router() {
       <Route path="/admin/chefs" component={AdminChefs} />
       <Route path="/admin/admins" component={AdminManagement} />
       <Route path="/admin/users" component={AdminUsers} />
+      <Route path="/admin/delivery-settings" component={AdminDeliverySettings} />
 
       <Route path="/partner/login" component={PartnerLogin} />
       <Route path="/partner/dashboard" component={PartnerDashboard} />
