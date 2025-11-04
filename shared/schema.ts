@@ -81,6 +81,8 @@ export const products = pgTable("products", {
   isAvailable: boolean("is_available").notNull().default(true),
 });
 
+export const paymentStatusEnum = pgEnum("payment_status", ["pending", "paid", "confirmed"]);
+
 export const orders = pgTable("orders", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   customerName: text("customer_name").notNull(),
@@ -92,8 +94,21 @@ export const orders = pgTable("orders", {
   deliveryFee: integer("delivery_fee").notNull(),
   total: integer("total").notNull(),
   status: text("status").notNull().default("pending"),
+  paymentStatus: paymentStatusEnum("payment_status").notNull().default("pending"),
+  paymentQrShown: boolean("payment_qr_shown").notNull().default(false),
   chefId: text("chef_id"),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
+export const deliverySettings = pgTable("delivery_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  minDistance: decimal("min_distance", { precision: 5, scale: 2 }).notNull(),
+  maxDistance: decimal("max_distance", { precision: 5, scale: 2 }).notNull(),
+  price: integer("price").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
 export const subscriptionStatusEnum = pgEnum("subscription_status", ["active", "paused", "cancelled", "expired"]);
@@ -224,7 +239,16 @@ export const insertSubscriptionSchema = createInsertSchema(subscriptions).omit({
   updatedAt: true,
 });
 
+export const insertDeliverySettingSchema = createInsertSchema(deliverySettings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export type InsertSubscriptionPlan = z.infer<typeof insertSubscriptionPlanSchema>;
 export type SubscriptionPlan = typeof subscriptionPlans.$inferSelect;
 export type InsertSubscription = z.infer<typeof insertSubscriptionSchema>;
 export type Subscription = typeof subscriptions.$inferSelect;
+
+export type InsertDeliverySetting = z.infer<typeof insertDeliverySettingSchema>;
+export type DeliverySetting = typeof deliverySettings.$inferSelect;

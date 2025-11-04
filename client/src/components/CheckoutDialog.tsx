@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -6,8 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { MapPin } from "lucide-react";
-import { calculateDistance, isInDeliveryZone, getDeliveryMessage } from "@/lib/locationUtils";
+import PaymentQRDialog from "./PaymentQRDialog";
 
 interface CheckoutDialogProps {
   isOpen: boolean;
@@ -22,37 +21,16 @@ export default function CheckoutDialog({ isOpen, onClose, cartItems, onOrderSucc
     phone: "",
     email: "",
     address: "",
-    latitude: "",
-    longitude: "",
   });
 
-  const [deliveryInfo, setDeliveryInfo] = useState<{ distance: number; fee: number; time: number } | null>(null);
+  const [showPaymentQR, setShowPaymentQR] = useState(false);
+  const [orderId, setOrderId] = useState("");
+
   const { toast } = useToast();
 
   const subtotal = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const deliveryFee = deliveryInfo?.fee || 0;
+  const deliveryFee = 40;
   const total = subtotal + deliveryFee;
-
-  const calculateDeliveryFee = async (lat: number, lon: number) => {
-    try {
-      const response = await fetch("/api/calculate-delivery", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ latitude: lat, longitude: lon }),
-      });
-
-      if (!response.ok) throw new Error("Failed to calculate delivery");
-
-      const data = await response.json();
-      setDeliveryInfo(data);
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to calculate delivery fee",
-        variant: "destructive",
-      });
-    }
-  };
 
   const orderMutation = useMutation({
     mutationFn: async (orderData: any) => {
@@ -65,23 +43,16 @@ export default function CheckoutDialog({ isOpen, onClose, cartItems, onOrderSucc
       if (!response.ok) throw new Error("Failed to create order");
       return response.json();
     },
-    onSuccess: () => {
-      toast({
-        title: "Order placed!",
-        description: "Your order has been successfully placed.",
-      });
-      onOrderSuccess();
+    onSuccess: (data) => {
+      setOrderId(data.id);
       onClose();
+      setShowPaymentQR(true);
       setFormData({
         customerName: "",
         phone: "",
         email: "",
         address: "",
-        latitude: "",
-        longitude: "",
       });
-      setDeliveryInfo(null);
-      setLocationStatus("");
     },
     onError: () => {
       toast({
@@ -95,31 +66,10 @@ export default function CheckoutDialog({ isOpen, onClose, cartItems, onOrderSucc
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.latitude || !formData.longitude) {
-      toast({
-        title: "Location required",
-        description: "Please get your location or enter coordinates manually",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const lat = parseFloat(formData.latitude);
-    const lon = parseFloat(formData.longitude);
-
-    if (!isInDeliveryZone(lat, lon)) {
-      toast({
-        title: "Outside delivery zone",
-        description: "Sorry, we don't deliver to your location yet.",
-        variant: "destructive",
-      });
-      return;
-    }
-
     orderMutation.mutate({
       customerName: formData.customerName,
       phone: formData.phone,
-      email: formData.email || null,
+      ...(formData.email && { email: formData.email }),
       address: formData.address,
       items: cartItems.map(item => ({
         id: item.id,
@@ -135,48 +85,30 @@ export default function CheckoutDialog({ isOpen, onClose, cartItems, onOrderSucc
     });
   };
 
-  useEffect(() => {
-    // Auto-populate coordinates from localStorage when dialog opens
-    if (isOpen) {
-      const savedLat = localStorage.getItem('userLatitude');
-      const savedLng = localStorage.getItem('userLongitude');
-      
-      if (savedLat && savedLng) {
-        setFormData(prev => ({
-          ...prev,
-          latitude: savedLat,
-          longitude: savedLng,
-        }));
-      }
-    }
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (formData.latitude && formData.longitude) {
-      const lat = parseFloat(formData.latitude);
-      const lon = parseFloat(formData.longitude);
-      if (!isNaN(lat) && !isNaN(lon)) {
-        calculateDeliveryFee(lat, lon);
-      }
-    }
-  }, [formData.latitude, formData.longitude]);
+  const handlePaymentClose = () => {
+    setShowPaymentQR(false);
+    onOrderSuccess();
+  };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Checkout</DialogTitle>
-          <DialogDescription>Complete your order details</DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent className="w-full max-w-md sm:max-w-lg mx-auto">
+          <DialogHeader>
+            <DialogTitle>Checkout</DialogTitle>
+            <DialogDescription>Complete your order details</DialogDescription>
+          </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-3">
             <div>
               <Label htmlFor="customerName">Full Name *</Label>
               <Input
                 id="customerName"
+                data-testid="input-customer-name"
                 value={formData.customerName}
                 onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
+                placeholder="Enter your full name"
                 required
               />
             </div>
@@ -186,8 +118,10 @@ export default function CheckoutDialog({ isOpen, onClose, cartItems, onOrderSucc
               <Input
                 id="phone"
                 type="tel"
+                data-testid="input-phone"
                 value={formData.phone}
                 onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                placeholder="Enter your phone number"
                 required
               />
             </div>
@@ -197,8 +131,10 @@ export default function CheckoutDialog({ isOpen, onClose, cartItems, onOrderSucc
               <Input
                 id="email"
                 type="email"
+                data-testid="input-email"
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                placeholder="Enter your email"
               />
             </div>
 
@@ -206,78 +142,53 @@ export default function CheckoutDialog({ isOpen, onClose, cartItems, onOrderSucc
               <Label htmlFor="address">Delivery Address *</Label>
               <Textarea
                 id="address"
+                data-testid="textarea-address"
                 value={formData.address}
                 onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                placeholder="Enter complete delivery address with landmark"
                 required
                 rows={3}
+                className="resize-none"
               />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Location Coordinates *</Label>
-              <p className="text-xs text-muted-foreground">
-                Your location was detected on the home page. Verify the coordinates below.
+              <p className="text-xs text-muted-foreground mt-1">
+                Please include street, area, and any landmarks in Kurla West, Mumbai
               </p>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <Label htmlFor="latitude" className="text-xs">Latitude</Label>
-                  <Input
-                    id="latitude"
-                    type="number"
-                    step="any"
-                    value={formData.latitude}
-                    onChange={(e) => setFormData({ ...formData, latitude: e.target.value })}
-                    placeholder="19.0728"
-                    required
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="longitude" className="text-xs">Longitude</Label>
-                  <Input
-                    id="longitude"
-                    type="number"
-                    step="any"
-                    value={formData.longitude}
-                    onChange={(e) => setFormData({ ...formData, longitude: e.target.value })}
-                    placeholder="72.8826"
-                    required
-                  />
-                </div>
-              </div>
             </div>
           </div>
 
           <div className="border-t pt-4 space-y-2">
-            <div className="flex justify-between">
+            <div className="flex justify-between text-sm">
               <span>Subtotal:</span>
               <span>₹{subtotal}</span>
             </div>
-            <div className="flex justify-between">
+            <div className="flex justify-between text-sm">
               <span>Delivery Fee:</span>
               <span>₹{deliveryFee}</span>
             </div>
-            {deliveryInfo && (
-              <div className="flex justify-between text-sm text-muted-foreground">
-                <span>Estimated Time:</span>
-                <span>{deliveryInfo.time} minutes</span>
-              </div>
-            )}
-            <div className="flex justify-between font-bold text-lg">
+            <div className="flex justify-between font-bold text-lg border-t pt-2">
               <span>Total:</span>
               <span>₹{total}</span>
             </div>
           </div>
 
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
+          <DialogFooter className="gap-2">
+            <Button type="button" variant="outline" onClick={onClose} className="flex-1 sm:flex-none" data-testid="button-cancel-checkout">
               Cancel
             </Button>
-            <Button type="submit" disabled={orderMutation.isPending}>
+            <Button type="submit" disabled={orderMutation.isPending} className="flex-1 sm:flex-none" data-testid="button-place-order">
               {orderMutation.isPending ? "Placing Order..." : "Place Order"}
             </Button>
           </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
+
+      <PaymentQRDialog
+        isOpen={showPaymentQR}
+        onClose={handlePaymentClose}
+        orderId={orderId}
+        amount={total}
+      />
+    </>
   );
 }

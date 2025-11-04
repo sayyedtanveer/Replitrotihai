@@ -26,7 +26,7 @@ export default function Hero() {
         
         // Display user-friendly location
         if (deliveryCheck.available) {
-          setLocation(`📍 Kurla, Mumbai (${deliveryCheck.distance.toFixed(1)}km away)`);
+          setLocation(`📍 Kurla West, Mumbai (${deliveryCheck.distance.toFixed(1)}km away)`);
         } else {
           setLocation(`${lat.toFixed(4)}, ${lng.toFixed(4)}`);
           toast({
@@ -58,7 +58,7 @@ export default function Hero() {
 
         // Set a user-friendly location message
         if (deliveryCheck.available) {
-          setLocation(`📍 Kurla, Mumbai (${deliveryCheck.distance.toFixed(1)}km away)`);
+          setLocation(`📍 Kurla West, Mumbai (${deliveryCheck.distance.toFixed(1)}km away)`);
           toast({
             title: "Location Detected",
             description: deliveryCheck.message,
@@ -101,7 +101,7 @@ export default function Hero() {
 
         // Set user-friendly location message
         if (deliveryCheck.available) {
-          setLocation(`📍 Kurla, Mumbai (${deliveryCheck.distance.toFixed(1)}km away)`);
+          setLocation(`📍 Kurla West, Mumbai (${deliveryCheck.distance.toFixed(1)}km away)`);
         } else {
           setLocation(`${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
         }

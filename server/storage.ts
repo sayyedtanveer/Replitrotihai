@@ -1,8 +1,8 @@
-import { type Category, type InsertCategory, type Product, type InsertProduct, type Order, type InsertOrder, type User, type UpsertUser, type Chef, type AdminUser, type InsertAdminUser, type PartnerUser, type Subscription, type SubscriptionPlan } from "@shared/schema";
+import { type Category, type InsertCategory, type Product, type InsertProduct, type Order, type InsertOrder, type User, type UpsertUser, type Chef, type AdminUser, type InsertAdminUser, type PartnerUser, type Subscription, type SubscriptionPlan, type DeliverySetting, type InsertDeliverySetting } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { nanoid } from "nanoid";
 import { eq } from "drizzle-orm";
-import { db, sql, users, categories, products, orders, chefs, adminUsers, partnerUsers, subscriptions, subscriptionPlans } from "@shared/db";
+import { db, sql, users, categories, products, orders, chefs, adminUsers, partnerUsers, subscriptions, subscriptionPlans, deliverySettings } from "@shared/db";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -27,6 +27,7 @@ export interface IStorage {
   getOrderById(id: string): Promise<Order | undefined>;
   getAllOrders(): Promise<Order[]>;
   updateOrderStatus(id: string, status: string): Promise<Order | undefined>;
+  updateOrderPaymentStatus(id: string, paymentStatus: string): Promise<Order | undefined>;
   deleteOrder(id: string): Promise<void>;
 
   getChefs(): Promise<Chef[]>;
@@ -72,6 +73,13 @@ export interface IStorage {
   createSubscription(data: Omit<Subscription, "id" | "createdAt" | "updatedAt">): Promise<Subscription>;
   updateSubscription(id: string, data: Partial<Subscription>): Promise<Subscription | undefined>;
   deleteSubscription(id: string): Promise<void>;
+
+  // Delivery settings methods
+  getDeliverySettings(): Promise<DeliverySetting[]>;
+  getDeliverySetting(id: string): Promise<DeliverySetting | undefined>;
+  createDeliverySetting(data: Omit<DeliverySetting, "id" | "createdAt" | "updatedAt">): Promise<DeliverySetting>;
+  updateDeliverySetting(id: string, data: Partial<DeliverySetting>): Promise<DeliverySetting | undefined>;
+  deleteDeliverySetting(id: string): Promise<void>;
 
   // Report methods
   getSalesReport(from: Date, to: Date): Promise<any>;
@@ -212,6 +220,8 @@ export class MemStorage implements IStorage {
       deliveryFee: insertOrder.deliveryFee,
       total: insertOrder.total,
       status: insertOrder.status || "pending",
+      paymentStatus: "pending",
+      paymentQrShown: false,
       chefId: insertOrder.chefId || null,
       createdAt: new Date(),
     };
@@ -229,6 +239,11 @@ export class MemStorage implements IStorage {
 
   async updateOrderStatus(id: string, status: string): Promise<Order | undefined> {
     await db.update(orders).set({ status }).where(eq(orders.id, id));
+    return this.getOrderById(id);
+  }
+
+  async updateOrderPaymentStatus(id: string, paymentStatus: string): Promise<Order | undefined> {
+    await db.update(orders).set({ paymentStatus: paymentStatus as "pending" | "paid" | "confirmed" }).where(eq(orders.id, id));
     return this.getOrderById(id);
   }
 
@@ -547,6 +562,35 @@ export class MemStorage implements IStorage {
       subscriptionRevenue: planStats.reduce((sum, p) => sum + p.revenue, 0),
       topPlans: planStats.sort((a, b) => b.revenue - a.revenue).slice(0, 5),
     };
+  }
+
+  async getDeliverySettings(): Promise<DeliverySetting[]> {
+    return db.query.deliverySettings.findMany({ where: (ds, { eq }) => eq(ds.isActive, true) });
+  }
+
+  async getDeliverySetting(id: string): Promise<DeliverySetting | undefined> {
+    return db.query.deliverySettings.findFirst({ where: (ds, { eq }) => eq(ds.id, id) });
+  }
+
+  async createDeliverySetting(data: Omit<DeliverySetting, "id" | "createdAt" | "updatedAt">): Promise<DeliverySetting> {
+    const id = randomUUID();
+    const setting: DeliverySetting = {
+      ...data,
+      id,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    await db.insert(deliverySettings).values(setting);
+    return setting;
+  }
+
+  async updateDeliverySetting(id: string, data: Partial<DeliverySetting>): Promise<DeliverySetting | undefined> {
+    await db.update(deliverySettings).set({ ...data, updatedAt: new Date() }).where(eq(deliverySettings.id, id));
+    return this.getDeliverySetting(id);
+  }
+
+  async deleteDeliverySetting(id: string): Promise<void> {
+    await db.delete(deliverySettings).where(eq(deliverySettings.id, id));
   }
 }
 
