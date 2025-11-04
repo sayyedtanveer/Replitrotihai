@@ -181,6 +181,9 @@ export class MemStorage implements IStorage {
       isVeg: insertProduct.isVeg !== undefined ? insertProduct.isVeg : true,
       isCustomizable: insertProduct.isCustomizable !== undefined ? insertProduct.isCustomizable : false,
       chefId: insertProduct.chefId || null,
+      stockQuantity: insertProduct.stockQuantity !== undefined ? insertProduct.stockQuantity : 100,
+      lowStockThreshold: insertProduct.lowStockThreshold !== undefined ? insertProduct.lowStockThreshold : 20,
+      isAvailable: insertProduct.isAvailable !== undefined ? insertProduct.isAvailable : true,
     };
     await db.insert(products).values(product);
     return product;
