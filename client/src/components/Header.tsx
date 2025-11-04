@@ -54,7 +54,7 @@ export default function Header({ cartItemCount = 0, onCartClick, onMenuClick, se
               data-testid="button-location"
             >
               <MapPin className="h-4 w-4" />
-              <span>Delivering to Kurla</span>
+              <span>Delivering to Kurla West, Mumbai</span>
             </Button>
           </div>
 
