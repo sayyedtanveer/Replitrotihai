@@ -94,24 +94,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const order = await storage.createOrder(result.data);
 
-      // Send WhatsApp notification to admin
-      const adminPhone = process.env.ADMIN_WHATSAPP || "919876543210"; // Configure this in secrets
-      const message = `🔔 New Order Received!\n\nOrder ID: ${order.id.slice(0, 8)}\nCustomer: ${order.customerName}\nPhone: ${order.phone}\nAmount: ₹${order.total}\nPayment: ${order.paymentStatus}\n\nPlease check admin panel for details.`;
-
-      // Log the WhatsApp message (you can integrate with WhatsApp Business API)
-      console.log(`[WhatsApp] Sending to ${adminPhone}:`, message);
-
-      // For now, we'll just log it. To actually send WhatsApp messages, you need to:
-      // 1. Set up WhatsApp Business API
-      // 2. Use a service like Twilio, MessageBird, or WhatsApp Cloud API
-      // Example with Twilio (after installing twilio package):
-      // const twilio = require('twilio');
-      // const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-      // await client.messages.create({
-      //   body: message,
-      //   from: 'whatsapp:+14155238886', // Twilio sandbox or your WhatsApp number
-      //   to: `whatsapp:+${adminPhone}`
-      // });
+      // Log new order notification
+      console.log(`
+╔════════════════════════════════════════════════════════════════
+║ 🔔 NEW ORDER RECEIVED
+╠════════════════════════════════════════════════════════════════
+║ Order ID: ${order.id.slice(0, 8)}
+║ Customer: ${order.customerName}
+║ Phone: ${order.phone}
+║ Amount: ₹${order.total}
+║ Payment: ${order.paymentStatus}
+║ Time: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
+╠════════════════════════════════════════════════════════════════
+║ ✅ Check admin panel for full order details
+╚════════════════════════════════════════════════════════════════
+      `);
 
       res.status(201).json(order);
     } catch (error) {
