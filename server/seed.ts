@@ -212,6 +212,119 @@ async function seed() {
 
   await db.insert(subscriptionPlans).values(plansData).onConflictDoNothing();
 
+  // Seed Sample Orders for Payment Testing
+  console.log("Seeding sample orders...");
+  const { orders } = await import("@shared/db");
+  const ordersData = [
+    {
+      id: "order1",
+      customerName: "Rahul Sharma",
+      phone: "+91 98765 43210",
+      email: "rahul@example.com",
+      address: "123 MG Road, Kurla West, Mumbai - 400070",
+      items: [
+        { id: "prod1", name: "Butter Roti", price: 8, quantity: 10, image: "/attached_assets/seed_images/roti-category.jpg" },
+        { id: "prod2", name: "Tandoori Roti", price: 10, quantity: 5, image: "/attached_assets/seed_images/tandoori-roti.jpg" }
+      ],
+      subtotal: 130,
+      deliveryFee: 40,
+      total: 170,
+      status: "pending",
+      paymentStatus: "pending" as const,
+      paymentQrShown: true,
+      chefId: "chef1",
+      createdAt: new Date(),
+    },
+    {
+      id: "order2",
+      customerName: "Priya Patel",
+      phone: "+91 87654 32109",
+      email: "priya@example.com",
+      address: "456 LBS Marg, Kurla East, Mumbai - 400024",
+      items: [
+        { id: "prod3", name: "Dal Chawal Combo", price: 80, quantity: 2, image: "/attached_assets/seed_images/lunch-dinner-category.jpg" },
+        { id: "prod4", name: "Rajma Rice", price: 90, quantity: 1, image: "/attached_assets/seed_images/hotel-specials-category.jpg" }
+      ],
+      subtotal: 250,
+      deliveryFee: 60,
+      total: 310,
+      status: "pending",
+      paymentStatus: "paid" as const,
+      paymentQrShown: true,
+      chefId: "chef2",
+      createdAt: new Date(Date.now() - 30 * 60 * 1000), // 30 minutes ago
+    },
+    {
+      id: "order3",
+      customerName: "Amit Kumar",
+      phone: "+91 76543 21098",
+      email: "amit@example.com",
+      address: "789 CST Road, Kurla, Mumbai - 400098",
+      items: [
+        { id: "prod5", name: "Paneer Butter Masala", price: 150, quantity: 1, image: "/attached_assets/seed_images/paneer-butter-masala.jpg" },
+        { id: "prod1", name: "Butter Roti", price: 8, quantity: 6, image: "/attached_assets/seed_images/roti-category.jpg" }
+      ],
+      subtotal: 198,
+      deliveryFee: 40,
+      total: 238,
+      status: "pending",
+      paymentStatus: "pending" as const,
+      paymentQrShown: true,
+      chefId: "chef3",
+      createdAt: new Date(Date.now() - 60 * 60 * 1000), // 1 hour ago
+    }
+  ];
+
+  await db.insert(orders).values(ordersData).onConflictDoNothing();
+
+  // Seed Delivery Settings
+  console.log("Seeding delivery settings...");
+  const { deliverySettings } = await import("@shared/db");
+  const deliverySettingsData = [
+    {
+      id: "ds1",
+      name: "Local Area (0-3 km)",
+      minDistance: "0",
+      maxDistance: "3",
+      price: 40,
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    {
+      id: "ds2",
+      name: "Extended Area (3-5 km)",
+      minDistance: "3",
+      maxDistance: "5",
+      price: 60,
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    {
+      id: "ds3",
+      name: "Far Area (5-10 km)",
+      minDistance: "5",
+      maxDistance: "10",
+      price: 100,
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    {
+      id: "ds4",
+      name: "Very Far (10-15 km)",
+      minDistance: "10",
+      maxDistance: "15",
+      price: 150,
+      isActive: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }
+  ];
+
+  await db.insert(deliverySettings).values(deliverySettingsData).onConflictDoNothing();
+
   console.log("Database seeding completed!");
 }
 
