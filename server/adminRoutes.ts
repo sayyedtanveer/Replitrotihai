@@ -63,7 +63,7 @@ export function registerAdminRoutes(app: Express) {
       }
 
       const { username, password } = validation.data;
-      
+
       let admin;
       try {
         admin = await storage.getAdminByUsername(username);
@@ -176,14 +176,14 @@ export function registerAdminRoutes(app: Express) {
     try {
       const { paymentPending } = req.query;
       let orders = await storage.getAllOrders();
-      
+
       // Filter for pending payments if requested
       if (paymentPending === "true") {
         orders = orders.filter(order => 
           order.paymentStatus === "pending" || order.paymentStatus === "paid"
         );
       }
-      
+
       res.json(orders);
     } catch (error) {
       console.error("Get orders error:", error);
@@ -214,25 +214,42 @@ export function registerAdminRoutes(app: Express) {
     }
   });
 
-  app.patch("/api/admin/orders/:id/payment", requireAdminOrManager(), async (req, res) => {
+  app.patch("/api/admin/orders/:id/payment", requireAdmin, async (req, res) => {
     try {
-      const { id } = req.params;
       const { paymentStatus } = req.body;
+      const order = await storage.getOrderById(req.params.id);
 
-      if (!paymentStatus) {
-        res.status(400).json({ message: "Payment status is required" });
-        return;
-      }
-
-      const order = await storage.updateOrderPaymentStatus(id, paymentStatus);
       if (!order) {
         res.status(404).json({ message: "Order not found" });
         return;
       }
 
-      res.json(order);
+      // When admin confirms payment, also update order status to confirmed
+      const updatedOrder = await storage.updateOrder(req.params.id, { 
+        paymentStatus: paymentStatus as "pending" | "paid" | "confirmed",
+        status: paymentStatus === "confirmed" ? "confirmed" : order.status
+      });
+
+      // Log payment confirmation
+      console.log(`
+╔════════════════════════════════════════════════════════════════
+║ 💰 PAYMENT CONFIRMED BY ADMIN
+╠════════════════════════════════════════════════════════════════
+║ Order ID: ${updatedOrder.id.slice(0, 8)}
+║ Customer: ${updatedOrder.customerName}
+║ Amount: ₹${updatedOrder.total}
+║ Status: Order sent to chef for preparation
+║ Time: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
+╠════════════════════════════════════════════════════════════════
+║ 📱 Notification sent to chef
+╚════════════════════════════════════════════════════════════════
+      `);
+
+      broadcastOrderUpdate(updatedOrder);
+
+      res.json(updatedOrder);
     } catch (error) {
-      console.error("Update payment status error:", error);
+      console.error("Error updating payment status:", error);
       res.status(500).json({ message: "Failed to update payment status" });
     }
   });

@@ -44,8 +44,8 @@ export default function AdminPayments() {
       queryClient.invalidateQueries({ queryKey: ["/api/admin", "orders"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/dashboard/metrics"] });
       toast({
-        title: "Payment confirmed",
-        description: "Payment status has been updated successfully",
+        title: "✓ Payment Confirmed",
+        description: "Order sent to chef for preparation. Notification sent!",
       });
     },
     onError: () => {
@@ -85,6 +85,16 @@ export default function AdminPayments() {
           <p className="text-slate-600 dark:text-slate-400 mt-1">
             Review and confirm pending UPI payments
           </p>
+          <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg">
+            <p className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-2">Payment Workflow:</p>
+            <ol className="text-xs text-blue-700 dark:text-blue-300 space-y-1">
+              <li>1️⃣ Customer places order → QR code shown automatically</li>
+              <li>2️⃣ Customer pays via UPI → Waits for confirmation</li>
+              <li>3️⃣ <strong>You verify payment</strong> in UPI app → Click "Confirm Payment"</li>
+              <li>4️⃣ Order sent to Chef → Chef prepares food</li>
+              <li>5️⃣ Delivery person picks up → Delivers to customer</li>
+            </ol>
+          </div>
         </div>
 
         {isLoading ? (

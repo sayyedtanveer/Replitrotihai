@@ -108,13 +108,18 @@ export default function PaymentQRDialog({ isOpen, onClose, orderId, amount }: Pa
             </div>
           </div>
 
-          <Button 
-            onClick={onClose} 
-            className="w-full"
-            data-testid="button-close-payment"
-          >
-            I've Made the Payment
-          </Button>
+          <div className="space-y-2">
+            <Button 
+              onClick={onClose} 
+              className="w-full"
+              data-testid="button-close-payment"
+            >
+              ✓ I've Completed the Payment
+            </Button>
+            <p className="text-xs text-center text-muted-foreground">
+              Our team will verify and confirm your payment within 5 minutes
+            </p>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

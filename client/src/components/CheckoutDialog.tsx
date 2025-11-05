@@ -37,7 +37,11 @@ export default function CheckoutDialog({ isOpen, onClose, cartItems, onOrderSucc
       const response = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(orderData),
+        body: JSON.stringify({
+          ...orderData,
+          paymentStatus: "pending",
+          paymentQrShown: true,
+        }),
       });
 
       if (!response.ok) throw new Error("Failed to create order");
@@ -47,6 +51,10 @@ export default function CheckoutDialog({ isOpen, onClose, cartItems, onOrderSucc
       setOrderId(data.id);
       onClose();
       setShowPaymentQR(true);
+      toast({
+        title: "Order Created!",
+        description: "Please complete the payment to confirm your order",
+      });
       setFormData({
         customerName: "",
         phone: "",
