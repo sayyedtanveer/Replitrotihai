@@ -11,7 +11,7 @@ import {
 } from "./partnerAuth";
 import { partnerLoginSchema } from "@shared/schema";
 import { fromZodError } from "zod-validation-error";
-import { broadcastOrderUpdate } from "./notifications"; // Assuming broadcastOrderUpdate is in notifications.ts
+import { broadcastOrderUpdate } from "./websocket";
 
 export function registerPartnerRoutes(app: Express) {
   app.post("/api/partner/auth/login", async (req, res) => {
