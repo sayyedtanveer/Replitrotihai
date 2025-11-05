@@ -207,6 +207,13 @@ export function registerAdminRoutes(app: Express) {
         return;
       }
 
+      broadcastOrderUpdate(order);
+      
+      // Notify assigned delivery person when order is confirmed
+      if (status === "confirmed" && order.assignedTo) {
+        notifyDeliveryAssignment(order, order.assignedTo);
+      }
+
       res.json(order);
     } catch (error) {
       console.error("Update order status error:", error);
@@ -266,6 +273,12 @@ export function registerAdminRoutes(app: Express) {
       }
 
       broadcastOrderUpdate(order);
+      
+      // Notify assigned delivery person if order is confirmed
+      if (order.status === "confirmed" && order.assignedTo) {
+        notifyDeliveryAssignment(order, order.assignedTo);
+      }
+      
       res.json(order);
     } catch (error) {
       console.error("Approve order error:", error);

@@ -123,9 +123,13 @@ export function broadcastOrderUpdate(order: Order) {
 export function notifyDeliveryAssignment(order: Order, deliveryPersonId: string) {
   const client = clients.get(deliveryPersonId);
   if (client && client.type === "delivery") {
+    const notificationType = order.status === "confirmed" ? "order_confirmed" : "order_assigned";
     client.ws.send(JSON.stringify({
-      type: "order_assigned",
-      data: order
+      type: notificationType,
+      data: order,
+      message: order.status === "confirmed" 
+        ? `Order #${order.id.slice(0, 8)} has been confirmed and is ready for pickup`
+        : `New order #${order.id.slice(0, 8)} has been assigned to you`
     }));
   }
 }
