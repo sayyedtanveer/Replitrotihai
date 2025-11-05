@@ -69,7 +69,7 @@ export default function CheckoutDialog({ isOpen, onClose, cartItems, onOrderSucc
     orderMutation.mutate({
       customerName: formData.customerName,
       phone: formData.phone,
-      ...(formData.email && { email: formData.email }),
+      email: formData.email || null,
       address: formData.address,
       items: cartItems.map(item => ({
         id: item.id,

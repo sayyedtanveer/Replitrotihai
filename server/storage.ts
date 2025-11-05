@@ -251,8 +251,9 @@ export class MemStorage implements IStorage {
       deliveredAt: null,
       createdAt: new Date(),
     };
-    await db.insert(orders).values(order);
-    return order;
+    
+    const [createdOrder] = await db.insert(orders).values(order).returning();
+    return createdOrder;
   }
 
   async getOrderById(id: string): Promise<Order | undefined> {
@@ -269,7 +270,7 @@ export class MemStorage implements IStorage {
       .set({ status })
       .where(eq(orders.id, id))
       .returning();
-    return order;
+    return order || undefined;
   }
 
   async updateOrderPaymentStatus(id: string, paymentStatus: "pending" | "paid" | "confirmed"): Promise<Order | undefined> {
@@ -278,7 +279,7 @@ export class MemStorage implements IStorage {
       .set({ paymentStatus })
       .where(eq(orders.id, id))
       .returning();
-    return order;
+    return order || undefined;
   }
 
   async deleteOrder(id: string): Promise<void> {
