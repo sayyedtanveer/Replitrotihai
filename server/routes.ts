@@ -95,11 +95,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return;
       }
 
-      const order = await storage.createOrder({
-        ...result.data,
-        paymentQrShown: true,
-        paymentStatus: "pending"
-      });
+      const order = await storage.createOrder(result.data);
 
       // Log new order notification
       console.log(`

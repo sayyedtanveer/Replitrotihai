@@ -227,7 +227,7 @@ export class MemStorage implements IStorage {
 
   async createOrder(insertOrder: InsertOrder): Promise<Order> {
     const id = randomUUID();
-    const order: Order = {
+    const orderData = {
       id,
       customerName: insertOrder.customerName,
       phone: insertOrder.phone,
@@ -238,21 +238,13 @@ export class MemStorage implements IStorage {
       deliveryFee: insertOrder.deliveryFee,
       total: insertOrder.total,
       status: insertOrder.status || "pending",
-      paymentStatus: "pending",
-      paymentQrShown: false,
+      paymentStatus: "pending" as const,
+      paymentQrShown: true,
       chefId: insertOrder.chefId || null,
-      approvedBy: null,
-      approvedAt: null,
-      rejectedBy: null,
-      rejectionReason: null,
-      assignedTo: null,
-      assignedAt: null,
-      pickedUpAt: null,
-      deliveredAt: null,
       createdAt: new Date(),
     };
     
-    const [createdOrder] = await db.insert(orders).values(order).returning();
+    const [createdOrder] = await db.insert(orders).values(orderData).returning();
     return createdOrder;
   }
 
