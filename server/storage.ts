@@ -1,8 +1,8 @@
-import { type Category, type InsertCategory, type Product, type InsertProduct, type Order, type InsertOrder, type User, type UpsertUser, type Chef, type AdminUser, type InsertAdminUser, type PartnerUser, type Subscription, type SubscriptionPlan, type DeliverySetting, type InsertDeliverySetting } from "@shared/schema";
+import { type Category, type InsertCategory, type Product, type InsertProduct, type Order, type InsertOrder, type User, type UpsertUser, type Chef, type AdminUser, type InsertAdminUser, type PartnerUser, type Subscription, type SubscriptionPlan, type DeliverySetting, type InsertDeliverySetting, type DeliveryPersonnel, type InsertDeliveryPersonnel } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { nanoid } from "nanoid";
 import { eq, and, gte, lte } from "drizzle-orm";
-import { db, sql, users, categories, products, orders, chefs, adminUsers, partnerUsers, subscriptions, subscriptionPlans, deliverySettings } from "@shared/db";
+import { db, sql, users, categories, products, orders, chefs, adminUsers, partnerUsers, subscriptions, subscriptionPlans, deliverySettings, deliveryPersonnel } from "@shared/db";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -86,6 +86,24 @@ export interface IStorage {
   getUserReport(from: Date, to: Date): Promise<any>;
   getInventoryReport(): Promise<any>;
   getSubscriptionReport(from: Date, to: Date): Promise<any>;
+
+  // Delivery Personnel methods
+  getDeliveryPersonnelByPhone(phone: string): Promise<DeliveryPersonnel | undefined>;
+  getDeliveryPersonnelById(id: string): Promise<DeliveryPersonnel | undefined>;
+  getAllDeliveryPersonnel(): Promise<DeliveryPersonnel[]>;
+  getAvailableDeliveryPersonnel(): Promise<DeliveryPersonnel[]>;
+  createDeliveryPersonnel(data: InsertDeliveryPersonnel & { passwordHash: string }): Promise<DeliveryPersonnel>;
+  updateDeliveryPersonnel(id: string, data: Partial<DeliveryPersonnel>): Promise<DeliveryPersonnel | undefined>;
+  updateDeliveryPersonnelLastLogin(id: string): Promise<void>;
+  deleteDeliveryPersonnel(id: string): Promise<boolean>;
+
+  // Enhanced Order methods
+  approveOrder(orderId: string, approvedBy: string): Promise<Order | undefined>;
+  rejectOrder(orderId: string, rejectedBy: string, reason: string): Promise<Order | undefined>;
+  assignOrderToDeliveryPerson(orderId: string, deliveryPersonId: string): Promise<Order | undefined>;
+  updateOrderPickup(orderId: string): Promise<Order | undefined>;
+  updateOrderDelivery(orderId: string): Promise<Order | undefined>;
+  getOrdersByDeliveryPerson(deliveryPersonId: string): Promise<Order[]>;
 }
 
 export class MemStorage implements IStorage {
@@ -223,6 +241,14 @@ export class MemStorage implements IStorage {
       paymentStatus: "pending",
       paymentQrShown: false,
       chefId: insertOrder.chefId || null,
+      approvedBy: null,
+      approvedAt: null,
+      rejectedBy: null,
+      rejectionReason: null,
+      assignedTo: null,
+      assignedAt: null,
+      pickedUpAt: null,
+      deliveredAt: null,
       createdAt: new Date(),
     };
     await db.insert(orders).values(order);
@@ -599,6 +625,143 @@ export class MemStorage implements IStorage {
 
   async deleteDeliverySetting(id: string): Promise<void> {
     await db.delete(deliverySettings).where(eq(deliverySettings.id, id));
+  }
+
+  async getDeliveryPersonnelByPhone(phone: string): Promise<DeliveryPersonnel | undefined> {
+    return db.query.deliveryPersonnel.findFirst({ where: (dp, { eq }) => eq(dp.phone, phone) });
+  }
+
+  async getDeliveryPersonnelById(id: string): Promise<DeliveryPersonnel | undefined> {
+    return db.query.deliveryPersonnel.findFirst({ where: (dp, { eq }) => eq(dp.id, id) });
+  }
+
+  async getAllDeliveryPersonnel(): Promise<DeliveryPersonnel[]> {
+    return db.query.deliveryPersonnel.findMany();
+  }
+
+  async getAvailableDeliveryPersonnel(): Promise<DeliveryPersonnel[]> {
+    return db.query.deliveryPersonnel.findMany({ 
+      where: (dp, { eq, and }) => and(eq(dp.status, "available"), eq(dp.isActive, true))
+    });
+  }
+
+  async createDeliveryPersonnel(data: InsertDeliveryPersonnel & { passwordHash: string }): Promise<DeliveryPersonnel> {
+    const id = randomUUID();
+    const deliveryPerson: DeliveryPersonnel = {
+      id,
+      name: data.name,
+      phone: data.phone,
+      email: data.email || null,
+      passwordHash: data.passwordHash,
+      status: data.status || "available",
+      currentLocation: data.currentLocation || null,
+      isActive: true,
+      totalDeliveries: 0,
+      rating: "5.0",
+      createdAt: new Date(),
+      lastLoginAt: null,
+    };
+    await db.insert(deliveryPersonnel).values(deliveryPerson);
+    return deliveryPerson;
+  }
+
+  async updateDeliveryPersonnel(id: string, data: Partial<DeliveryPersonnel>): Promise<DeliveryPersonnel | undefined> {
+    await db.update(deliveryPersonnel).set(data).where(eq(deliveryPersonnel.id, id));
+    return this.getDeliveryPersonnelById(id);
+  }
+
+  async updateDeliveryPersonnelLastLogin(id: string): Promise<void> {
+    await db.update(deliveryPersonnel).set({ lastLoginAt: new Date() }).where(eq(deliveryPersonnel.id, id));
+  }
+
+  async deleteDeliveryPersonnel(id: string): Promise<boolean> {
+    await db.delete(deliveryPersonnel).where(eq(deliveryPersonnel.id, id));
+    return true;
+  }
+
+  async approveOrder(orderId: string, approvedBy: string): Promise<Order | undefined> {
+    const [order] = await db
+      .update(orders)
+      .set({ 
+        status: "approved",
+        approvedBy,
+        approvedAt: new Date()
+      })
+      .where(eq(orders.id, orderId))
+      .returning();
+    return order;
+  }
+
+  async rejectOrder(orderId: string, rejectedBy: string, reason: string): Promise<Order | undefined> {
+    const [order] = await db
+      .update(orders)
+      .set({ 
+        status: "rejected",
+        rejectedBy,
+        rejectionReason: reason
+      })
+      .where(eq(orders.id, orderId))
+      .returning();
+    return order;
+  }
+
+  async assignOrderToDeliveryPerson(orderId: string, deliveryPersonId: string): Promise<Order | undefined> {
+    const [order] = await db
+      .update(orders)
+      .set({ 
+        assignedTo: deliveryPersonId,
+        assignedAt: new Date(),
+        status: "assigned"
+      })
+      .where(eq(orders.id, orderId))
+      .returning();
+
+    await db.update(deliveryPersonnel).set({ status: "busy" }).where(eq(deliveryPersonnel.id, deliveryPersonId));
+    
+    return order;
+  }
+
+  async updateOrderPickup(orderId: string): Promise<Order | undefined> {
+    const [order] = await db
+      .update(orders)
+      .set({ 
+        status: "picked_up",
+        pickedUpAt: new Date()
+      })
+      .where(eq(orders.id, orderId))
+      .returning();
+    return order;
+  }
+
+  async updateOrderDelivery(orderId: string): Promise<Order | undefined> {
+    const order = await this.getOrderById(orderId);
+    if (!order) return undefined;
+
+    const [updatedOrder] = await db
+      .update(orders)
+      .set({ 
+        status: "delivered",
+        deliveredAt: new Date()
+      })
+      .where(eq(orders.id, orderId))
+      .returning();
+
+    if (order.assignedTo) {
+      await db.update(deliveryPersonnel)
+        .set({ 
+          status: "available",
+          totalDeliveries: sql`${deliveryPersonnel.totalDeliveries} + 1`
+        })
+        .where(eq(deliveryPersonnel.id, order.assignedTo));
+    }
+    
+    return updatedOrder;
+  }
+
+  async getOrdersByDeliveryPerson(deliveryPersonId: string): Promise<Order[]> {
+    return db.query.orders.findMany({ 
+      where: (o, { eq }) => eq(o.assignedTo, deliveryPersonId)
+    });
   }
 }
 

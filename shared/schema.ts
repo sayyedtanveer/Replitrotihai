@@ -82,6 +82,22 @@ export const products = pgTable("products", {
 });
 
 export const paymentStatusEnum = pgEnum("payment_status", ["pending", "paid", "confirmed"]);
+export const deliveryPersonnelStatusEnum = pgEnum("delivery_personnel_status", ["available", "busy", "offline"]);
+
+export const deliveryPersonnel = pgTable("delivery_personnel", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  phone: text("phone").notNull().unique(),
+  email: text("email"),
+  passwordHash: text("password_hash").notNull(),
+  status: deliveryPersonnelStatusEnum("status").notNull().default("available"),
+  currentLocation: text("current_location"),
+  isActive: boolean("is_active").notNull().default(true),
+  totalDeliveries: integer("total_deliveries").notNull().default(0),
+  rating: decimal("rating", { precision: 2, scale: 1 }).default("5.0"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  lastLoginAt: timestamp("last_login_at"),
+});
 
 export const orders = pgTable("orders", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -97,6 +113,14 @@ export const orders = pgTable("orders", {
   paymentStatus: paymentStatusEnum("payment_status").notNull().default("pending"),
   paymentQrShown: boolean("payment_qr_shown").notNull().default(false),
   chefId: text("chef_id"),
+  approvedBy: text("approved_by"),
+  approvedAt: timestamp("approved_at"),
+  rejectedBy: text("rejected_by"),
+  rejectionReason: text("rejection_reason"),
+  assignedTo: text("assigned_to"),
+  assignedAt: timestamp("assigned_at"),
+  pickedUpAt: timestamp("picked_up_at"),
+  deliveredAt: timestamp("delivered_at"),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 
@@ -252,3 +276,23 @@ export type Subscription = typeof subscriptions.$inferSelect;
 
 export type InsertDeliverySetting = z.infer<typeof insertDeliverySettingSchema>;
 export type DeliverySetting = typeof deliverySettings.$inferSelect;
+
+export const insertDeliveryPersonnelSchema = createInsertSchema(deliveryPersonnel).omit({
+  id: true,
+  passwordHash: true,
+  totalDeliveries: true,
+  rating: true,
+  createdAt: true,
+  lastLoginAt: true,
+}).extend({
+  password: z.string().min(8),
+});
+
+export const deliveryPersonnelLoginSchema = z.object({
+  phone: z.string(),
+  password: z.string(),
+});
+
+export type InsertDeliveryPersonnel = z.infer<typeof insertDeliveryPersonnelSchema>;
+export type DeliveryPersonnel = typeof deliveryPersonnel.$inferSelect;
+export type DeliveryPersonnelLogin = z.infer<typeof deliveryPersonnelLoginSchema>;

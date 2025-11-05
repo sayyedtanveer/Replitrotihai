@@ -11,8 +11,10 @@ import {
   verifyToken,
   type AuthenticatedAdminRequest,
 } from "./adminAuth";
-import { adminLoginSchema, insertAdminUserSchema, insertCategorySchema, insertProductSchema } from "@shared/schema";
+import { adminLoginSchema, insertAdminUserSchema, insertCategorySchema, insertProductSchema, insertDeliveryPersonnelSchema } from "@shared/schema";
 import { fromZodError } from "zod-validation-error";
+import { broadcastOrderUpdate, broadcastNewOrder, notifyDeliveryAssignment } from "./websocket";
+import { hashPassword as hashDeliveryPassword } from "./deliveryAuth";
 
 export function registerAdminRoutes(app: Express) {
   // TEMPORARY TEST ENDPOINT - REMOVE IN PRODUCTION
@@ -224,6 +226,161 @@ export function registerAdminRoutes(app: Express) {
     } catch (error) {
       console.error("Update payment status error:", error);
       res.status(500).json({ message: "Failed to update payment status" });
+    }
+  });
+
+  app.post("/api/admin/orders/:id/approve", requireAdminOrManager(), async (req: AuthenticatedAdminRequest, res) => {
+    try {
+      const { id } = req.params;
+      const adminId = req.admin?.adminId || "system";
+
+      const order = await storage.approveOrder(id, adminId);
+      if (!order) {
+        res.status(404).json({ message: "Order not found" });
+        return;
+      }
+
+      broadcastOrderUpdate(order);
+      res.json(order);
+    } catch (error) {
+      console.error("Approve order error:", error);
+      res.status(500).json({ message: "Failed to approve order" });
+    }
+  });
+
+  app.post("/api/admin/orders/:id/reject", requireAdminOrManager(), async (req: AuthenticatedAdminRequest, res) => {
+    try {
+      const { id } = req.params;
+      const { reason } = req.body;
+      const adminId = req.admin?.adminId || "system";
+
+      if (!reason) {
+        res.status(400).json({ message: "Rejection reason is required" });
+        return;
+      }
+
+      const order = await storage.rejectOrder(id, adminId, reason);
+      if (!order) {
+        res.status(404).json({ message: "Order not found" });
+        return;
+      }
+
+      broadcastOrderUpdate(order);
+      res.json(order);
+    } catch (error) {
+      console.error("Reject order error:", error);
+      res.status(500).json({ message: "Failed to reject order" });
+    }
+  });
+
+  app.post("/api/admin/orders/:id/assign", requireAdminOrManager(), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { deliveryPersonId } = req.body;
+
+      if (!deliveryPersonId) {
+        res.status(400).json({ message: "Delivery person ID is required" });
+        return;
+      }
+
+      const deliveryPerson = await storage.getDeliveryPersonnelById(deliveryPersonId);
+      if (!deliveryPerson) {
+        res.status(404).json({ message: "Delivery person not found" });
+        return;
+      }
+
+      const order = await storage.assignOrderToDeliveryPerson(id, deliveryPersonId);
+      if (!order) {
+        res.status(404).json({ message: "Order not found" });
+        return;
+      }
+
+      broadcastOrderUpdate(order);
+      notifyDeliveryAssignment(order, deliveryPersonId);
+      res.json(order);
+    } catch (error) {
+      console.error("Assign order error:", error);
+      res.status(500).json({ message: "Failed to assign order" });
+    }
+  });
+
+  app.get("/api/admin/delivery-personnel", requireAdmin(), async (req, res) => {
+    try {
+      const personnel = await storage.getAllDeliveryPersonnel();
+      const sanitized = personnel.map(({ passwordHash, ...rest }) => rest);
+      res.json(sanitized);
+    } catch (error) {
+      console.error("Get delivery personnel error:", error);
+      res.status(500).json({ message: "Failed to fetch delivery personnel" });
+    }
+  });
+
+  app.get("/api/admin/delivery-personnel/available", requireAdmin(), async (req, res) => {
+    try {
+      const personnel = await storage.getAvailableDeliveryPersonnel();
+      const sanitized = personnel.map(({ passwordHash, ...rest }) => rest);
+      res.json(sanitized);
+    } catch (error) {
+      console.error("Get available delivery personnel error:", error);
+      res.status(500).json({ message: "Failed to fetch available delivery personnel" });
+    }
+  });
+
+  app.post("/api/admin/delivery-personnel", requireAdminOrManager(), async (req, res) => {
+    try {
+      const validation = insertDeliveryPersonnelSchema.safeParse(req.body);
+      if (!validation.success) {
+        res.status(400).json({ message: fromZodError(validation.error).toString() });
+        return;
+      }
+
+      const { password, ...dataWithoutPassword } = validation.data;
+      const passwordHash = await hashDeliveryPassword(password);
+
+      const deliveryPerson = await storage.createDeliveryPersonnel({
+        ...dataWithoutPassword,
+        passwordHash,
+      } as any);
+
+      const { passwordHash: _, ...sanitized } = deliveryPerson;
+      res.status(201).json(sanitized);
+    } catch (error: any) {
+      console.error("Create delivery personnel error:", error);
+      if (error.message?.includes("unique")) {
+        res.status(409).json({ message: "Phone number already exists" });
+        return;
+      }
+      res.status(500).json({ message: "Failed to create delivery personnel" });
+    }
+  });
+
+  app.patch("/api/admin/delivery-personnel/:id", requireAdminOrManager(), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+
+      const deliveryPerson = await storage.updateDeliveryPersonnel(id, updates);
+      if (!deliveryPerson) {
+        res.status(404).json({ message: "Delivery person not found" });
+        return;
+      }
+
+      const { passwordHash, ...sanitized } = deliveryPerson;
+      res.json(sanitized);
+    } catch (error) {
+      console.error("Update delivery personnel error:", error);
+      res.status(500).json({ message: "Failed to update delivery personnel" });
+    }
+  });
+
+  app.delete("/api/admin/delivery-personnel/:id", requireSuperAdmin(), async (req, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteDeliveryPersonnel(id);
+      res.json({ message: "Delivery person deleted successfully" });
+    } catch (error) {
+      console.error("Delete delivery personnel error:", error);
+      res.status(500).json({ message: "Failed to delete delivery personnel" });
     }
   });
 
@@ -634,13 +791,7 @@ export function registerAdminRoutes(app: Express) {
   app.delete("/api/admin/subscription-plans/:id", requireSuperAdmin(), async (req, res) => {
     try {
       const { id } = req.params;
-      const deleted = await storage.deleteSubscriptionPlan(id);
-
-      if (!deleted) {
-        res.status(404).json({ message: "Subscription plan not found" });
-        return;
-      }
-
+      await storage.deleteSubscriptionPlan(id);
       res.json({ message: "Subscription plan deleted successfully" });
     } catch (error) {
       console.error("Delete subscription plan error:", error);
@@ -753,13 +904,7 @@ export function registerAdminRoutes(app: Express) {
   app.delete("/api/admin/delivery-settings/:id", requireSuperAdmin(), async (req, res) => {
     try {
       const { id } = req.params;
-      const deleted = await storage.deleteDeliverySetting(id);
-
-      if (!deleted) {
-        res.status(404).json({ message: "Delivery setting not found" });
-        return;
-      }
-
+      await storage.deleteDeliverySetting(id);
       res.json({ message: "Delivery setting deleted successfully" });
     } catch (error) {
       console.error("Delete delivery setting error:", error);

@@ -14,4 +14,4 @@ const client = neon(connectionString);
 export const db = drizzle(client, { schema });
 
 export { sql };
-export const { users, categories, products, orders, chefs, adminUsers, partnerUsers, subscriptions, subscriptionPlans, deliverySettings } = schema;
+export const { users, categories, products, orders, chefs, adminUsers, partnerUsers, subscriptions, subscriptionPlans, deliverySettings, deliveryPersonnel } = schema;

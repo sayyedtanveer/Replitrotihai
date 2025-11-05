@@ -5,11 +5,14 @@ import { insertOrderSchema } from "@shared/schema";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { registerAdminRoutes } from "./adminRoutes";
 import { registerPartnerRoutes } from "./partnerRoutes";
+import { registerDeliveryRoutes } from "./deliveryRoutes";
+import { setupWebSocket, broadcastNewOrder } from "./websocket";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   await setupAuth(app);
   registerAdminRoutes(app);
   registerPartnerRoutes(app);
+  registerDeliveryRoutes(app);
 
   // Register AdminPayment page route
   app.get('/api/admin/payments', isAuthenticated, async (req, res) => {
@@ -110,6 +113,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 ╚════════════════════════════════════════════════════════════════
       `);
 
+      broadcastNewOrder(order);
       res.status(201).json(order);
     } catch (error) {
       console.error("Create order error:", error);
@@ -274,6 +278,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         address: "",
         status: "active",
         startDate: now,
+        endDate: null,
         nextDeliveryDate: nextDelivery,
         customItems: null,
       });
@@ -355,6 +360,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   const httpServer = createServer(app);
+  setupWebSocket(httpServer);
 
   return httpServer;
 }

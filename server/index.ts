@@ -62,11 +62,11 @@ app.use((req, res, next) => {
         email: "admin@rotihai.com",
         role: "super_admin",
         passwordHash,
-      });
+      } as any);
       log("Default admin user created successfully");
     }
-  } catch (error) {
-    log("Failed to create default admin user:", error);
+  } catch (error: any) {
+    log("Failed to create default admin user:", error?.message || error);
   }
 
   const server = await registerRoutes(app);
