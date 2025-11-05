@@ -1,0 +1,420 @@
+{
+  "categories": [
+    {
+      "id": "cat1",
+      "name": "Rotis",
+      "description": "Fresh rotis made daily",
+      "image": "/attached_assets/seed_images/roti-category.jpg",
+      "icon_name": "🫓",
+      "item_count": "12"
+    },
+    {
+      "id": "cat2",
+      "name": "Lunch & Dinner",
+      "description": "Complete meals for your family",
+      "image": "/attached_assets/seed_images/lunch-dinner-category.jpg",
+      "icon_name": "🍛",
+      "item_count": "25"
+    },
+    {
+      "id": "cat3",
+      "name": "Hotel Specials",
+      "description": "Restaurant style dishes",
+      "image": "/attached_assets/seed_images/hotel-specials-category.jpg",
+      "icon_name": "⭐",
+      "item_count": "18"
+    }
+  ],
+  "chefs": [
+    {
+      "id": "chef1",
+      "name": "Ramesh's Kitchen",
+      "description": "Traditional home-style rotis",
+      "image": "/attached_assets/seed_images/chef-ramesh.jpg",
+      "rating": "4.8",
+      "review_count": 152,
+      "category_id": "cat1"
+    },
+    {
+      "id": "chef2",
+      "name": "Anita's Meals",
+      "description": "Complete lunch and dinner meals",
+      "image": "/attached_assets/seed_images/chef-anita.jpg",
+      "rating": "4.9",
+      "review_count": 203,
+      "category_id": "cat2"
+    },
+    {
+      "id": "chef3",
+      "name": "Kurla Tandoor",
+      "description": "Restaurant quality tandoori",
+      "image": "/attached_assets/seed_images/chef-kurla.jpg",
+      "rating": "4.7",
+      "review_count": 98,
+      "category_id": "cat3"
+    }
+  ],
+  "products": [
+    {
+      "id": "prod1",
+      "name": "Butter Roti",
+      "description": "Soft butter roti made with whole wheat",
+      "price": 8,
+      "image": "/attached_assets/seed_images/roti-category.jpg",
+      "rating": "4.8",
+      "review_count": 45,
+      "is_veg": false,
+      "is_customizable": false,
+      "category_id": "cat1",
+      "chef_id": "chef1",
+      "stock_quantity": 100,
+      "low_stock_threshold": 20,
+      "is_available": false
+    },
+    {
+      "id": "prod2",
+      "name": "Tandoori Roti",
+      "description": "Traditional tandoori roti",
+      "price": 10,
+      "image": "/attached_assets/seed_images/tandoori-roti.jpg",
+      "rating": "4.7",
+      "review_count": 38,
+      "is_veg": false,
+      "is_customizable": false,
+      "category_id": "cat1",
+      "chef_id": "chef1",
+      "stock_quantity": 100,
+      "low_stock_threshold": 20,
+      "is_available": false
+    },
+    {
+      "id": "prod3",
+      "name": "Dal Chawal Combo",
+      "description": "Yellow dal with steamed rice",
+      "price": 80,
+      "image": "/attached_assets/seed_images/lunch-dinner-category.jpg",
+      "rating": "4.9",
+      "review_count": 92,
+      "is_veg": false,
+      "is_customizable": false,
+      "category_id": "cat2",
+      "chef_id": "chef2",
+      "stock_quantity": 100,
+      "low_stock_threshold": 20,
+      "is_available": false
+    },
+    {
+      "id": "prod4",
+      "name": "Rajma Rice",
+      "description": "Kidney beans curry with rice",
+      "price": 90,
+      "image": "/attached_assets/seed_images/hotel-specials-category.jpg",
+      "rating": "4.8",
+      "review_count": 76,
+      "is_veg": false,
+      "is_customizable": false,
+      "category_id": "cat2",
+      "chef_id": "chef2",
+      "stock_quantity": 100,
+      "low_stock_threshold": 20,
+      "is_available": false
+    },
+    {
+      "id": "prod5",
+      "name": "Paneer Butter Masala",
+      "description": "Cottage cheese in rich tomato gravy",
+      "price": 150,
+      "image": "/attached_assets/seed_images/paneer-butter-masala.jpg",
+      "rating": "4.9",
+      "review_count": 134,
+      "is_veg": false,
+      "is_customizable": false,
+      "category_id": "cat3",
+      "chef_id": "chef3",
+      "stock_quantity": 100,
+      "low_stock_threshold": 20,
+      "is_available": false
+    },
+    {
+      "id": "prod6",
+      "name": "Butter Chicken",
+      "description": "Tandoori chicken in creamy tomato sauce",
+      "price": 180,
+      "image": "/attached_assets/seed_images/butter-chicken.jpg",
+      "rating": "4.8",
+      "review_count": 112,
+      "is_veg": false,
+      "is_customizable": false,
+      "category_id": "cat3",
+      "chef_id": "chef3",
+      "stock_quantity": 100,
+      "low_stock_threshold": 20,
+      "is_available": false
+    }
+  ],
+  "admin_users": [
+    {
+      "id": "admin1",
+      "username": "admin",
+      "email": "admin@rotihai.com",
+      "password_hash": "$2b$10$cn4p1pGO83hOgNkNzuCxq.DbhHnEIZpj3T15g6aqDdpLeElD98M6m",
+      "role": "super_admin",
+      "last_login_at": "2025-11-05T08:12:16.324Z",
+      "created_at": "2025-11-05T08:06:43.333887Z"
+    }
+  ],
+  "partner_users": [],
+  "subscription_plans": [
+    {
+      "id": "plan1",
+      "name": "Daily Roti Pack",
+      "description": "10 fresh rotis delivered daily",
+      "category_id": "cat1",
+      "frequency": "daily",
+      "price": 200,
+      "delivery_days": [
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday"
+      ],
+      "items": [
+        {
+          "productId": "prod1",
+          "quantity": 10
+        }
+      ],
+      "is_active": false,
+      "created_at": "2025-11-05T08:06:43.351591Z",
+      "updated_at": "2025-11-05T08:06:43.351591Z"
+    },
+    {
+      "id": "plan2",
+      "name": "Weekly Meal Plan",
+      "description": "Complete meals for a week",
+      "category_id": "cat2",
+      "frequency": "weekly",
+      "price": 1200,
+      "delivery_days": [
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday"
+      ],
+      "items": [
+        {
+          "productId": "prod3",
+          "quantity": 4
+        },
+        {
+          "productId": "prod4",
+          "quantity": 3
+        }
+      ],
+      "is_active": false,
+      "created_at": "2025-11-05T08:06:43.351591Z",
+      "updated_at": "2025-11-05T08:06:43.351591Z"
+    },
+    {
+      "id": "plan3",
+      "name": "Monthly Premium",
+      "description": "Premium meal plan for a month",
+      "category_id": "cat3",
+      "frequency": "monthly",
+      "price": 4500,
+      "delivery_days": [
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday"
+      ],
+      "items": [
+        {
+          "productId": "prod5",
+          "quantity": 10
+        },
+        {
+          "productId": "prod6",
+          "quantity": 8
+        }
+      ],
+      "is_active": false,
+      "created_at": "2025-11-05T08:06:43.351591Z",
+      "updated_at": "2025-11-05T08:06:43.351591Z"
+    }
+  ],
+  "subscriptions": [],
+  "orders": [
+    {
+      "id": "order2",
+      "customer_name": "Priya Patel",
+      "phone": "+91 87654 32109",
+      "email": "priya@example.com",
+      "address": "456 LBS Marg, Kurla East, Mumbai - 400024",
+      "items": [
+        {
+          "id": "prod3",
+          "image": "/attached_assets/seed_images/lunch-dinner-category.jpg",
+          "name": "Dal Chawal Combo",
+          "price": 80,
+          "quantity": 2
+        },
+        {
+          "id": "prod4",
+          "image": "/attached_assets/seed_images/hotel-specials-category.jpg",
+          "name": "Rajma Rice",
+          "price": 90,
+          "quantity": 1
+        }
+      ],
+      "subtotal": 250,
+      "delivery_fee": 60,
+      "total": 310,
+      "status": "pending",
+      "payment_status": "confirmed",
+      "payment_qr_shown": false,
+      "chef_id": "chef2",
+      "created_at": "2025-11-05T07:36:43.383Z",
+      "approved_by": null,
+      "approved_at": null,
+      "rejected_by": null,
+      "rejection_reason": null,
+      "assigned_to": null,
+      "assigned_at": null,
+      "picked_up_at": null,
+      "delivered_at": null
+    },
+    {
+      "id": "order3",
+      "customer_name": "Amit Kumar",
+      "phone": "+91 76543 21098",
+      "email": "amit@example.com",
+      "address": "789 CST Road, Kurla, Mumbai - 400098",
+      "items": [
+        {
+          "id": "prod5",
+          "image": "/attached_assets/seed_images/paneer-butter-masala.jpg",
+          "name": "Paneer Butter Masala",
+          "price": 150,
+          "quantity": 1
+        },
+        {
+          "id": "prod1",
+          "image": "/attached_assets/seed_images/roti-category.jpg",
+          "name": "Butter Roti",
+          "price": 8,
+          "quantity": 6
+        }
+      ],
+      "subtotal": 198,
+      "delivery_fee": 40,
+      "total": 238,
+      "status": "confirmed",
+      "payment_status": "pending",
+      "payment_qr_shown": false,
+      "chef_id": "chef3",
+      "created_at": "2025-11-05T07:06:43.383Z",
+      "approved_by": null,
+      "approved_at": null,
+      "rejected_by": null,
+      "rejection_reason": null,
+      "assigned_to": null,
+      "assigned_at": null,
+      "picked_up_at": null,
+      "delivered_at": null
+    },
+    {
+      "id": "order1",
+      "customer_name": "Rahul Sharma",
+      "phone": "+91 98765 43210",
+      "email": "rahul@example.com",
+      "address": "123 MG Road, Kurla West, Mumbai - 400070",
+      "items": [
+        {
+          "id": "prod1",
+          "image": "/attached_assets/seed_images/roti-category.jpg",
+          "name": "Butter Roti",
+          "price": 8,
+          "quantity": 10
+        },
+        {
+          "id": "prod2",
+          "image": "/attached_assets/seed_images/tandoori-roti.jpg",
+          "name": "Tandoori Roti",
+          "price": 10,
+          "quantity": 5
+        }
+      ],
+      "subtotal": 130,
+      "delivery_fee": 40,
+      "total": 170,
+      "status": "completed",
+      "payment_status": "confirmed",
+      "payment_qr_shown": false,
+      "chef_id": "chef1",
+      "created_at": "2025-11-05T08:06:43.383Z",
+      "approved_by": null,
+      "approved_at": null,
+      "rejected_by": null,
+      "rejection_reason": null,
+      "assigned_to": null,
+      "assigned_at": null,
+      "picked_up_at": null,
+      "delivered_at": null
+    }
+  ],
+  "delivery_settings": [
+    {
+      "id": "ds1",
+      "name": "Local Area (0-3 km)",
+      "min_distance": "0",
+      "max_distance": "3",
+      "price": 40,
+      "is_active": false,
+      "created_at": "2025-11-05T08:06:43.41Z",
+      "updated_at": "2025-11-05T08:06:43.41Z"
+    },
+    {
+      "id": "ds2",
+      "name": "Extended Area (3-5 km)",
+      "min_distance": "3",
+      "max_distance": "5",
+      "price": 60,
+      "is_active": false,
+      "created_at": "2025-11-05T08:06:43.41Z",
+      "updated_at": "2025-11-05T08:06:43.41Z"
+    },
+    {
+      "id": "ds3",
+      "name": "Far Area (5-10 km)",
+      "min_distance": "5",
+      "max_distance": "10",
+      "price": 100,
+      "is_active": false,
+      "created_at": "2025-11-05T08:06:43.41Z",
+      "updated_at": "2025-11-05T08:06:43.41Z"
+    },
+    {
+      "id": "ds4",
+      "name": "Very Far (10-15 km)",
+      "min_distance": "10",
+      "max_distance": "15",
+      "price": 150,
+      "is_active": false,
+      "created_at": "2025-11-05T08:06:43.41Z",
+      "updated_at": "2025-11-05T08:06:43.41Z"
+    }
+  ],
+  "delivery_personnel": [],
+  "users": [],
+  "sessions": []
+}
