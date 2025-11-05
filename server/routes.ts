@@ -95,21 +95,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return;
       }
 
-      const order = await storage.createOrder(result.data);
+      const order = await storage.createOrder({
+        ...result.data,
+        paymentQrShown: true,
+        paymentStatus: "pending"
+      });
 
       // Log new order notification
       console.log(`
 ╔════════════════════════════════════════════════════════════════
-║ 🔔 NEW ORDER RECEIVED
+║ 🔔 NEW ORDER - PAYMENT PENDING
 ╠════════════════════════════════════════════════════════════════
 ║ Order ID: ${order.id.slice(0, 8)}
 ║ Customer: ${order.customerName}
 ║ Phone: ${order.phone}
 ║ Amount: ₹${order.total}
-║ Payment: ${order.paymentStatus}
+║ Payment: ${order.paymentStatus} (QR shown to customer)
 ║ Time: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
 ╠════════════════════════════════════════════════════════════════
-║ ✅ Check admin panel for full order details
+║ ⏳ Waiting for customer payment & admin verification
+║ 📱 Notification sent to admin panel
 ╚════════════════════════════════════════════════════════════════
       `);
 

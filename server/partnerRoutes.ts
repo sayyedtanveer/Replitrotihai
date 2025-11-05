@@ -1,4 +1,3 @@
-
 import type { Express } from "express";
 import { storage } from "./storage";
 import {
@@ -12,6 +11,7 @@ import {
 } from "./partnerAuth";
 import { partnerLoginSchema } from "@shared/schema";
 import { fromZodError } from "zod-validation-error";
+import { broadcastOrderUpdate } from "./notifications"; // Assuming broadcastOrderUpdate is in notifications.ts
 
 export function registerPartnerRoutes(app: Express) {
   app.post("/api/partner/auth/login", async (req, res) => {
@@ -149,7 +149,7 @@ export function registerPartnerRoutes(app: Express) {
       const partnerReq = req as AuthenticatedPartnerRequest;
       const chefId = partnerReq.partner!.chefId;
       const chef = await storage.getChefById(chefId);
-      
+
       if (!chef) {
         res.status(404).json({ message: "Chef not found" });
         return;
@@ -159,6 +159,56 @@ export function registerPartnerRoutes(app: Express) {
     } catch (error) {
       console.error("Get partner chef error:", error);
       res.status(500).json({ message: "Failed to fetch chef details" });
+    }
+  });
+
+  app.patch("/api/partner/orders/:id/status", requirePartner, async (req: any, res) => {
+    try {
+      const { status } = req.body;
+      const chefId = req.partner.chefId;
+      const order = await storage.getOrderById(req.params.id);
+
+      if (!order || order.chefId !== chefId) {
+        res.status(404).json({ message: "Order not found" });
+        return;
+      }
+
+      const updatedOrder = await storage.updateOrder(req.params.id, { status });
+
+      // Log chef status update
+      if (status === "preparing") {
+        console.log(`
+╔════════════════════════════════════════════════════════════════
+║ 👨‍🍳 CHEF ACCEPTED ORDER
+╠════════════════════════════════════════════════════════════════
+║ Order ID: ${updatedOrder.id.slice(0, 8)}
+║ Chef: ${req.partner.chefId}
+║ Status: Preparing
+║ Time: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
+╠════════════════════════════════════════════════════════════════
+║ 📱 Notification sent to admin & delivery partners
+╚════════════════════════════════════════════════════════════════
+        `);
+      } else if (status === "out_for_delivery") {
+        console.log(`
+╔════════════════════════════════════════════════════════════════
+║ 🚚 ORDER READY FOR DELIVERY
+╠════════════════════════════════════════════════════════════════
+║ Order ID: ${updatedOrder.id.slice(0, 8)}
+║ Status: Ready for pickup
+║ Time: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
+╠════════════════════════════════════════════════════════════════
+║ 📱 Notification sent to delivery partners
+╚════════════════════════════════════════════════════════════════
+        `);
+      }
+
+      broadcastOrderUpdate(updatedOrder);
+
+      res.json(updatedOrder);
+    } catch (error) {
+      console.error("Error updating order status:", error);
+      res.status(500).json({ message: "Failed to update order status" });
     }
   });
 }
