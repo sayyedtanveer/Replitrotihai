@@ -63,7 +63,15 @@ export function registerAdminRoutes(app: Express) {
       }
 
       const { username, password } = validation.data;
-      const admin = await storage.getAdminByUsername(username);
+      
+      let admin;
+      try {
+        admin = await storage.getAdminByUsername(username);
+      } catch (dbError) {
+        console.error("Database error while fetching admin:", dbError);
+        res.status(500).json({ message: "Database error. Please ensure admin user exists." });
+        return;
+      }
 
       if (!admin) {
         res.status(401).json({ message: "Invalid credentials" });
