@@ -67,7 +67,7 @@ export default function MenuDrawer({ isOpen, onClose, categories = [], onCategor
         <div className="flex flex-col h-full">
           <div className="flex items-center justify-between p-4 border-b">
             <h2 className="text-xl font-bold text-primary" data-testid="text-menu-title">
-              FoodExpress Menu
+              RotiHai Menu
             </h2>
             <Button
               variant="ghost"
@@ -191,7 +191,7 @@ export default function MenuDrawer({ isOpen, onClose, categories = [], onCategor
 
           <div className="p-4 border-t">
             <p className="text-xs text-muted-foreground text-center" data-testid="text-menu-footer">
-              © 2025 FoodExpress. All rights reserved.
+              © 2025 RotiHai. All rights reserved.
             </p>
           </div>
         </div>

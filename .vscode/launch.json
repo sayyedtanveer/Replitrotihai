@@ -1,0 +1,26 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Debug Server (Node + TSX)",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "--import=tsx",
+        "${workspaceFolder}/server/index.ts"
+      ],
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "NODE_ENV": "development",
+        "USE_REPLIT_AUTH": "false"
+      },
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "skipFiles": [
+        "<node_internals>/**",
+        "node_modules/**"
+      ]
+    }
+  ]
+}

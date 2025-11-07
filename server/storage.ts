@@ -6,9 +6,12 @@ import { db, sql, users, categories, products, orders, chefs, adminUsers, partne
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
-  upsertUser(user: UpsertUser): Promise<User>;
-  updateUser(id: string, user: Partial<UpsertUser>): Promise<User | undefined>;
+  getUserByPhone(phone: string): Promise<User | undefined>;
+  createUser(user: Omit<User, "id" | "createdAt" | "updatedAt" | "lastLoginAt">): Promise<User>;
+  updateUserLastLogin(id: string): Promise<void>;
+  updateUser(id: string, user: Partial<User>): Promise<User | undefined>;
   deleteUser(id: string): Promise<boolean>;
+  getOrdersByUserId(userId: string): Promise<Order[]>;
 
   getAllCategories(): Promise<Category[]>;
   getCategoryById(id: string): Promise<Category | undefined>;
@@ -132,27 +135,37 @@ export class MemStorage implements IStorage {
     return db.query.users.findFirst({ where: (u, { eq }) => eq(u.id, id) });
   }
 
-  async upsertUser(userData: UpsertUser): Promise<User> {
-    const existing = await this.getUser(userData.id!);
+  async getUserByPhone(phone: string): Promise<User | undefined> {
+    return db.query.users.findFirst({ where: (user, { eq }) => eq(user.phone, phone) });
+  }
+
+  async createUser(userData: Omit<User, "id" | "createdAt" | "updatedAt" | "lastLoginAt">): Promise<User> {
+    const id = randomUUID();
     const user: User = {
-      id: userData.id!,
-      email: userData.email || null,
-      firstName: userData.firstName || null,
-      lastName: userData.lastName || null,
-      profileImageUrl: userData.profileImageUrl || null,
-      createdAt: existing?.createdAt || new Date(),
+      ...userData,
+      id,
+      lastLoginAt: null,
+      createdAt: new Date(),
       updatedAt: new Date(),
     };
-    await db.insert(users).values(user).onConflictDoUpdate({
-      target: users.id,
-      set: { ...user, createdAt: users.createdAt } // Preserve original createdAt
-    });
+    await db.insert(users).values(user);
     return user;
   }
 
-  async updateUser(id: string, userData: Partial<UpsertUser>): Promise<User | undefined> {
+  async updateUserLastLogin(id: string): Promise<void> {
+    await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, id));
+  }
+
+  async updateUser(id: string, userData: Partial<User>): Promise<User | undefined> {
     await db.update(users).set({ ...userData, updatedAt: new Date() }).where(eq(users.id, id));
     return this.getUser(id);
+  }
+
+  async getOrdersByUserId(userId: string): Promise<Order[]> {
+    return db.query.orders.findMany({
+      where: (order, { eq }) => eq(order.userId, userId),
+      orderBy: (order, { desc }) => [desc(order.createdAt)],
+    });
   }
 
   async deleteUser(id: string): Promise<boolean> {

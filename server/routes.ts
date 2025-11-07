@@ -1,12 +1,13 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertOrderSchema } from "@shared/schema";
+import { insertOrderSchema, userLoginSchema, insertUserSchema } from "@shared/schema";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { registerAdminRoutes } from "./adminRoutes";
 import { registerPartnerRoutes } from "./partnerRoutes";
 import { registerDeliveryRoutes } from "./deliveryRoutes";
 import { setupWebSocket, broadcastNewOrder } from "./websocket";
+import { hashPassword, verifyPassword, generateAccessToken, generateRefreshToken, requireUser, type AuthenticatedUserRequest } from "./userAuth";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   await setupAuth(app);
@@ -42,6 +43,171 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching user:", error);
       res.status(500).json({ message: "Failed to fetch user" });
+    }
+  });
+
+  // User phone-based authentication routes
+  app.post("/api/user/register", async (req, res) => {
+    try {
+      const result = insertUserSchema.safeParse(req.body);
+      if (!result.success) {
+        res.status(400).json({ message: "Invalid user data", errors: result.error });
+        return;
+      }
+
+      const existingUser = await storage.getUserByPhone(result.data.phone);
+      if (existingUser) {
+        res.status(400).json({ message: "User with this phone number already exists" });
+        return;
+      }
+
+      const passwordHash = await hashPassword(result.data.password);
+      const user = await storage.createUser({
+        name: result.data.name,
+        phone: result.data.phone,
+        email: result.data.email || null,
+        address: result.data.address || null,
+        passwordHash,
+      });
+
+      const accessToken = generateAccessToken(user);
+      const refreshToken = generateRefreshToken(user);
+
+      res.json({
+        user: {
+          id: user.id,
+          name: user.name,
+          phone: user.phone,
+          email: user.email,
+          address: user.address,
+        },
+        accessToken,
+        refreshToken,
+      });
+    } catch (error) {
+      console.error("Registration error:", error);
+      res.status(500).json({ message: "Failed to register user" });
+    }
+  });
+
+  app.post("/api/user/login", async (req, res) => {
+    try {
+      const result = userLoginSchema.safeParse(req.body);
+      if (!result.success) {
+        res.status(400).json({ message: "Invalid login data" });
+        return;
+      }
+
+      const user = await storage.getUserByPhone(result.data.phone);
+      if (!user) {
+        res.status(401).json({ message: "Invalid phone number or password" });
+        return;
+      }
+
+      const isValid = await verifyPassword(result.data.password, user.passwordHash);
+      if (!isValid) {
+        res.status(401).json({ message: "Invalid phone number or password" });
+        return;
+      }
+
+      await storage.updateUserLastLogin(user.id);
+      const accessToken = generateAccessToken(user);
+      const refreshToken = generateRefreshToken(user);
+
+      res.json({
+        user: {
+          id: user.id,
+          name: user.name,
+          phone: user.phone,
+          email: user.email,
+          address: user.address,
+        },
+        accessToken,
+        refreshToken,
+      });
+    } catch (error) {
+      console.error("Login error:", error);
+      res.status(500).json({ message: "Failed to login" });
+    }
+  });
+
+  app.post("/api/user/auto-register", async (req, res) => {
+    try {
+      const { customerName, phone, email, address } = req.body;
+      
+      if (!customerName || !phone) {
+        res.status(400).json({ message: "Name and phone are required" });
+        return;
+      }
+
+      let user = await storage.getUserByPhone(phone);
+      let isNewUser = false;
+      let generatedPassword;
+      
+      if (!user) {
+        isNewUser = true;
+        generatedPassword = Math.random().toString(36).slice(-12) + Math.random().toString(36).slice(-12);
+        const passwordHash = await hashPassword(generatedPassword);
+        user = await storage.createUser({
+          name: customerName,
+          phone,
+          email: email || null,
+          address: address || null,
+          passwordHash,
+        });
+      } else {
+        await storage.updateUserLastLogin(user.id);
+      }
+
+      const accessToken = generateAccessToken(user);
+      const refreshToken = generateRefreshToken(user);
+
+      res.json({
+        user: {
+          id: user.id,
+          name: user.name,
+          phone: user.phone,
+          email: user.email,
+          address: user.address,
+        },
+        accessToken,
+        refreshToken,
+        defaultPassword: isNewUser ? generatedPassword : undefined,
+      });
+    } catch (error) {
+      console.error("Auto-register error:", error);
+      res.status(500).json({ message: "Failed to auto-register" });
+    }
+  });
+
+  app.get("/api/user/profile", requireUser(), async (req: AuthenticatedUserRequest, res) => {
+    try {
+      const user = await storage.getUser(req.authenticatedUser!.userId);
+      if (!user) {
+        res.status(404).json({ message: "User not found" });
+        return;
+      }
+
+      res.json({
+        id: user.id,
+        name: user.name,
+        phone: user.phone,
+        email: user.email,
+        address: user.address,
+      });
+    } catch (error) {
+      console.error("Error fetching profile:", error);
+      res.status(500).json({ message: "Failed to fetch profile" });
+    }
+  });
+
+  app.get("/api/user/orders", requireUser(), async (req: AuthenticatedUserRequest, res) => {
+    try {
+      const orders = await storage.getOrdersByUserId(req.authenticatedUser!.userId);
+      res.json(orders);
+    } catch (error) {
+      console.error("Error fetching orders:", error);
+      res.status(500).json({ message: "Failed to fetch orders" });
     }
   });
 
@@ -273,10 +439,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const subscription = await storage.createSubscription({
         userId,
         planId,
-        customerName: `${user.firstName} ${user.lastName}`,
-        phone: "",
+        customerName: user.name || "",
+        phone: user.phone || "",
         email: user.email || "",
-        address: "",
+        address: user.address || "",
         status: "active",
         startDate: now,
         endDate: null,

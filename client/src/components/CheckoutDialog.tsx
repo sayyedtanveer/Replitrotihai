@@ -196,6 +196,10 @@ export default function CheckoutDialog({ isOpen, onClose, cartItems, onOrderSucc
         onClose={handlePaymentClose}
         orderId={orderId}
         amount={total}
+        customerName={formData.customerName}
+        phone={formData.phone}
+        email={formData.email}
+        address={formData.address}
       />
     </>
   );

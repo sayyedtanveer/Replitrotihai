@@ -1,6 +1,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { useLocation } from "wouter";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import MenuDrawer from "@/components/MenuDrawer";
@@ -9,25 +10,67 @@ import ChefListDrawer from "@/components/ChefListDrawer";
 import SubscriptionDrawer from "@/components/SubscriptionDrawer";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { ShoppingBag, Package, Clock, CheckCircle, XCircle } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { format } from "date-fns";
+import type { Category } from "../types/category";
+import type { Order } from "../types/order";
+import type { Chef } from "@shared/schema";
 
 export default function MyOrders() {
+  const [, setLocation] = useLocation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isChefListOpen, setIsChefListOpen] = useState(false);
   const [isSubscriptionOpen, setIsSubscriptionOpen] = useState(false);
-  const { user } = useAuth();
+  const { user: replitUser } = useAuth();
+  const userToken = localStorage.getItem("userToken");
 
-  const { data: orders = [], isLoading } = useQuery({
-    queryKey: ["/api/orders"],
-    enabled: !!user,
-  });
+  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
 
-  const { data: categories = [] } = useQuery({
-    queryKey: ["/api/categories"],
-  });
+  const { data: phoneOrders = [], isLoading: phoneOrdersLoading } = useQuery<Order[]>({
+  queryKey: ["/api/user/orders"],
+  enabled: !!userToken && !replitUser,
+  queryFn: async () => {
+    const res = await fetch("/api/user/orders");
+    if (!res.ok) throw new Error("Failed to fetch phone orders");
+    return res.json();
+  }
+});
+
+const { data: replitOrders = [], isLoading: replitOrdersLoading } = useQuery<Order[]>({
+  queryKey: ["/api/orders"],
+  enabled: !!replitUser,
+  queryFn: async () => {
+    const res = await fetch("/api/orders");
+    if (!res.ok) throw new Error("Failed to fetch Replit orders");
+    return res.json();
+  }
+});
+
+  const orders = replitUser ? replitOrders : phoneOrders;
+  const isLoading = replitUser ? replitOrdersLoading : phoneOrdersLoading;
+  const user = replitUser || (userToken ? { name: "User" } : null);
+
+  const { data: categories = [] } = useQuery<Category[]>({
+  queryKey: ["/api/categories"],
+  queryFn: async () => {
+    const res = await fetch("/api/categories");
+    if (!res.ok) throw new Error("Failed to fetch categories");
+    return res.json();
+  }
+});
+
+const { data: chefs = [] } = useQuery<Chef[]>({
+  queryKey: ["/api/chefs"],
+  queryFn: async () => {
+    const res = await fetch("/api/chefs");
+    if (!res.ok) throw new Error("Failed to fetch chefs");
+    return res.json();
+  }
+});
+
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -86,11 +129,14 @@ export default function MyOrders() {
               <CardContent className="flex flex-col items-center gap-4">
                 <ShoppingBag className="h-16 w-16 text-muted-foreground" />
                 <div>
-                  <CardTitle className="mb-2">Please log in</CardTitle>
+                  <CardTitle className="mb-2">No Orders Yet</CardTitle>
                   <CardDescription>
-                    Sign in with Replit to view your orders
+                    Place an order to create an account and track your orders
                   </CardDescription>
                 </div>
+                <Button onClick={() => setLocation("/")} data-testid="button-go-home">
+                  Start Shopping
+                </Button>
               </CardContent>
             </Card>
           ) : isLoading ? (
@@ -192,10 +238,17 @@ export default function MyOrders() {
         onClose={() => setIsCartOpen(false)}
       />
 
-      <ChefListDrawer
-        isOpen={isChefListOpen}
-        onClose={() => setIsChefListOpen(false)}
-      />
+ <ChefListDrawer
+  isOpen={isChefListOpen}
+  onClose={() => setIsChefListOpen(false)}
+  category={selectedCategory}
+  chefs={chefs}
+  onChefClick={(chef) => {
+    console.log("Selected chef:", chef);
+    // future navigation goes here
+  }}
+/>
+
 
       <SubscriptionDrawer
         isOpen={isSubscriptionOpen}

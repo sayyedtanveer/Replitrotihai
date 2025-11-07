@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
+import { useLocation } from "wouter";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import MenuDrawer from "@/components/MenuDrawer";
@@ -15,20 +16,67 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { User, Mail, MapPin, Phone, LogOut } from "lucide-react";
+import { Category } from "@shared/schema";
 
 export default function Profile() {
-  const { user } = useAuth();
+  const { user: replitUser } = useAuth();
+  const [, setLocation] = useLocation();
+  const userToken = localStorage.getItem("userToken");
+  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
+
+  const { data: phoneUser, isLoading: phoneUserLoading } = useQuery<ProfileUser>({
+  queryKey: ["/api/user/profile"],
+  queryFn: async () => {
+    const res = await fetch("/api/user/profile", {
+      headers: {
+        Authorization: `Bearer ${userToken}`,
+      }
+    });
+
+    if (!res.ok) throw new Error("Failed to load user");
+
+    return res.json();
+  },
+  enabled: !!userToken && !replitUser,
+});
+const { data: categories = [] } = useQuery<Category[]>({
+  queryKey: ["/api/categories"],
+  queryFn: async () => {
+    const res = await fetch("/api/categories");
+    return res.json();
+  }
+});
+const { data: chefs = [] } = useQuery<Chef[]>({
+  queryKey: ["/api/chefs"],
+  queryFn: async () => {
+    const res = await fetch("/api/chefs");
+    return res.json();
+  }
+});
+
+
+
+  
+  const user: ProfileUser | null = replitUser || phoneUser || null;
+  const isLoading = phoneUserLoading;
+  
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isChefListOpen, setIsChefListOpen] = useState(false);
   const [isSubscriptionOpen, setIsSubscriptionOpen] = useState(false);
 
-  const { data: categories = [] } = useQuery({
-    queryKey: ["/api/categories"],
-  });
+   
 
+  
   const handleLogout = () => {
-    window.location.href = "/api/logout";
+    if (userToken) {
+      localStorage.removeItem("userToken");
+      localStorage.removeItem("userRefreshToken");
+      localStorage.removeItem("userData");
+      setLocation("/");
+    } else {
+      window.location.href = "/api/logout";
+    }
   };
 
   return (
@@ -47,16 +95,25 @@ export default function Profile() {
             <p className="text-muted-foreground">Manage your account information</p>
           </div>
 
-          {!user ? (
+          {isLoading ? (
+            <Card className="text-center py-12">
+              <CardContent>
+                <p className="text-muted-foreground">Loading your profile...</p>
+              </CardContent>
+            </Card>
+          ) : !user ? (
             <Card className="text-center py-12">
               <CardContent className="flex flex-col items-center gap-4">
                 <User className="h-16 w-16 text-muted-foreground" />
                 <div>
                   <CardTitle className="mb-2">Please log in</CardTitle>
                   <CardDescription>
-                    Sign in with Replit to view your profile
+                    Place an order to create an account
                   </CardDescription>
                 </div>
+                <Button onClick={() => setLocation("/")} data-testid="button-go-home">
+                  Go to Home
+                </Button>
               </CardContent>
             </Card>
           ) : (
@@ -64,60 +121,84 @@ export default function Profile() {
             <Card>
               <CardHeader>
                 <CardTitle>Profile Information</CardTitle>
-                <CardDescription>Update your personal details</CardDescription>
+                <CardDescription>Your account details</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="flex items-center gap-6">
                   <Avatar className="h-20 w-20">
-                    <AvatarImage src={user.profileImageUrl ?? undefined} alt={user.firstName ?? "User"} />
                     <AvatarFallback className="text-2xl">
-                      {user.firstName?.[0]?.toUpperCase() ?? user.email?.[0]?.toUpperCase() ?? "U"}
+                      {(user.name?.[0] || user.phone?.[0] || "U").toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
                   <div>
                     <h3 className="text-xl font-semibold">
-                      {user.firstName} {user.lastName}
+                      {user.name || `${user.firstName} ${user.lastName}` || "User"}
                     </h3>
-                    <p className="text-muted-foreground">{user.email}</p>
+                    {user.phone && <p className="text-muted-foreground">{user.phone}</p>}
+                    {user.email && <p className="text-sm text-muted-foreground">{user.email}</p>}
                   </div>
                 </div>
 
                 <Separator />
 
                 <div className="grid gap-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="firstName">First Name</Label>
-                    <Input
-                      id="firstName"
-                      defaultValue={user.firstName ?? ""}
-                      readOnly
-                      className="bg-muted"
-                    />
-                  </div>
-
-                  <div className="grid gap-2">
-                    <Label htmlFor="lastName">Last Name</Label>
-                    <Input
-                      id="lastName"
-                      defaultValue={user.lastName ?? ""}
-                      readOnly
-                      className="bg-muted"
-                    />
-                  </div>
-
-                  <div className="grid gap-2">
-                    <Label htmlFor="email">Email</Label>
-                    <div className="flex gap-2">
-                      <Mail className="h-4 w-4 mt-3 text-muted-foreground" />
+                  {user.name && (
+                    <div className="grid gap-2">
+                      <Label htmlFor="name">Name</Label>
                       <Input
-                        id="email"
-                        type="email"
-                        defaultValue={user.email ?? ""}
+                        id="name"
+                        defaultValue={user.name}
                         readOnly
                         className="bg-muted"
                       />
                     </div>
-                  </div>
+                  )}
+
+                  {user.phone && (
+                    <div className="grid gap-2">
+                      <Label htmlFor="phone">Phone Number</Label>
+                      <div className="flex gap-2">
+                        <Phone className="h-4 w-4 mt-3 text-muted-foreground" />
+                        <Input
+                          id="phone"
+                          defaultValue={user.phone}
+                          readOnly
+                          className="bg-muted"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {user.email && (
+                    <div className="grid gap-2">
+                      <Label htmlFor="email">Email</Label>
+                      <div className="flex gap-2">
+                        <Mail className="h-4 w-4 mt-3 text-muted-foreground" />
+                        <Input
+                          id="email"
+                          type="email"
+                          defaultValue={user.email}
+                          readOnly
+                          className="bg-muted"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {user.address && (
+                    <div className="grid gap-2">
+                      <Label htmlFor="address">Address</Label>
+                      <div className="flex gap-2">
+                        <MapPin className="h-4 w-4 mt-3 text-muted-foreground" />
+                        <Input
+                          id="address"
+                          defaultValue={user.address}
+                          readOnly
+                          className="bg-muted"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -127,11 +208,19 @@ export default function Profile() {
                 <CardTitle>Account Actions</CardTitle>
                 <CardDescription>Manage your account</CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-4">
+                <Button
+                  onClick={() => setLocation("/my-orders")}
+                  className="w-full sm:w-auto"
+                  data-testid="button-view-orders"
+                >
+                  View My Orders
+                </Button>
                 <Button
                   variant="destructive"
                   onClick={handleLogout}
-                  className="w-full sm:w-auto"
+                  className="w-full sm:w-auto ml-0 sm:ml-2"
+                  data-testid="button-logout"
                 >
                   <LogOut className="h-4 w-4 mr-2" />
                   Logout
@@ -161,9 +250,16 @@ export default function Profile() {
       />
 
       <ChefListDrawer
-        isOpen={isChefListOpen}
-        onClose={() => setIsChefListOpen(false)}
-      />
+  isOpen={isChefListOpen}
+  onClose={() => setIsChefListOpen(false)}
+  category={selectedCategory}
+  chefs={chefs}
+  onChefClick={(chef) => {
+    console.log("Selected chef:", chef);
+    // Navigate or open menu
+  }}
+/>
+
 
       <SubscriptionDrawer
         isOpen={isSubscriptionOpen}

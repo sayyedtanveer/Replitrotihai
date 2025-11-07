@@ -4,14 +4,23 @@ import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
 import type { Order } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { format } from "date-fns";
-import { CheckCircle, Clock, XCircle, CreditCard } from "lucide-react";
+import { CheckCircle, Clock, CreditCard, Search, Filter } from "lucide-react";
+import { useState } from "react";
 
 export default function AdminPayments() {
   const { toast } = useToast();
+  const [currentPage, setCurrentPage] = useState(1);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState("all");
+  const itemsPerPage = 100;
 
   const { data: orders, isLoading } = useQuery<Order[]>({
     queryKey: ["/api/admin", "orders", "payments"],
@@ -70,9 +79,24 @@ export default function AdminPayments() {
     }
   };
 
-  const pendingPayments = orders?.filter(
-    (order) => order.paymentStatus === "pending" || order.paymentStatus === "paid"
-  );
+  // Filter and search orders
+  const filteredOrders = orders?.filter((order) => {
+    const matchesSearch = 
+      order.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      order.phone.includes(searchQuery) ||
+      order.id.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    const matchesPaymentStatus = 
+      paymentStatusFilter === "all" || order.paymentStatus === paymentStatusFilter;
+    
+    return matchesSearch && matchesPaymentStatus;
+  }) || [];
+
+  // Pagination
+  const totalPages = Math.ceil(filteredOrders.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedOrders = filteredOrders.slice(startIndex, endIndex);
 
   return (
     <AdminLayout>
@@ -97,132 +121,203 @@ export default function AdminPayments() {
           </div>
         </div>
 
-        {isLoading ? (
-          <div className="space-y-4">
-            {[...Array(3)].map((_, i) => (
-              <Card key={i} className="animate-pulse">
-                <CardHeader>
-                  <div className="h-6 bg-slate-200 dark:bg-slate-700 rounded w-48"></div>
-                </CardHeader>
-                <CardContent>
-                  <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-full"></div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        ) : pendingPayments && pendingPayments.length > 0 ? (
-          <div className="space-y-4">
-            {pendingPayments.map((order) => (
-              <Card key={order.id} data-testid={`card-payment-${order.id}`}>
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <CardTitle className="text-lg">Order #{order.id.slice(0, 8)}</CardTitle>
-                      <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-                        {order.customerName} • {order.phone}
-                      </p>
-                      <p className="text-sm text-slate-600 dark:text-slate-400">
-                        {format(new Date(order.createdAt), "PPp")}
-                      </p>
-                    </div>
-                    <div className="flex flex-col items-end gap-2">
-                      <Badge className={getPaymentStatusColor(order.paymentStatus)}>
-                        {order.paymentStatus === "pending" && <Clock className="w-3 h-3 mr-1" />}
-                        {order.paymentStatus === "paid" && <CheckCircle className="w-3 h-3 mr-1" />}
-                        {order.paymentStatus.toUpperCase()}
-                      </Badge>
-                      {order.paymentQrShown && (
-                        <Badge variant="outline" className="text-xs">
-                          QR Shown
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                      Delivery Address
-                    </p>
-                    <p className="text-sm text-slate-600 dark:text-slate-400">{order.address}</p>
-                  </div>
+        {/* Filters */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Filter className="w-5 h-5" />
+              Filters
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="flex-1">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <Input
+                    placeholder="Search by order ID, customer name, or phone..."
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="pl-10"
+                  />
+                </div>
+              </div>
+              <Select
+                value={paymentStatusFilter}
+                onValueChange={(value) => {
+                  setPaymentStatusFilter(value);
+                  setCurrentPage(1);
+                }}
+              >
+                <SelectTrigger className="w-full md:w-48">
+                  <SelectValue placeholder="Filter by payment status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="paid">Paid</SelectItem>
+                  <SelectItem value="confirmed">Confirmed</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="text-sm text-slate-600 dark:text-slate-400 mt-3">
+              Showing {paginatedOrders.length} of {filteredOrders.length} orders
+            </p>
+          </CardContent>
+        </Card>
 
-                  <div>
-                    <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                      Items
-                    </p>
-                    <div className="space-y-1">
-                      {(order.items as any[]).map((item, idx) => (
-                        <div key={idx} className="flex justify-between text-sm">
-                          <span className="text-slate-600 dark:text-slate-400">
-                            {item.name} x {item.quantity}
+        {/* Payments Table */}
+        <Card>
+          <CardContent className="p-0">
+            {isLoading ? (
+              <div className="text-center py-12 text-slate-600 dark:text-slate-400">
+                Loading payments...
+              </div>
+            ) : filteredOrders.length > 0 ? (
+              <>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Order ID</TableHead>
+                      <TableHead>Customer</TableHead>
+                      <TableHead>Items</TableHead>
+                      <TableHead>Total</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Payment Status</TableHead>
+                      <TableHead>QR</TableHead>
+                      <TableHead>Action</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {paginatedOrders.map((order) => (
+                      <TableRow key={order.id} data-testid={`row-payment-${order.id}`}>
+                        <TableCell className="font-medium">
+                          #{order.id.slice(0, 8)}
+                        </TableCell>
+                        <TableCell>
+                          <div>
+                            <p className="font-medium">{order.customerName}</p>
+                            <p className="text-sm text-slate-600 dark:text-slate-400">{order.phone}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="max-w-xs">
+                            {(order.items as any[]).map((item, idx) => (
+                              <p key={idx} className="text-sm">
+                                {item.name} x{item.quantity}
+                              </p>
+                            ))}
+                          </div>
+                        </TableCell>
+                        <TableCell className="font-semibold">
+                          <div>
+                            <p>₹{order.total}</p>
+                            <p className="text-xs text-slate-500">
+                              Sub: ₹{order.subtotal} + Del: ₹{order.deliveryFee}
+                            </p>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {format(new Date(order.createdAt), "MMM d, yyyy")}
+                          <br />
+                          <span className="text-xs text-slate-500">
+                            {format(new Date(order.createdAt), "h:mm a")}
                           </span>
-                          <span className="text-slate-900 dark:text-slate-100 font-medium">
-                            ₹{item.price * item.quantity}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={getPaymentStatusColor(order.paymentStatus)}>
+                            {order.paymentStatus === "pending" && <Clock className="w-3 h-3 mr-1" />}
+                            {order.paymentStatus === "paid" && <CheckCircle className="w-3 h-3 mr-1" />}
+                            {order.paymentStatus === "confirmed" && <CheckCircle className="w-3 h-3 mr-1" />}
+                            {order.paymentStatus.toUpperCase()}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {order.paymentQrShown ? (
+                            <Badge variant="outline" className="text-xs">
+                              Shown
+                            </Badge>
+                          ) : (
+                            <span className="text-xs text-slate-400">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            size="sm"
+                            onClick={() => confirmPaymentMutation.mutate({ orderId: order.id })}
+                            disabled={
+                              confirmPaymentMutation.isPending || order.paymentStatus === "confirmed"
+                            }
+                            data-testid={`button-confirm-${order.id}`}
+                          >
+                            <CheckCircle className="w-4 h-4 mr-1" />
+                            Confirm
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+
+                {/* Pagination */}
+                {totalPages > 1 && (
+                  <div className="p-4 border-t">
+                    <Pagination>
+                      <PaginationContent>
+                        <PaginationItem>
+                          <PaginationPrevious
+                            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                            className={currentPage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                          />
+                        </PaginationItem>
+                        {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                          let pageNum;
+                          if (totalPages <= 5) {
+                            pageNum = i + 1;
+                          } else if (currentPage <= 3) {
+                            pageNum = i + 1;
+                          } else if (currentPage >= totalPages - 2) {
+                            pageNum = totalPages - 4 + i;
+                          } else {
+                            pageNum = currentPage - 2 + i;
+                          }
+                          return (
+                            <PaginationItem key={pageNum}>
+                              <PaginationLink
+                                onClick={() => setCurrentPage(pageNum)}
+                                isActive={currentPage === pageNum}
+                                className="cursor-pointer"
+                              >
+                                {pageNum}
+                              </PaginationLink>
+                            </PaginationItem>
+                          );
+                        })}
+                        <PaginationItem>
+                          <PaginationNext
+                            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                            className={currentPage === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                          />
+                        </PaginationItem>
+                      </PaginationContent>
+                    </Pagination>
                   </div>
-
-                  <div className="border-t pt-4">
-                    <div className="flex justify-between items-center mb-4">
-                      <div className="space-y-1 flex-1">
-                        <div className="flex justify-between text-sm">
-                          <span className="text-slate-600 dark:text-slate-400">Subtotal:</span>
-                          <span className="text-slate-900 dark:text-slate-100">
-                            ₹{order.subtotal}
-                          </span>
-                        </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="text-slate-600 dark:text-slate-400">Delivery Fee:</span>
-                          <span className="text-slate-900 dark:text-slate-100">
-                            ₹{order.deliveryFee}
-                          </span>
-                        </div>
-                        <div className="flex justify-between font-bold text-lg">
-                          <span>Total:</span>
-                          <span className="text-primary">₹{order.total}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex gap-2">
-                      <Button
-                        onClick={() => confirmPaymentMutation.mutate({ orderId: order.id })}
-                        disabled={
-                          confirmPaymentMutation.isPending || order.paymentStatus === "confirmed"
-                        }
-                        className="flex-1"
-                        data-testid={`button-confirm-${order.id}`}
-                      >
-                        <CheckCircle className="w-4 h-4 mr-2" />
-                        Confirm Payment
-                      </Button>
-                    </div>
-
-                    {order.paymentQrShown && (
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
-                        💡 Customer was shown UPI QR code. Verify payment in your UPI app before
-                        confirming.
-                      </p>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        ) : (
-          <Card>
-            <CardContent className="text-center py-12">
-              <CheckCircle className="w-12 h-12 mx-auto text-green-500 mb-4" />
-              <p className="text-slate-600 dark:text-slate-400">No pending payments</p>
-              <p className="text-sm text-slate-500 dark:text-slate-500 mt-1">
-                All payments have been confirmed
-              </p>
-            </CardContent>
-          </Card>
-        )}
+                )}
+              </>
+            ) : (
+              <div className="text-center py-12">
+                <CheckCircle className="w-12 h-12 mx-auto text-green-500 mb-4" />
+                <p className="text-slate-600 dark:text-slate-400">No pending payments</p>
+                <p className="text-sm text-slate-500 dark:text-slate-500 mt-1">
+                  All payments have been confirmed
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </AdminLayout>
   );

@@ -17,12 +17,14 @@ export const sessions = pgTable(
 
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  email: varchar("email").unique(),
-  firstName: varchar("first_name"),
-  lastName: varchar("last_name"),
-  profileImageUrl: varchar("profile_image_url"),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
+  name: varchar("name", { length: 255 }).notNull(),
+  phone: varchar("phone", { length: 20 }).notNull().unique(),
+  email: varchar("email", { length: 255 }),
+  address: text("address"),
+  passwordHash: text("password_hash").notNull(),
+  lastLoginAt: timestamp("last_login_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
 export const adminUsers = pgTable("admin_users", {
@@ -101,6 +103,7 @@ export const deliveryPersonnel = pgTable("delivery_personnel", {
 
 export const orders = pgTable("orders", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id"),
   customerName: text("customer_name").notNull(),
   phone: text("phone").notNull(),
   email: text("email"),
@@ -214,6 +217,24 @@ export type Order = typeof orders.$inferSelect;
 
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
+
+export const insertUserSchema = createInsertSchema(users).omit({
+  id: true,
+  passwordHash: true,
+  lastLoginAt: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  password: z.string().min(6),
+});
+
+export const userLoginSchema = z.object({
+  phone: z.string(),
+  password: z.string(),
+});
+
+export type InsertUser = z.infer<typeof insertUserSchema>;
+export type UserLogin = z.infer<typeof userLoginSchema>;
 
 export const insertAdminUserSchema = createInsertSchema(adminUsers).omit({
   id: true,

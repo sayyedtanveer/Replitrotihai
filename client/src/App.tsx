@@ -29,6 +29,7 @@ import AdminPayments from "./pages/admin/AdminPayments";
 
 function Router() {
   const { isAuthenticated } = useAuth();
+  const hasPhoneAuth = !!localStorage.getItem("userToken");
 
   return (
     <Switch>
@@ -51,17 +52,9 @@ function Router() {
       <Route path="/partner/dashboard" component={PartnerDashboard} />
 
       <Route path="/" component={Home} />
-      {isAuthenticated ? (
-        <>
-          <Route path="/orders" component={MyOrders} />
-          <Route path="/profile" component={Profile} />
-        </>
-      ) : (
-        <>
-          <Route path="/orders" component={() => <Redirect to="/" />} />
-          <Route path="/profile" component={() => <Redirect to="/" />} />
-        </>
-      )}
+      <Route path="/my-orders" component={MyOrders} />
+      <Route path="/profile" component={Profile} />
+      <Route path="/orders" component={MyOrders} />
       <Route component={NotFound} />
     </Switch>
   );

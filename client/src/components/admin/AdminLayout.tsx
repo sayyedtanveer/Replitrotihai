@@ -163,7 +163,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               >
                 <Menu className="w-6 h-6" />
               </Button>
-              <div className="text-lg font-semibold lg:block hidden">FoodExpress Admin</div>
+              <div className="text-lg font-semibold lg:block hidden">RotiHai Admin</div>
               <div></div>
             </div>
           </header>

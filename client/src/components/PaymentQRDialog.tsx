@@ -1,20 +1,28 @@
 import { useEffect, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Check, Loader2, Copy } from "lucide-react";
+import { Check, Loader2, Copy, User } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import QRCode from "qrcode";
+import { apiRequest } from "@/lib/queryClient";
 
 interface PaymentQRDialogProps {
   isOpen: boolean;
   onClose: () => void;
   orderId: string;
   amount: number;
+  customerName: string;
+  phone: string;
+  email?: string;
+  address: string;
 }
 
-export default function PaymentQRDialog({ isOpen, onClose, orderId, amount }: PaymentQRDialogProps) {
+export default function PaymentQRDialog({ isOpen, onClose, orderId, amount, customerName, phone, email, address }: PaymentQRDialogProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [upiId] = useState("rotihai@upi");
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [accountCreated, setAccountCreated] = useState(false);
+  const [defaultPassword, setDefaultPassword] = useState("");
   const { toast } = useToast();
 
   useEffect(() => {
@@ -45,6 +53,35 @@ export default function PaymentQRDialog({ isOpen, onClose, orderId, amount }: Pa
       );
     }
   }, [isOpen, upiId, amount, orderId, toast]);
+
+  useEffect(() => {
+    if (isOpen && customerName && phone && !isRegistering && !accountCreated) {
+      setIsRegistering(true);
+      
+      apiRequest("POST", "/api/user/auto-register", {
+        customerName,
+        phone,
+        email,
+        address,
+      })
+        .then((res) => res.json())
+        .then((data: any) => {
+          localStorage.setItem("userToken", data.accessToken);
+          localStorage.setItem("userRefreshToken", data.refreshToken);
+          localStorage.setItem("userData", JSON.stringify(data.user));
+          setAccountCreated(true);
+          if (data.defaultPassword) {
+            setDefaultPassword(data.defaultPassword);
+          }
+        })
+        .catch((error) => {
+          console.error("Auto-register error:", error);
+        })
+        .finally(() => {
+          setIsRegistering(false);
+        });
+    }
+  }, [isOpen, customerName, phone, email, address, isRegistering, accountCreated]);
 
   const copyUpiId = () => {
     navigator.clipboard.writeText(upiId);
@@ -86,6 +123,19 @@ export default function PaymentQRDialog({ isOpen, onClose, orderId, amount }: Pa
                 <Copy className="h-4 w-4" />
               </Button>
             </div>
+
+            {accountCreated && (
+              <div className="bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg p-4 space-y-2">
+                <div className="flex items-center gap-2 text-green-900 dark:text-green-100">
+                  <User className="h-4 w-4" />
+                  <p className="text-sm font-medium">Account Created!</p>
+                </div>
+                <p className="text-xs text-green-700 dark:text-green-300">
+                  Your account has been created. You can now track your orders and access your profile.
+                  {defaultPassword && ` Your password is: ${defaultPassword} (last 6 digits of your phone)`}
+                </p>
+              </div>
+            )}
 
             <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-4 space-y-2">
               <div className="flex items-center gap-2 text-blue-900 dark:text-blue-100">
