@@ -15,6 +15,9 @@ interface ProductCardProps {
   isVeg?: boolean;
   isCustomizable?: boolean;
   onAddToCart?: (quantity: number) => void;
+  chefId?: string;
+  categoryId?: string;
+  chefName?: string;
 }
 
 export default function ProductCard({
@@ -28,6 +31,9 @@ export default function ProductCard({
   isVeg = true,
   isCustomizable = false,
   onAddToCart,
+  chefId,
+  categoryId,
+  chefName,
 }: ProductCardProps) {
   const [quantity, setQuantity] = useState(0);
 

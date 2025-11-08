@@ -1,8 +1,10 @@
+
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { X, Plus, Minus, ShoppingBag } from "lucide-react";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
 interface CartItem {
   id: string;
@@ -10,28 +12,37 @@ interface CartItem {
   price: number;
   quantity: number;
   image: string;
+  chefId?: string;
+  chefName?: string;
+  categoryId?: string;
+}
+
+interface CategoryCart {
+  categoryId: string;
+  categoryName: string;
+  chefId: string;
+  chefName: string;
+  items: CartItem[];
 }
 
 interface CartSidebarProps {
   isOpen: boolean;
   onClose: () => void;
-  items?: CartItem[];
-  onUpdateQuantity?: (id: string, quantity: number) => void;
-  onCheckout?: () => void;
-  disableCheckout?: boolean;
+  carts?: CategoryCart[];
+  onUpdateQuantity?: (categoryId: string, id: string, quantity: number) => void;
+  onCheckout?: (categoryId: string) => void;
 }
 
 export default function CartSidebar({
   isOpen,
   onClose,
-  items = [],
+  carts = [],
   onUpdateQuantity,
   onCheckout,
-  disableCheckout = false,
 }: CartSidebarProps) {
-  const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const deliveryFee = subtotal > 0 ? 40 : 0;
-  const total = subtotal + deliveryFee;
+  const totalItems = carts.reduce((total, cart) => 
+    total + cart.items.reduce((sum, item) => sum + item.quantity, 0), 0
+  );
 
   if (!isOpen) return null;
 
@@ -47,14 +58,14 @@ export default function CartSidebar({
         className="fixed right-0 top-0 h-full w-full sm:w-96 bg-background border-l z-50 flex flex-col"
         data-testid="sidebar-cart"
       >
-        <div className="flex items-center justify-between gap-4 p-4 border-b flex-wrap">
+        <div className="flex items-center justify-between gap-4 p-4 border-b">
           <div className="flex items-center gap-3">
             <ShoppingBag className="h-5 w-5 text-primary" />
             <h2 className="text-xl font-semibold" data-testid="text-cart-title">
-              Your Cart
+              Your Carts
             </h2>
             <Badge variant="secondary" data-testid="badge-cart-items">
-              {items.length}
+              {totalItems}
             </Badge>
           </div>
           <Button
@@ -67,7 +78,7 @@ export default function CartSidebar({
           </Button>
         </div>
 
-        {items.length === 0 ? (
+        {carts.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
             <ShoppingBag className="h-16 w-16 text-muted-foreground mb-4" />
             <h3 className="text-lg font-semibold mb-2" data-testid="text-empty-cart">
@@ -80,81 +91,110 @@ export default function CartSidebar({
         ) : (
           <>
             <ScrollArea className="flex-1 p-4">
-              <div className="space-y-4">
-                {items.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex gap-3"
-                    data-testid={`item-cart-${item.id}`}
-                  >
-                    <img
-                      src={item.image}
-                      alt={item.name}
-                      className="w-20 h-20 object-cover rounded-md"
-                      data-testid={`img-cart-${item.id}`}
-                    />
-                    <div className="flex-1">
-                      <h4 className="font-medium mb-1" data-testid={`text-cart-item-name-${item.id}`}>
-                        {item.name}
-                      </h4>
-                      <p className="text-sm font-semibold text-primary mb-2" data-testid={`text-cart-item-price-${item.id}`}>
-                        ₹{item.price}
-                      </p>
-                      <div className="flex items-center gap-2">
+              <Accordion type="multiple" className="space-y-4">
+                {carts.map((cart) => {
+                  const subtotal = cart.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+                  const deliveryFee = 40; // This will be dynamic based on chef location
+                  const total = subtotal + deliveryFee;
+                  
+                  return (
+                    <AccordionItem 
+                      key={cart.categoryId} 
+                      value={cart.categoryId}
+                      className="border rounded-lg"
+                    >
+                      <AccordionTrigger className="px-4 hover:no-underline">
+                        <div className="flex items-center justify-between w-full pr-4">
+                          <div className="flex flex-col items-start">
+                            <h3 className="font-semibold">{cart.categoryName}</h3>
+                            <p className="text-sm text-muted-foreground">{cart.chefName}</p>
+                          </div>
+                          <Badge variant="secondary">
+                            {cart.items.reduce((sum, item) => sum + item.quantity, 0)} items
+                          </Badge>
+                        </div>
+                      </AccordionTrigger>
+                      <AccordionContent className="px-4 pb-4">
+                        <div className="space-y-3">
+                          {cart.items.map((item) => (
+                            <div
+                              key={item.id}
+                              className="flex gap-3"
+                              data-testid={`item-cart-${item.id}`}
+                            >
+                              <img
+                                src={item.image}
+                                alt={item.name}
+                                className="w-16 h-16 object-cover rounded-md"
+                                data-testid={`img-cart-${item.id}`}
+                              />
+                              <div className="flex-1">
+                                <h4 className="font-medium text-sm mb-1" data-testid={`text-cart-item-name-${item.id}`}>
+                                  {item.name}
+                                </h4>
+                                <p className="text-sm font-semibold text-primary mb-2" data-testid={`text-cart-item-price-${item.id}`}>
+                                  ₹{item.price}
+                                </p>
+                                <div className="flex items-center gap-2">
+                                  <Button
+                                    size="icon"
+                                    variant="outline"
+                                    className="h-6 w-6"
+                                    onClick={() => onUpdateQuantity?.(cart.categoryId, item.id, item.quantity - 1)}
+                                    data-testid={`button-decrease-cart-${item.id}`}
+                                  >
+                                    <Minus className="h-3 w-3" />
+                                  </Button>
+                                  <span className="w-8 text-center text-sm font-medium" data-testid={`text-cart-quantity-${item.id}`}>
+                                    {item.quantity}
+                                  </span>
+                                  <Button
+                                    size="icon"
+                                    variant="outline"
+                                    className="h-6 w-6"
+                                    onClick={() => onUpdateQuantity?.(cart.categoryId, item.id, item.quantity + 1)}
+                                    data-testid={`button-increase-cart-${item.id}`}
+                                  >
+                                    <Plus className="h-3 w-3" />
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        
+                        <Separator className="my-3" />
+                        
+                        <div className="space-y-2 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Subtotal</span>
+                            <span className="font-medium">₹{subtotal}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Delivery Fee</span>
+                            <span className="font-medium">₹{deliveryFee}</span>
+                          </div>
+                          <Separator />
+                          <div className="flex justify-between font-semibold">
+                            <span>Total</span>
+                            <span className="text-primary">₹{total}</span>
+                          </div>
+                        </div>
+                        
                         <Button
-                          size="icon"
-                          variant="outline"
-                          className="h-7 w-7"
-                          onClick={() => onUpdateQuantity?.(item.id, item.quantity - 1)}
-                          data-testid={`button-decrease-cart-${item.id}`}
+                          size="sm"
+                          className="w-full mt-3"
+                          onClick={() => onCheckout?.(cart.categoryId)}
+                          data-testid={`button-checkout-${cart.categoryId}`}
                         >
-                          <Minus className="h-3 w-3" />
+                          Checkout {cart.categoryName}
                         </Button>
-                        <span className="w-8 text-center text-sm font-medium" data-testid={`text-cart-quantity-${item.id}`}>
-                          {item.quantity}
-                        </span>
-                        <Button
-                          size="icon"
-                          variant="outline"
-                          className="h-7 w-7"
-                          onClick={() => onUpdateQuantity?.(item.id, item.quantity + 1)}
-                          data-testid={`button-increase-cart-${item.id}`}
-                        >
-                          <Plus className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                      </AccordionContent>
+                    </AccordionItem>
+                  );
+                })}
+              </Accordion>
             </ScrollArea>
-
-            <div className="border-t p-4">
-              <div className="space-y-3 mb-4">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground" data-testid="text-subtotal-label">Subtotal</span>
-                  <span className="font-medium" data-testid="text-subtotal">₹{subtotal}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground" data-testid="text-delivery-label">Delivery Fee</span>
-                  <span className="font-medium" data-testid="text-delivery-fee">₹{deliveryFee}</span>
-                </div>
-                <Separator />
-                <div className="flex justify-between font-semibold">
-                  <span data-testid="text-total-label">Total</span>
-                  <span className="text-primary" data-testid="text-total">₹{total}</span>
-                </div>
-              </div>
-              <Button
-                size="lg"
-                className="w-full"
-                onClick={onCheckout}
-                disabled={disableCheckout}
-                data-testid="button-checkout"
-              >
-                Proceed to Checkout
-              </Button>
-            </div>
           </>
         )}
       </div>

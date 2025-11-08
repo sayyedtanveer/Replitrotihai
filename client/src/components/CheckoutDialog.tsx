@@ -10,15 +10,23 @@ import PaymentQRDialog from "./PaymentQRDialog";
 import { useCart } from "@/hooks/use-cart";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
+interface CategoryCart {
+  categoryId: string;
+  categoryName: string;
+  chefId: string;
+  chefName: string;
+  items: Array<{ id: string; name: string; price: number; quantity: number; image: string }>;
+}
+
 interface CheckoutDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  cartItems: Array<{ id: string; name: string; price: number; quantity: number; image: string }>;
+  carts: CategoryCart[];
   onOrderSuccess: () => void;
 }
 
-export default function CheckoutDialog({ isOpen, onClose, cartItems, onOrderSuccess }: CheckoutDialogProps) {
-  const { cart, clearCart } = useCart();
+export default function CheckoutDialog({ isOpen, onClose, carts, onOrderSuccess }: CheckoutDialogProps) {
+  const { clearCart } = useCart();
   const { toast } = useToast();
 
   // Check if user is already logged in
@@ -46,8 +54,12 @@ export default function CheckoutDialog({ isOpen, onClose, cartItems, onOrderSucc
     }
   }, [isOpen, parsedUserData]);
 
-  const subtotal = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const deliveryFee = 40;
+  // Calculate totals from all carts
+  const subtotal = carts.reduce((sum, cart) => 
+    sum + cart.items.reduce((itemSum, item) => itemSum + item.price * item.quantity, 0), 
+    0
+  );
+  const deliveryFee = carts.length > 0 ? 40 : 0;
   const total = subtotal + deliveryFee;
 
   const orderMutation = useMutation({
@@ -175,17 +187,24 @@ export default function CheckoutDialog({ isOpen, onClose, cartItems, onOrderSucc
         }
       }
 
+      // Flatten all items from all carts
+      const allItems = carts.flatMap(cart => 
+        cart.items.map(item => ({
+          id: item.id,
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity,
+          categoryId: cart.categoryId,
+          chefId: cart.chefId,
+        }))
+      );
+
       const orderData = {
         customerName,
         phone,
         email: email || null,
         address,
-        items: cart.map(item => ({
-          id: item.id,
-          name: item.name,
-          price: item.price,
-          quantity: item.quantity,
-        })),
+        items: allItems,
         subtotal,
         deliveryFee,
         total,
@@ -204,7 +223,9 @@ export default function CheckoutDialog({ isOpen, onClose, cartItems, onOrderSucc
       }
 
       const order = await response.json();
-      clearCart();
+      
+      // Clear all category carts that were in this checkout
+      carts.forEach(cart => clearCart(cart.categoryId));
 
       setOrderId(order.id);
       setShowQRDialog(true);

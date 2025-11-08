@@ -15,14 +15,7 @@ import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { UtensilsCrossed, ChefHat, Hotel } from "lucide-react";
 import type { Category, Chef, Product } from "@shared/schema";
-
-interface CartItem {
-  id: string;
-  name: string;
-  price: number;
-  quantity: number;
-  image: string;
-}
+import { useCart } from "@/hooks/use-cart";
 
 const iconMap: Record<string, React.ReactNode> = {
   UtensilsCrossed: <UtensilsCrossed className="h-6 w-6 text-primary" />,
@@ -33,6 +26,7 @@ const iconMap: Record<string, React.ReactNode> = {
 export default function Home() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+  const [checkoutCategoryId, setCheckoutCategoryId] = useState<string>("");
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false);
   const [isChefListOpen, setIsChefListOpen] = useState(false);
@@ -42,7 +36,8 @@ export default function Home() {
   const [selectedChefForMenu, setSelectedChefForMenu] = useState<Chef | null>(null);
   const [selectedCategoryTab, setSelectedCategoryTab] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [cartItems, setCartItems] = useState<CartItem[]>([]);
+
+  const { carts, addToCart: cartAddToCart, canAddItem, clearCart, getTotalItems } = useCart();
 
   const handleCategoryTabChange = (value: string) => {
     setSelectedCategoryTab(value);
@@ -68,44 +63,55 @@ export default function Home() {
     queryKey: ["/api/products"],
   });
 
-  const handleAddToCart = (productId: string, productName: string, price: number, image: string, quantity: number) => {
-    if (quantity === 0) {
-      setCartItems(items => items.filter(item => item.id !== productId));
-    } else {
-      setCartItems(items => {
-        const existing = items.find(item => item.id === productId);
-        if (existing) {
-          return items.map(item =>
-            item.id === productId ? { ...item, quantity } : item
-          );
-        }
-        return [...items, { id: productId, name: productName, price, quantity, image }];
-      });
-    }
-  };
+  const handleAddToCart = (product: Product) => {
+    const category = categories.find(c => c.id === product.categoryId);
+    const categoryName = category?.name || 'Unknown';
+    
+    const cartItem = {
+      id: product.id,
+      name: product.name,
+      price: product.price,
+      image: product.image,
+      chefId: product.chefId || undefined,
+      chefName: selectedChefForMenu?.name || undefined,
+      categoryId: product.categoryId,
+    };
 
-  const handleUpdateQuantity = (id: string, quantity: number) => {
-    if (quantity <= 0) {
-      setCartItems(items => items.filter(item => item.id !== id));
-    } else {
-      setCartItems(items =>
-        items.map(item => item.id === id ? { ...item, quantity } : item)
+    // Check if item can be added
+    const checkResult = canAddItem(cartItem.chefId, cartItem.categoryId);
+    if (!checkResult.canAdd) {
+      // Show confirmation dialog to clear category cart
+      const confirmed = window.confirm(
+        `Your ${categoryName} cart contains items from ${checkResult.conflictChef}. Do you want to replace them with items from ${cartItem.chefName || 'this chef'}?`
       );
+
+      if (confirmed) {
+        // Clear this category cart
+        clearCart(cartItem.categoryId || '');
+        cartAddToCart(cartItem, categoryName);
+      }
+      return;
     }
+
+    // Add to cart
+    cartAddToCart(cartItem, categoryName);
   };
 
-  const totalItems = cartItems.reduce((sum, item) => sum + item.quantity, 0);
-  const subtotal = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const deliveryFee = subtotal > 0 ? 40 : 0;
-  const total = subtotal + deliveryFee;
 
-  const handleCheckout = () => {
+  const handleUpdateQuantity = (categoryId: string, id: string, quantity: number) => {
+    useCart.getState().updateQuantity(categoryId, id, quantity);
+  };
+
+  const totalItems = getTotalItems();
+
+  const handleCheckout = (categoryId: string) => {
+    setCheckoutCategoryId(categoryId);
     setIsCartOpen(false);
     setIsCheckoutOpen(true);
   };
 
   const handleOrderSuccess = () => {
-    setCartItems([]);
+    useCart.getState().clearAllCarts();
     setIsCheckoutOpen(false);
   };
 
@@ -151,7 +157,7 @@ export default function Home() {
 
   const filteredProducts = products.filter(product => {
     const searchLower = searchQuery.trim().toLowerCase();
-    const matchesSearch = !searchLower || 
+    const matchesSearch = !searchLower ||
       product.name.toLowerCase().includes(searchLower) ||
       product.description.toLowerCase().includes(searchLower);
 
@@ -244,9 +250,13 @@ export default function Home() {
                         reviewCount={product.reviewCount}
                         isVeg={product.isVeg}
                         isCustomizable={product.isCustomizable}
-                        onAddToCart={(quantity) =>
-                          handleAddToCart(product.id, product.name, product.price, product.image, quantity)
-                        }
+                        chefName={selectedChefForMenu?.name} // Pass chefName
+                        onAddToCart={(quantity) => {
+                          // This quantity parameter is not used in the new handleAddToCart,
+                          // but kept for signature compatibility if ProductCard expects it.
+                          // The actual quantity management is now within the zustand store.
+                          handleAddToCart(product);
+                        }}
                       />
                     ))
                   )}
@@ -380,15 +390,14 @@ export default function Home() {
         category={selectedCategoryForMenu}
         chef={selectedChefForMenu}
         products={products}
-        cartItems={cartItems}
-        onAddToCart={handleAddToCart}
+        onAddToCart={(product) => handleAddToCart(product)}
         onProceedToCart={() => setIsCartOpen(true)}
       />
 
       <CartSidebar
         isOpen={isCartOpen}
         onClose={() => setIsCartOpen(false)}
-        items={cartItems}
+        carts={carts}
         onUpdateQuantity={handleUpdateQuantity}
         onCheckout={handleCheckout}
       />
@@ -396,10 +405,7 @@ export default function Home() {
       <CheckoutDialog
         isOpen={isCheckoutOpen}
         onClose={() => setIsCheckoutOpen(false)}
-        cartItems={cartItems}
-        subtotal={subtotal}
-        deliveryFee={deliveryFee}
-        total={total}
+        carts={carts.filter(cart => cart.categoryId === checkoutCategoryId)}
         onOrderSuccess={handleOrderSuccess}
       />
 

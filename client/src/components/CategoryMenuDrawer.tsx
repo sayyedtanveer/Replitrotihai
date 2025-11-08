@@ -10,10 +10,10 @@ interface CategoryMenuDrawerProps {
   category: Category | null;
   chef: { id: string; name: string } | null;
   products: Product[];
-  onAddToCart?: (productId: string, productName: string, price: number, image: string, quantity: number) => void;
-  cartItems?: { id: string; quantity: number; price: number }[]; // Added price to cartItems for totalPrice calculation
+  onAddToCart?: (product: Product) => void;
+  cartItems?: { id: string; quantity: number; price: number }[];
   autoCloseOnAdd?: boolean;
-  onProceedToCart?: () => void; // Added prop for proceeding to cart
+  onProceedToCart?: () => void;
 }
 
 export default function CategoryMenuDrawer({ 
@@ -50,7 +50,7 @@ export default function CategoryMenuDrawer({
     if (newQuantity === currentQuantity) return;
 
     if (onAddToCart) {
-      onAddToCart(product.id, product.name, product.price, product.image, newQuantity);
+      onAddToCart(product);
       // Don't auto-close - let users continue browsing and adding items
     }
   };
