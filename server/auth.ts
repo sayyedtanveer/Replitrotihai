@@ -1,5 +1,6 @@
-// server/replitAuth.ts
-// DEV-friendly replacement: disables Replit OIDC and provides a simple session + dev-login
+
+// server/auth.ts
+// Development-friendly authentication with session management
 
 import passport from "passport";
 import session from "express-session";
@@ -28,8 +29,7 @@ export function getSessionMiddleware() {
 }
 
 /**
- * setupAuth - replaced for local development.
- * It still wires session + passport so other code that depends on session works.
+ * setupAuth - sets up session and passport for local development.
  * It does NOT perform any OpenID Connect discovery/calls.
  */
 export async function setupAuth(app: Express) {
@@ -55,15 +55,6 @@ export async function setupAuth(app: Express) {
       role,
       expires_at: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 365,
     };
-    // ensure storage has user if your app expects it
-    // storage.upsertUser?.({
-    //   id: userObj.id,
-    //   email: userObj.email,
-    //   firstName: userObj.name,
-    //   lastName: "",
-    //   profileImageUrl: "",
-    //   //role: userObj.role,
-    // }).catch(() => {});
     // attach to session
     (req as any).session.passport = { user: userObj };
     res.json({ ok: true, user: userObj });
@@ -75,21 +66,15 @@ export async function setupAuth(app: Express) {
     res.json({ ok: true });
   });
 
-  console.log("✅ Replit Auth disabled — running in local dev auth mode");
+  console.log("✅ Auth configured — running in local dev auth mode");
 }
 
 /**
  * isAuthenticated middleware:
- * - In dev mode (USE_REPLIT_AUTH=false) we consider a session user as authenticated.
+ * - In dev mode we consider a session user as authenticated.
  * - Otherwise, if there is no session user the middleware responds 401.
  */
 export const isAuthenticated: RequestHandler = (req: any, res, next) => {
-  // If env explicitly forces real Replit auth, block here (but in this file we assume disabled)
-  if (process.env.USE_REPLIT_AUTH === "true") {
-    if (!req.isAuthenticated?.() || !req.user) return res.status(401).json({ message: "Unauthorized" });
-    return next();
-  }
-
   // Local dev: if session has a passport user, allow; otherwise respond 401.
   const sessionUser = req.session?.passport?.user;
   if (sessionUser) {

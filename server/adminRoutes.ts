@@ -212,7 +212,7 @@ export function registerAdminRoutes(app: Express) {
     }
   });
 
-  app.patch("/api/admin/orders/:id/payment", requireAdmin, async (req, res) => {
+  app.patch("/api/admin/orders/:id/payment", requireAdmin(), async (req, res) => {
     try {
       const { paymentStatus } = req.body;
       const order = await storage.getOrderById(req.params.id);
@@ -222,11 +222,21 @@ export function registerAdminRoutes(app: Express) {
         return;
       }
 
+      // Update payment status
+      let updatedOrder = await storage.updateOrderPaymentStatus(
+        req.params.id, 
+        paymentStatus as "pending" | "paid" | "confirmed"
+      );
+
+      if (!updatedOrder) {
+        res.status(404).json({ message: "Order not found" });
+        return;
+      }
+
       // When admin confirms payment, also update order status to confirmed
-      const updatedOrder = await storage.updateOrder(req.params.id, { 
-        paymentStatus: paymentStatus as "pending" | "paid" | "confirmed",
-        status: paymentStatus === "confirmed" ? "confirmed" : order.status
-      });
+      if (paymentStatus === "confirmed" && order.status === "pending") {
+        updatedOrder = await storage.updateOrderStatus(req.params.id, "confirmed") || updatedOrder;
+      }
 
       // Log payment confirmation
       console.log(`

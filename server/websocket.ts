@@ -7,9 +7,10 @@ import type { Order } from "@shared/schema";
 
 interface ConnectedClient {
   ws: WebSocket;
-  type: "admin" | "chef" | "delivery";
+  type: "admin" | "chef" | "delivery" | "customer";
   id: string;
   chefId?: string;
+  orderId?: string;
 }
 
 const clients: Map<string, ConnectedClient> = new Map();
@@ -23,18 +24,31 @@ export function setupWebSocket(server: Server) {
   wss.on("connection", (ws, req) => {
     const url = new URL(req.url || "", `http://${req.headers.host}`);
     const token = url.searchParams.get("token");
-    const type = url.searchParams.get("type") as "admin" | "chef" | "delivery";
+    const type = url.searchParams.get("type") as "admin" | "chef" | "delivery" | "customer";
+    const orderId = url.searchParams.get("orderId");
 
-    if (!token || !type) {
-      ws.close(1008, "Missing authentication");
+    if (!type) {
+      ws.close(1008, "Missing client type");
       return;
     }
 
     let clientId: string;
     let chefId: string | undefined;
+    let customerOrderId: string | undefined;
 
     try {
-      if (type === "admin") {
+      if (type === "customer") {
+        if (!orderId) {
+          ws.close(1008, "Order ID required for customer connection");
+          return;
+        }
+        clientId = `customer_${orderId}_${Date.now()}`;
+        customerOrderId = orderId;
+      } else if (type === "admin") {
+        if (!token) {
+          ws.close(1008, "Token required");
+          return;
+        }
         const payload = verifyAdminToken(token);
         if (!payload) {
           ws.close(1008, "Invalid admin token");
@@ -42,6 +56,10 @@ export function setupWebSocket(server: Server) {
         }
         clientId = payload.adminId;
       } else if (type === "chef") {
+        if (!token) {
+          ws.close(1008, "Token required");
+          return;
+        }
         const JWT_SECRET = process.env.JWT_SECRET || "partner-jwt-secret-change-in-production";
         const payload = jwt.verify(token, JWT_SECRET) as { partnerId: string; chefId: string };
         if (!payload || !payload.chefId) {
@@ -51,6 +69,10 @@ export function setupWebSocket(server: Server) {
         clientId = payload.partnerId;
         chefId = payload.chefId;
       } else if (type === "delivery") {
+        if (!token) {
+          ws.close(1008, "Token required");
+          return;
+        }
         const payload = verifyDeliveryToken(token);
         if (!payload) {
           ws.close(1008, "Invalid delivery token");
@@ -67,10 +89,10 @@ export function setupWebSocket(server: Server) {
       return;
     }
 
-    const client: ConnectedClient = { ws, type, id: clientId, chefId };
+    const client: ConnectedClient = { ws, type, id: clientId, chefId, orderId: customerOrderId };
     clients.set(clientId, client);
 
-    console.log(`WebSocket client connected: ${type} ${clientId}${chefId ? ` (chef: ${chefId})` : ""}`);
+    console.log(`WebSocket client connected: ${type} ${clientId}${chefId ? ` (chef: ${chefId})` : ""}${customerOrderId ? ` (order: ${customerOrderId})` : ""}`);
 
     ws.on("close", () => {
       clients.delete(clientId);
@@ -115,6 +137,8 @@ export function broadcastOrderUpdate(order: Order) {
     } else if (client.type === "chef" && client.chefId === order.chefId) {
       client.ws.send(message);
     } else if (client.type === "delivery" && client.id === order.assignedTo) {
+      client.ws.send(message);
+    } else if (client.type === "customer" && client.orderId === order.id) {
       client.ws.send(message);
     }
   });

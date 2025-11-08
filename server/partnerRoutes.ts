@@ -162,10 +162,10 @@ export function registerPartnerRoutes(app: Express) {
     }
   });
 
-  app.patch("/api/partner/orders/:id/status", requirePartner, async (req: any, res) => {
+  app.patch("/api/partner/orders/:id/status", requirePartner, async (req: AuthenticatedPartnerRequest, res) => {
     try {
       const { status } = req.body;
-      const chefId = req.partner.chefId;
+      const chefId = req.partner!.chefId;
       const order = await storage.getOrderById(req.params.id);
 
       if (!order || order.chefId !== chefId) {
@@ -173,7 +173,12 @@ export function registerPartnerRoutes(app: Express) {
         return;
       }
 
-      const updatedOrder = await storage.updateOrder(req.params.id, { status });
+      const updatedOrder = await storage.updateOrderStatus(req.params.id, status);
+
+      if (!updatedOrder) {
+        res.status(404).json({ message: "Failed to update order" });
+        return;
+      }
 
       // Log chef status update
       if (status === "preparing") {
@@ -182,7 +187,7 @@ export function registerPartnerRoutes(app: Express) {
 ║ 👨‍🍳 CHEF ACCEPTED ORDER
 ╠════════════════════════════════════════════════════════════════
 ║ Order ID: ${updatedOrder.id.slice(0, 8)}
-║ Chef: ${req.partner.chefId}
+║ Chef: ${req.partner!.chefId}
 ║ Status: Preparing
 ║ Time: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
 ╠════════════════════════════════════════════════════════════════

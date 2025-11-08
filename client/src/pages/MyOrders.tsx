@@ -32,7 +32,7 @@ export default function MyOrders() {
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
 
   const { data: phoneOrders = [], isLoading: phoneOrdersLoading } = useQuery<Order[]>({
-  queryKey: ["/api/user/orders"],
+  queryKey: ["/api/user/orders", userToken],
   enabled: !!userToken && !replitUser,
   queryFn: async () => {
     const res = await fetch("/api/user/orders", {

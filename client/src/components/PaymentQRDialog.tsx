@@ -95,7 +95,7 @@ export default function PaymentQRDialog({ isOpen, onClose, orderId, amount, cust
 
   const handleClose = () => {
     onClose();
-    setLocation("/my-orders");
+    setLocation(`/track/${orderId}`);
   };
 
   return (

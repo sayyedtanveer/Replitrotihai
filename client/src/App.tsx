@@ -26,6 +26,7 @@ import PartnerLogin from "@/pages/partner/PartnerLogin";
 import PartnerDashboard from "@/pages/partner/PartnerDashboard";
 import AdminDeliverySettings from "@/pages/admin/AdminDeliverySettings";
 import AdminPayments from "./pages/admin/AdminPayments";
+import OrderTracking from "@/pages/OrderTracking";
 
 function Router() {
   const { isAuthenticated } = useAuth();
@@ -55,6 +56,7 @@ function Router() {
       <Route path="/my-orders" component={MyOrders} />
       <Route path="/profile" component={Profile} />
       <Route path="/orders" component={MyOrders} />
+      <Route path="/track/:orderId" component={OrderTracking} />
       <Route component={NotFound} />
     </Switch>
   );

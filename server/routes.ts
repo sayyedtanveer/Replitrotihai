@@ -2,38 +2,19 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertOrderSchema, userLoginSchema, insertUserSchema } from "@shared/schema";
-import { setupAuth, isAuthenticated } from "./replitAuth";
+import { setupAuth, isAuthenticated } from "./auth";
 import { registerAdminRoutes } from "./adminRoutes";
 import { registerPartnerRoutes } from "./partnerRoutes";
 import { registerDeliveryRoutes } from "./deliveryRoutes";
 import { setupWebSocket, broadcastNewOrder } from "./websocket";
 import { hashPassword, verifyPassword, generateAccessToken, generateRefreshToken, requireUser, type AuthenticatedUserRequest } from "./userAuth";
+import { verifyToken as verifyUserToken } from "./userAuth";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   await setupAuth(app);
   registerAdminRoutes(app);
   registerPartnerRoutes(app);
   registerDeliveryRoutes(app);
-
-  // Register AdminPayment page route
-  app.get('/api/admin/payments', isAuthenticated, async (req, res) => {
-    // This route should serve the AdminPayments component
-    // For now, we'll just return a placeholder or redirect if needed
-    // In a full-stack app, this might be handled by a frontend router
-    // or by serving an index.html that includes AdminPayments.
-    console.log("Accessed Admin Payments route");
-    // Example: If you are serving static files and AdminPayments is a page
-    // res.sendFile(path.join(__dirname, '../public/admin-payments.html'));
-    // Or if it's an API endpoint that returns data for the page:
-    try {
-      // Fetch payment data or configuration here
-      res.json({ message: "Admin payments page data endpoint" });
-    } catch (error) {
-      console.error("Error in admin payments route:", error);
-      res.status(500).json({ message: "Failed to load admin payments data" });
-    }
-  });
-
 
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
     try {
@@ -134,7 +115,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/user/auto-register", async (req, res) => {
     try {
       const { customerName, phone, email, address } = req.body;
-      
+
       if (!customerName || !phone) {
         res.status(400).json({ message: "Name and phone are required" });
         return;
@@ -143,7 +124,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let user = await storage.getUserByPhone(phone);
       let isNewUser = false;
       let generatedPassword;
-      
+
       if (!user) {
         isNewUser = true;
         generatedPassword = Math.random().toString(36).slice(-12) + Math.random().toString(36).slice(-12);
@@ -313,7 +294,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const token = req.headers.authorization.substring(7);
         const { verifyToken } = await import("./userAuth");
         const payload = verifyToken(token);
-        
+
         if (payload) {
           const orders = await storage.getOrdersByUserId(payload.userId);
           res.json(orders);
@@ -339,16 +320,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get order by ID
   app.get("/api/orders/:id", async (req, res) => {
     try {
-      const order = await storage.getOrderById(req.params.id);
-      if (!order) {
-        res.status(404).json({ message: "Order not found" });
-        return;
+      const { id } = req.params;
+
+      // Check for phone authentication
+      const authHeader = req.headers.authorization;
+      let isAuthenticated = false;
+
+      if (authHeader && authHeader.startsWith("Bearer ")) {
+        const token = authHeader.substring(7);
+        const payload = verifyUserToken(token);
+        if (payload) {
+          isAuthenticated = true;
+        }
       }
-      res.json(order);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch order" });
+
+      // Check for Replit authentication
+      // // if (!isAuthenticated && req.session?.passport?.user) {
+      // //   isAuthenticated = true;
+      // // }
+
+      // // if (!isAuthenticated) {
+      // //   res.status(401).json({ message: "Unauthorized" });
+      // //   return;
+      // // }
+
+      // // const order = await storage.getOrder(id);
+
+      // // if (!order) {
+      // //   res.status(404).json({ message: "Order not found" });
+      // //   return;
+      // // }
+
+      // res.json(order);
+    } catch (error: any) {
+      console.log("Error fetching order:", error);
+      res.status(500).json({ message: error.message });
     }
   });
+
 
   // Get all chefs
   app.get("/api/chefs", async (_req, res) => {

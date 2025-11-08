@@ -3,7 +3,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import cookieParser from "cookie-parser";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
- 
+
 const app = express();
 console.log("🚀 Server is starting...");
 debugger; 
@@ -54,7 +54,7 @@ app.use((req, res, next) => {
   // Create default admin user on startup
   const { storage } = await import("./storage");
   const { hashPassword } = await import("./adminAuth");
-  
+
   try {
     const existingAdmin = await storage.getAdminByUsername("admin");
     if (!existingAdmin) {

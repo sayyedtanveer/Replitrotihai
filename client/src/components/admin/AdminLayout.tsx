@@ -1,5 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   LayoutDashboard,
   ShoppingBag,
@@ -19,8 +20,9 @@ import {
   CreditCard,
   Truck,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { useAdminNotifications } from "@/hooks/useAdminNotifications";
 
 import SubscriptionDrawer from "@/components/SubscriptionDrawer";
 
@@ -32,8 +34,19 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const [location, setLocation] = useLocation();
   const { toast } = useToast();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const { unreadCount, wsConnected, requestNotificationPermission, clearUnreadCount } = useAdminNotifications();
 
   const adminUser = JSON.parse(localStorage.getItem("adminUser") || "{}");
+
+  useEffect(() => {
+    requestNotificationPermission();
+  }, []);
+
+  useEffect(() => {
+    if (location === "/admin/payments") {
+      clearUnreadCount();
+    }
+  }, [location]);
 
   const handleLogout = async () => {
     try {
@@ -110,8 +123,8 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               const Icon = item.icon;
               return (
                 <Link key={item.name} href={item.href}>
-                  <a
-                    className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+                  <div
+                    className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors cursor-pointer ${
                       isActive
                         ? "bg-primary text-primary-foreground"
                         : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
@@ -120,21 +133,21 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                   >
                     <Icon className="w-5 h-5" />
                     <span className="font-medium">{item.name}</span>
-                  </a>
+                  </div>
                 </Link>
               );
             })}
             <Link href="/admin/subscriptions">
-              <a className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${location === "/admin/subscriptions" ? "bg-primary text-primary-foreground" : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"}`}>
+              <div className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors cursor-pointer ${location === "/admin/subscriptions" ? "bg-primary text-primary-foreground" : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"}`}>
                 <Calendar className="w-5 h-5" />
                 <span>Subscriptions</span>
-              </a>
+              </div>
             </Link>
             <Link href="/admin/delivery-settings">
-              <a className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${location === "/admin/delivery-settings" ? "bg-primary text-primary-foreground" : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"}`}>
+              <div className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors cursor-pointer ${location === "/admin/delivery-settings" ? "bg-primary text-primary-foreground" : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"}`}>
                 <Truck className="w-5 h-5" />
                 <span>Delivery Settings</span>
-              </a>
+              </div>
             </Link>
           </nav>
 
@@ -164,7 +177,29 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                 <Menu className="w-6 h-6" />
               </Button>
               <div className="text-lg font-semibold lg:block hidden">RotiHai Admin</div>
-              <div></div>
+              <div className="flex items-center gap-2">
+                {wsConnected && (
+                  <div className="h-2 w-2 bg-green-500 rounded-full animate-pulse" title="Connected"></div>
+                )}
+                <Link href="/admin/payments">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="relative"
+                    data-testid="button-notifications"
+                  >
+                    <Bell className="w-5 h-5" />
+                    {unreadCount > 0 && (
+                      <Badge
+                        className="absolute -top-1 -right-1 h-5 min-w-5 flex items-center justify-center p-0 text-xs bg-red-500 hover:bg-red-600"
+                        data-testid="badge-notification-count"
+                      >
+                        {unreadCount > 99 ? "99+" : unreadCount}
+                      </Badge>
+                    )}
+                  </Button>
+                </Link>
+              </div>
             </div>
           </header>
 

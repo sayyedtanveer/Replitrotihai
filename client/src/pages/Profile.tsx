@@ -26,7 +26,7 @@ export default function Profile() {
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
 
   const { data: phoneUser, isLoading: phoneUserLoading } = useQuery<ProfileUser>({
-  queryKey: ["/api/user/profile"],
+  queryKey: ["/api/user/profile", userToken],
   queryFn: async () => {
     const res = await fetch("/api/user/profile", {
       headers: {
