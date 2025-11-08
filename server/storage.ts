@@ -256,7 +256,7 @@ export class MemStorage implements IStorage {
       chefId: insertOrder.chefId || null,
       createdAt: new Date(),
     };
-    
+
     const [createdOrder] = await db.insert(orders).values(orderData).returning();
     return createdOrder;
   }
@@ -363,7 +363,7 @@ export class MemStorage implements IStorage {
     return db.query.adminUsers.findMany();
   }
 
-  async getAllUsers(): Promise<User[]> {
+  async getAllUsers(): Promise<User[]>{
     return db.query.users.findMany();
   }
 
@@ -646,7 +646,7 @@ export class MemStorage implements IStorage {
   }
 
   async getAvailableDeliveryPersonnel(): Promise<DeliveryPersonnel[]> {
-    return db.query.deliveryPersonnel.findMany({ 
+    return db.query.deliveryPersonnel.findMany({
       where: (dp, { eq, and }) => and(eq(dp.status, "available"), eq(dp.isActive, true))
     });
   }
@@ -688,7 +688,7 @@ export class MemStorage implements IStorage {
   async approveOrder(orderId: string, approvedBy: string): Promise<Order | undefined> {
     const [order] = await db
       .update(orders)
-      .set({ 
+      .set({
         status: "approved",
         approvedBy,
         approvedAt: new Date()
@@ -701,7 +701,7 @@ export class MemStorage implements IStorage {
   async rejectOrder(orderId: string, rejectedBy: string, reason: string): Promise<Order | undefined> {
     const [order] = await db
       .update(orders)
-      .set({ 
+      .set({
         status: "rejected",
         rejectedBy,
         rejectionReason: reason
@@ -714,7 +714,7 @@ export class MemStorage implements IStorage {
   async assignOrderToDeliveryPerson(orderId: string, deliveryPersonId: string): Promise<Order | undefined> {
     const [order] = await db
       .update(orders)
-      .set({ 
+      .set({
         assignedTo: deliveryPersonId,
         assignedAt: new Date(),
         status: "assigned"
@@ -723,14 +723,14 @@ export class MemStorage implements IStorage {
       .returning();
 
     await db.update(deliveryPersonnel).set({ status: "busy" }).where(eq(deliveryPersonnel.id, deliveryPersonId));
-    
+
     return order;
   }
 
   async updateOrderPickup(orderId: string): Promise<Order | undefined> {
     const [order] = await db
       .update(orders)
-      .set({ 
+      .set({
         status: "picked_up",
         pickedUpAt: new Date()
       })
@@ -745,7 +745,7 @@ export class MemStorage implements IStorage {
 
     const [updatedOrder] = await db
       .update(orders)
-      .set({ 
+      .set({
         status: "delivered",
         deliveredAt: new Date()
       })
@@ -754,18 +754,18 @@ export class MemStorage implements IStorage {
 
     if (order.assignedTo) {
       await db.update(deliveryPersonnel)
-        .set({ 
+        .set({
           status: "available",
           totalDeliveries: sql`${deliveryPersonnel.totalDeliveries} + 1`
         })
         .where(eq(deliveryPersonnel.id, order.assignedTo));
     }
-    
+
     return updatedOrder;
   }
 
   async getOrdersByDeliveryPerson(deliveryPersonId: string): Promise<Order[]> {
-    return db.query.orders.findMany({ 
+    return db.query.orders.findMany({
       where: (o, { eq }) => eq(o.assignedTo, deliveryPersonId)
     });
   }

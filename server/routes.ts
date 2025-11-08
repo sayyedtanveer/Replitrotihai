@@ -151,12 +151,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         user = await storage.createUser({
           name: customerName,
           phone,
-          email: email || null,
-          address: address || null,
+          email: email || undefined,
+          address: address || undefined,
           passwordHash,
         });
+        console.log("New user created:", user.id);
       } else {
         await storage.updateUserLastLogin(user.id);
+        console.log("Existing user logged in:", user.id);
       }
 
       const accessToken = generateAccessToken(user);
@@ -252,7 +254,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Create an order
+  // Create an order (no authentication required - supports guest checkout)
   app.post("/api/orders", async (req, res) => {
     try {
       const result = insertOrderSchema.safeParse(req.body);
@@ -288,23 +290,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get user's orders
-  app.get("/api/orders", isAuthenticated, async (req: any, res) => {
+  // Get user's orders (supports both authenticated users and phone-based lookup)
+  app.get("/api/orders", async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
-      if (!user) {
-        res.status(404).json({ message: "User not found" });
-        return;
-      }
+      // Check if user is authenticated via Replit auth
+      if (req.isAuthenticated && req.isAuthenticated() && req.user?.claims?.sub) {
+        const userId = req.user.claims.sub;
+        const user = await storage.getUser(userId);
+        if (!user) {
+          res.status(404).json({ message: "User not found" });
+          return;
+        }
 
-      const allOrders = await storage.getAllOrders();
-      // Filter orders by user's email or phone
-      const userOrders = allOrders.filter(order => 
-        order.email === user.email || order.phone === user.email
-      );
-      res.json(userOrders);
+        const allOrders = await storage.getAllOrders();
+        const userOrders = allOrders.filter(order => 
+          order.email === user.email || order.phone === user.email
+        );
+        res.json(userOrders);
+      } 
+      // Check if user is authenticated via phone auth (JWT)
+      else if (req.headers.authorization?.startsWith("Bearer ")) {
+        const token = req.headers.authorization.substring(7);
+        const { verifyToken } = await import("./userAuth");
+        const payload = verifyToken(token);
+        
+        if (payload) {
+          const orders = await storage.getOrdersByUserId(payload.userId);
+          res.json(orders);
+        } else {
+          res.status(401).json({ message: "Invalid token" });
+        }
+      }
+      // Allow query by phone for guest users
+      else if (req.query.phone) {
+        const allOrders = await storage.getAllOrders();
+        const userOrders = allOrders.filter(order => order.phone === req.query.phone);
+        res.json(userOrders);
+      }
+      else {
+        res.status(401).json({ message: "Authentication required or provide phone number" });
+      }
     } catch (error) {
+      console.error("Error fetching orders:", error);
       res.status(500).json({ message: "Failed to fetch orders" });
     }
   });

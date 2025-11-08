@@ -5,6 +5,7 @@ import { Check, Loader2, Copy, User } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import QRCode from "qrcode";
 import { apiRequest } from "@/lib/queryClient";
+import { useLocation } from "wouter";
 
 interface PaymentQRDialogProps {
   isOpen: boolean;
@@ -24,6 +25,7 @@ export default function PaymentQRDialog({ isOpen, onClose, orderId, amount, cust
   const [accountCreated, setAccountCreated] = useState(false);
   const [defaultPassword, setDefaultPassword] = useState("");
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
 
   useEffect(() => {
     if (isOpen && canvasRef.current) {
@@ -91,8 +93,13 @@ export default function PaymentQRDialog({ isOpen, onClose, orderId, amount, cust
     });
   };
 
+  const handleClose = () => {
+    onClose();
+    setLocation("/my-orders");
+  };
+
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="w-full max-w-md mx-auto">
         <DialogHeader>
           <DialogTitle>Complete Payment</DialogTitle>
@@ -160,14 +167,14 @@ export default function PaymentQRDialog({ isOpen, onClose, orderId, amount, cust
 
           <div className="space-y-2">
             <Button 
-              onClick={onClose} 
+              onClick={handleClose} 
               className="w-full"
               data-testid="button-close-payment"
             >
-              ✓ I've Completed the Payment
+              ✓ I've Completed the Payment - Track Order
             </Button>
             <p className="text-xs text-center text-muted-foreground">
-              Our team will verify and confirm your payment within 5 minutes
+              You'll be redirected to track your order. Our team will verify and confirm your payment within 5 minutes
             </p>
           </div>
         </div>

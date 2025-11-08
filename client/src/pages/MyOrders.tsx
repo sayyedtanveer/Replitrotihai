@@ -11,7 +11,7 @@ import SubscriptionDrawer from "@/components/SubscriptionDrawer";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ShoppingBag, Package, Clock, CheckCircle, XCircle } from "lucide-react";
+import { ShoppingBag, Package, Clock, CheckCircle, XCircle, ChefHat, Truck, Home } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { format } from "date-fns";
 import type { Category } from "../types/category";
@@ -26,6 +26,8 @@ export default function MyOrders() {
   const [isSubscriptionOpen, setIsSubscriptionOpen] = useState(false);
   const { user: replitUser } = useAuth();
   const userToken = localStorage.getItem("userToken");
+  const savedUserData = localStorage.getItem("userData");
+  const parsedUserData = savedUserData ? JSON.parse(savedUserData) : null;
 
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
 
@@ -33,7 +35,11 @@ export default function MyOrders() {
   queryKey: ["/api/user/orders"],
   enabled: !!userToken && !replitUser,
   queryFn: async () => {
-    const res = await fetch("/api/user/orders");
+    const res = await fetch("/api/user/orders", {
+      headers: {
+        Authorization: `Bearer ${userToken}`,
+      },
+    });
     if (!res.ok) throw new Error("Failed to fetch phone orders");
     return res.json();
   }
@@ -51,7 +57,7 @@ const { data: replitOrders = [], isLoading: replitOrdersLoading } = useQuery<Ord
 
   const orders = replitUser ? replitOrders : phoneOrders;
   const isLoading = replitUser ? replitOrdersLoading : phoneOrdersLoading;
-  const user = replitUser || (userToken ? { name: "User" } : null);
+  const user = replitUser || (userToken && parsedUserData ? parsedUserData : null);
 
   const { data: categories = [] } = useQuery<Category[]>({
   queryKey: ["/api/categories"],
@@ -106,6 +112,48 @@ const { data: chefs = [] } = useQuery<Chef[]>({
       default:
         return <ShoppingBag className="h-4 w-4" />;
     }
+  };
+
+  const getOrderProgress = (order: any) => {
+    const steps = [
+      { 
+        key: "placed", 
+        label: "Order Placed", 
+        icon: <ShoppingBag className="h-5 w-5" />,
+        completed: true,
+        description: order.paymentStatus === "pending" ? "Waiting for payment" : "Order received"
+      },
+      { 
+        key: "payment", 
+        label: "Payment Confirmed", 
+        icon: <CheckCircle className="h-5 w-5" />,
+        completed: order.paymentStatus === "confirmed" || order.status === "confirmed" || order.status === "preparing" || order.status === "out_for_delivery" || order.status === "delivered",
+        description: order.paymentStatus === "pending" ? "Pending verification" : "Payment verified"
+      },
+      { 
+        key: "preparing", 
+        label: "Preparing", 
+        icon: <ChefHat className="h-5 w-5" />,
+        completed: order.status === "preparing" || order.status === "out_for_delivery" || order.status === "delivered",
+        description: order.status === "preparing" ? "Chef is preparing" : order.status === "confirmed" ? "Waiting for chef" : "Ready"
+      },
+      { 
+        key: "delivery", 
+        label: "Out for Delivery", 
+        icon: <Truck className="h-5 w-5" />,
+        completed: order.status === "out_for_delivery" || order.status === "delivered",
+        description: order.status === "out_for_delivery" ? "On the way" : "Pending pickup"
+      },
+      { 
+        key: "delivered", 
+        label: "Delivered", 
+        icon: <Home className="h-5 w-5" />,
+        completed: order.status === "delivered" || order.status === "completed",
+        description: order.status === "delivered" ? "Order delivered" : "Not yet delivered"
+      }
+    ];
+
+    return steps;
   };
 
   return (
@@ -178,7 +226,60 @@ const { data: chefs = [] } = useQuery<Chef[]>({
                     </div>
                   </CardHeader>
                   <CardContent>
-                    <div className="space-y-4">
+                    <div className="space-y-6">
+                      {/* Order Progress Timeline */}
+                      {order.status !== "cancelled" && (
+                        <div className="bg-muted/30 dark:bg-muted/20 rounded-lg p-4">
+                          <h4 className="font-semibold mb-4 text-sm">Order Status Tracker</h4>
+                          <div className="relative">
+                            {getOrderProgress(order).map((step, idx) => (
+                              <div key={step.key} className="flex gap-4 pb-6 last:pb-0">
+                                {/* Timeline Line */}
+                                <div className="relative flex flex-col items-center">
+                                  <div className={`w-10 h-10 rounded-full flex items-center justify-center z-10 ${
+                                    step.completed 
+                                      ? "bg-primary text-primary-foreground" 
+                                      : "bg-muted text-muted-foreground"
+                                  }`}>
+                                    {step.icon}
+                                  </div>
+                                  {idx < getOrderProgress(order).length - 1 && (
+                                    <div className={`w-0.5 h-full absolute top-10 ${
+                                      step.completed ? "bg-primary" : "bg-muted"
+                                    }`} />
+                                  )}
+                                </div>
+                                
+                                {/* Step Content */}
+                                <div className="flex-1 -mt-1">
+                                  <p className={`font-medium ${step.completed ? "text-foreground" : "text-muted-foreground"}`}>
+                                    {step.label}
+                                  </p>
+                                  <p className="text-sm text-muted-foreground">
+                                    {step.description}
+                                  </p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Cancelled Order Message */}
+                      {order.status === "cancelled" && (
+                        <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg p-4">
+                          <div className="flex items-center gap-2 text-red-900 dark:text-red-100">
+                            <XCircle className="h-5 w-5" />
+                            <p className="font-medium">Order Cancelled</p>
+                          </div>
+                          {order.rejectionReason && (
+                            <p className="text-sm text-red-700 dark:text-red-300 mt-2">
+                              Reason: {order.rejectionReason}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
                       <div>
                         <h4 className="font-semibold mb-2">Items</h4>
                         <div className="space-y-2">

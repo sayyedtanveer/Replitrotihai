@@ -26,11 +26,15 @@ export default function AdminPayments() {
     queryKey: ["/api/admin", "orders", "payments"],
     queryFn: async () => {
       const token = localStorage.getItem("adminToken");
-      const response = await fetch("/api/admin/orders?paymentPending=true", {
+      const response = await fetch("/api/admin/orders", {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) throw new Error("Failed to fetch orders");
-      return response.json();
+      const allOrders = await response.json();
+      // Filter for only pending and paid payments (not yet confirmed)
+      return allOrders.filter((order: Order) => 
+        order.paymentStatus === "pending" || order.paymentStatus === "paid"
+      );
     },
   });
 

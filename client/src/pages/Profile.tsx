@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
@@ -22,6 +21,8 @@ export default function Profile() {
   const { user: replitUser } = useAuth();
   const [, setLocation] = useLocation();
   const userToken = localStorage.getItem("userToken");
+  const savedUserData = localStorage.getItem("userData");
+  const parsedUserData = savedUserData ? JSON.parse(savedUserData) : null;
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
 
   const { data: phoneUser, isLoading: phoneUserLoading } = useQuery<ProfileUser>({
@@ -56,18 +57,18 @@ const { data: chefs = [] } = useQuery<Chef[]>({
 
 
 
-  
+
   const user: ProfileUser | null = replitUser || phoneUser || null;
   const isLoading = phoneUserLoading;
-  
+
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isChefListOpen, setIsChefListOpen] = useState(false);
   const [isSubscriptionOpen, setIsSubscriptionOpen] = useState(false);
 
-   
 
-  
+
+
   const handleLogout = () => {
     if (userToken) {
       localStorage.removeItem("userToken");
