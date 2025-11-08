@@ -2,7 +2,6 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertOrderSchema, userLoginSchema, insertUserSchema } from "@shared/schema";
-import { setupAuth, isAuthenticated } from "./auth";
 import { registerAdminRoutes } from "./adminRoutes";
 import { registerPartnerRoutes } from "./partnerRoutes";
 import { registerDeliveryRoutes } from "./deliveryRoutes";
@@ -11,21 +10,10 @@ import { hashPassword, verifyPassword, generateAccessToken, generateRefreshToken
 import { verifyToken as verifyUserToken } from "./userAuth";
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  await setupAuth(app);
   registerAdminRoutes(app);
   registerPartnerRoutes(app);
   registerDeliveryRoutes(app);
 
-  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
-      res.json(user);
-    } catch (error) {
-      console.error("Error fetching user:", error);
-      res.status(500).json({ message: "Failed to fetch user" });
-    }
-  });
 
   // User phone-based authentication routes
   app.post("/api/user/register", async (req, res) => {
@@ -186,11 +174,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/user/orders", requireUser(), async (req: AuthenticatedUserRequest, res) => {
     try {
+      console.log("GET /api/user/orders - User ID:", req.authenticatedUser!.userId);
       const orders = await storage.getOrdersByUserId(req.authenticatedUser!.userId);
+      console.log("GET /api/user/orders - Found", orders.length, "orders");
       res.json(orders);
-    } catch (error) {
-      console.error("Error fetching orders:", error);
-      res.status(500).json({ message: "Failed to fetch orders" });
+    } catch (error: any) {
+      console.error("Error fetching user orders:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch orders" });
     }
   });
 
@@ -274,6 +264,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get user's orders (supports both authenticated users and phone-based lookup)
   app.get("/api/orders", async (req: any, res) => {
     try {
+      console.log("GET /api/orders - Auth header:", req.headers.authorization ? "Present" : "Missing");
+      console.log("GET /api/orders - Query params:", req.query);
+      
       // Check if user is authenticated via Replit auth
       if (req.isAuthenticated && req.isAuthenticated() && req.user?.claims?.sub) {
         const userId = req.user.claims.sub;
@@ -296,9 +289,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const payload = verifyToken(token);
 
         if (payload) {
+          console.log("GET /api/orders - Valid token for user:", payload.userId);
           const orders = await storage.getOrdersByUserId(payload.userId);
           res.json(orders);
         } else {
+          console.log("GET /api/orders - Invalid token");
           res.status(401).json({ message: "Invalid token" });
         }
       }
@@ -309,6 +304,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.json(userOrders);
       }
       else {
+        console.log("GET /api/orders - No valid authentication method found");
         res.status(401).json({ message: "Authentication required or provide phone number" });
       }
     } catch (error) {
@@ -322,38 +318,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
 
-      // Check for phone authentication
-      const authHeader = req.headers.authorization;
-      let isAuthenticated = false;
+      // Allow unauthenticated access for order tracking (users receive order ID after placing order)
+      const order = await storage.getOrderById(id);
 
-      if (authHeader && authHeader.startsWith("Bearer ")) {
-        const token = authHeader.substring(7);
-        const payload = verifyUserToken(token);
-        if (payload) {
-          isAuthenticated = true;
-        }
+      if (!order) {
+        res.status(404).json({ message: "Order not found" });
+        return;
       }
 
-      // Check for Replit authentication
-      // // if (!isAuthenticated && req.session?.passport?.user) {
-      // //   isAuthenticated = true;
-      // // }
-
-      // // if (!isAuthenticated) {
-      // //   res.status(401).json({ message: "Unauthorized" });
-      // //   return;
-      // // }
-
-      // // const order = await storage.getOrder(id);
-
-      // // if (!order) {
-      // //   res.status(404).json({ message: "Order not found" });
-      // //   return;
-      // // }
-
-      // res.json(order);
+      res.json(order);
     } catch (error: any) {
-      console.log("Error fetching order:", error);
+      console.error("Error fetching order:", error);
       res.status(500).json({ message: error.message });
     }
   });
@@ -428,33 +403,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
     return degrees * (Math.PI / 180);
   }
 
-  // Get all subscription plans
+  // Get all subscription plans (public access)
   app.get("/api/subscription-plans", async (_req, res) => {
     try {
       const plans = await storage.getSubscriptionPlans();
       res.json(plans);
     } catch (error) {
+      console.error("Error fetching subscription plans:", error);
       res.status(500).json({ message: "Failed to fetch subscription plans" });
     }
   });
 
   // Get user's subscriptions
-  app.get("/api/subscriptions", isAuthenticated, async (req: any, res) => {
+  app.get("/api/subscriptions", requireUser(), async (req: AuthenticatedUserRequest, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.authenticatedUser!.userId;
       const allSubscriptions = await storage.getSubscriptions();
       const userSubscriptions = allSubscriptions.filter(s => s.userId === userId);
       res.json(userSubscriptions);
     } catch (error) {
+      console.error("Error fetching user subscriptions:", error);
       res.status(500).json({ message: "Failed to fetch subscriptions" });
     }
   });
 
   // Create a subscription
-  app.post("/api/subscriptions", isAuthenticated, async (req: any, res) => {
+  app.post("/api/subscriptions", requireUser(), async (req: AuthenticatedUserRequest, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.authenticatedUser!.userId;
       const { planId } = req.body;
+
+      if (!planId) {
+        res.status(400).json({ message: "Plan ID is required" });
+        return;
+      }
 
       const plan = await storage.getSubscriptionPlan(planId);
       if (!plan) {
@@ -487,16 +469,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       res.status(201).json(subscription);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error creating subscription:", error);
-      res.status(500).json({ message: "Failed to create subscription" });
+      res.status(500).json({ message: error.message || "Failed to create subscription" });
     }
   });
 
   // Pause a subscription
-  app.post("/api/subscriptions/:id/pause", isAuthenticated, async (req: any, res) => {
+  app.post("/api/subscriptions/:id/pause", requireUser(), async (req: AuthenticatedUserRequest, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.authenticatedUser!.userId;
       const subscription = await storage.getSubscription(req.params.id);
 
       if (!subscription) {
@@ -511,15 +493,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const updated = await storage.updateSubscription(req.params.id, { status: "paused" });
       res.json(updated);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to pause subscription" });
+    } catch (error: any) {
+      console.error("Error pausing subscription:", error);
+      res.status(500).json({ message: error.message || "Failed to pause subscription" });
     }
   });
 
   // Resume a subscription
-  app.post("/api/subscriptions/:id/resume", isAuthenticated, async (req: any, res) => {
+  app.post("/api/subscriptions/:id/resume", requireUser(), async (req: AuthenticatedUserRequest, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.authenticatedUser!.userId;
       const subscription = await storage.getSubscription(req.params.id);
 
       if (!subscription) {
@@ -534,15 +517,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const updated = await storage.updateSubscription(req.params.id, { status: "active" });
       res.json(updated);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to resume subscription" });
+    } catch (error: any) {
+      console.error("Error resuming subscription:", error);
+      res.status(500).json({ message: error.message || "Failed to resume subscription" });
     }
   });
 
   // Cancel a subscription
-  app.delete("/api/subscriptions/:id", isAuthenticated, async (req: any, res) => {
+  app.delete("/api/subscriptions/:id", requireUser(), async (req: AuthenticatedUserRequest, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.authenticatedUser!.userId;
       const subscription = await storage.getSubscription(req.params.id);
 
       if (!subscription) {
@@ -557,8 +541,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       await storage.deleteSubscription(req.params.id);
       res.json({ message: "Subscription cancelled" });
-    } catch (error) {
-      res.status(500).json({ message: "Failed to cancel subscription" });
+    } catch (error: any) {
+      console.error("Error cancelling subscription:", error);
+      res.status(500).json({ message: error.message || "Failed to cancel subscription" });
     }
   });
 

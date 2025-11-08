@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -31,23 +30,45 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
     },
   });
 
+  const getAuthHeaders = (): Record<string, string> => {
+    const token = localStorage.getItem("userToken");
+    if (!token) return {};
+    return { Authorization: `Bearer ${token}` };
+  };
+
   const { data: mySubscriptions } = useQuery<Subscription[]>({
     queryKey: ["/api/subscriptions"],
     queryFn: async () => {
-      const response = await fetch("/api/subscriptions");
-      if (!response.ok) throw new Error("Failed to fetch subscriptions");
+      const response = await fetch("/api/subscriptions", {
+        headers: getAuthHeaders(),
+      });
+      if (!response.ok) {
+        if (response.status === 401) {
+          toast({ title: "Please login", description: "You need to login to view subscriptions", variant: "destructive" });
+        }
+        throw new Error("Failed to fetch subscriptions");
+      }
       return response.json();
     },
+    enabled: !!localStorage.getItem("userToken"),
   });
 
   const subscribeMutation = useMutation({
     mutationFn: async (planId: string) => {
       const response = await fetch("/api/subscriptions", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          ...getAuthHeaders(),
+        },
         body: JSON.stringify({ planId }),
       });
-      if (!response.ok) throw new Error("Failed to create subscription");
+      if (!response.ok) {
+        if (response.status === 401) {
+          toast({ title: "Please login", description: "You need to login to subscribe", variant: "destructive" });
+        }
+        throw new Error("Failed to create subscription");
+      }
       return response.json();
     },
     onSuccess: () => {
@@ -63,6 +84,7 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
     mutationFn: async (subscriptionId: string) => {
       const response = await fetch(`/api/subscriptions/${subscriptionId}/pause`, {
         method: "POST",
+        headers: getAuthHeaders(),
       });
       if (!response.ok) throw new Error("Failed to pause subscription");
       return response.json();
@@ -77,6 +99,7 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
     mutationFn: async (subscriptionId: string) => {
       const response = await fetch(`/api/subscriptions/${subscriptionId}/resume`, {
         method: "POST",
+        headers: getAuthHeaders(),
       });
       if (!response.ok) throw new Error("Failed to resume subscription");
       return response.json();
@@ -91,6 +114,7 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
     mutationFn: async (subscriptionId: string) => {
       const response = await fetch(`/api/subscriptions/${subscriptionId}`, {
         method: "DELETE",
+        headers: getAuthHeaders(),
       });
       if (!response.ok) throw new Error("Failed to cancel subscription");
       return response.json();
@@ -102,7 +126,7 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
   });
 
   const activePlans = plans?.filter(p => p.isActive) || [];
-  const categories = [...new Set(activePlans.map(p => p.categoryId))];
+  const categories = Array.from(new Set(activePlans.map(p => p.categoryId)));
 
   const filteredPlans = selectedCategory
     ? activePlans.filter(p => p.categoryId === selectedCategory)
@@ -178,7 +202,7 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
                             <span className="font-medium">₹{plan?.price}/{plan?.frequency}</span>
                           </div>
                         </div>
-                        
+
                         <div className="flex gap-2">
                           {sub.status === "active" && (
                             <Button

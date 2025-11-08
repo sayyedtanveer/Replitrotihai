@@ -40,6 +40,12 @@ export default function MyOrders() {
         Authorization: `Bearer ${userToken}`,
       },
     });
+    if (res.status === 401) {
+      // Token is invalid or expired, clear it
+      localStorage.removeItem("userToken");
+      localStorage.removeItem("userData");
+      throw new Error("Session expired. Please log in again.");
+    }
     if (!res.ok) throw new Error("Failed to fetch phone orders");
     return res.json();
   }
@@ -177,9 +183,9 @@ const { data: chefs = [] } = useQuery<Chef[]>({
               <CardContent className="flex flex-col items-center gap-4">
                 <ShoppingBag className="h-16 w-16 text-muted-foreground" />
                 <div>
-                  <CardTitle className="mb-2">No Orders Yet</CardTitle>
+                  <CardTitle className="mb-2">Sign In Required</CardTitle>
                   <CardDescription>
-                    Place an order to create an account and track your orders
+                    Place an order to automatically create an account and track your orders
                   </CardDescription>
                 </div>
                 <Button onClick={() => setLocation("/")} data-testid="button-go-home">

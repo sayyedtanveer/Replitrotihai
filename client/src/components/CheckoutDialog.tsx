@@ -263,35 +263,35 @@ export default function CheckoutDialog({ isOpen, onClose, carts, onOrderSuccess 
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="w-full max-w-md sm:max-w-lg mx-auto">
-          <DialogHeader>
-            <DialogTitle>Checkout</DialogTitle>
-            <DialogDescription>
+        <DialogContent className="w-[95vw] sm:w-full max-w-md sm:max-w-lg mx-auto max-h-[90vh] overflow-y-auto">
+          <DialogHeader className="space-y-1">
+            <DialogTitle className="text-lg sm:text-xl">Checkout</DialogTitle>
+            <DialogDescription className="text-sm">
               {userToken ? "Your details are ready" : "Login or continue as guest"}
             </DialogDescription>
           </DialogHeader>
 
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "checkout" | "login")} className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="checkout">
+            <TabsList className="grid w-full grid-cols-2 h-9">
+              <TabsTrigger value="checkout" className="text-xs sm:text-sm">
                 {userToken ? "Place Order" : "Guest Checkout"}
               </TabsTrigger>
-              <TabsTrigger value="login" disabled={!!userToken}>
+              <TabsTrigger value="login" disabled={!!userToken} className="text-xs sm:text-sm">
                 Login
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="checkout" className="space-y-4">
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="space-y-3">
+            <TabsContent value="checkout" className="space-y-3 sm:space-y-4 mt-4">
+              <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
+                <div className="space-y-2 sm:space-y-3">
                   {userToken && (
-                    <div className="bg-green-50 border border-green-200 rounded-md p-3 text-sm text-green-800">
+                    <div className="bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-md p-2 sm:p-3 text-xs sm:text-sm text-green-800 dark:text-green-200">
                       ✓ Logged in as {parsedUserData?.name || parsedUserData?.phone}
                     </div>
                   )}
 
                   <div>
-                    <Label htmlFor="customerName">Full Name *</Label>
+                    <Label htmlFor="customerName" className="text-sm">Full Name *</Label>
                     <Input
                       id="customerName"
                       data-testid="input-customer-name"
@@ -299,11 +299,12 @@ export default function CheckoutDialog({ isOpen, onClose, carts, onOrderSuccess 
                       onChange={(e) => setCustomerName(e.target.value)}
                       placeholder="Enter your full name"
                       required
+                      className="text-sm sm:text-base"
                     />
                   </div>
 
                   <div>
-                    <Label htmlFor="phone">Phone Number *</Label>
+                    <Label htmlFor="phone" className="text-sm">Phone Number *</Label>
                     <Input
                       id="phone"
                       type="tel"
@@ -313,11 +314,12 @@ export default function CheckoutDialog({ isOpen, onClose, carts, onOrderSuccess 
                       placeholder="Enter your phone number"
                       required
                       disabled={!!userToken}
+                      className="text-sm sm:text-base"
                     />
                   </div>
 
                   <div>
-                    <Label htmlFor="email">Email (Optional)</Label>
+                    <Label htmlFor="email" className="text-sm">Email (Optional)</Label>
                     <Input
                       id="email"
                       type="email"
@@ -325,11 +327,12 @@ export default function CheckoutDialog({ isOpen, onClose, carts, onOrderSuccess 
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="Enter your email"
+                      className="text-sm sm:text-base"
                     />
                   </div>
 
                   <div>
-                    <Label htmlFor="address">Delivery Address *</Label>
+                    <Label htmlFor="address" className="text-sm">Delivery Address *</Label>
                     <Textarea
                       id="address"
                       data-testid="textarea-address"
@@ -338,7 +341,7 @@ export default function CheckoutDialog({ isOpen, onClose, carts, onOrderSuccess 
                       placeholder="Enter complete delivery address with landmark"
                       required
                       rows={3}
-                      className="resize-none"
+                      className="resize-none text-sm sm:text-base"
                     />
                     <p className="text-xs text-muted-foreground mt-1">
                       Please include street, area, and any landmarks in Kurla West, Mumbai
@@ -346,41 +349,41 @@ export default function CheckoutDialog({ isOpen, onClose, carts, onOrderSuccess 
                   </div>
                 </div>
 
-                <div className="border-t pt-4 space-y-2">
-                  <div className="flex justify-between text-sm">
+                <div className="border-t pt-3 space-y-1.5 sm:space-y-2">
+                  <div className="flex justify-between text-xs sm:text-sm">
                     <span>Subtotal:</span>
                     <span>₹{subtotal}</span>
                   </div>
-                  <div className="flex justify-between text-sm">
+                  <div className="flex justify-between text-xs sm:text-sm">
                     <span>Delivery Fee:</span>
                     <span>₹{deliveryFee}</span>
                   </div>
-                  <div className="flex justify-between font-bold text-lg border-t pt-2">
+                  <div className="flex justify-between font-bold text-base sm:text-lg border-t pt-2">
                     <span>Total:</span>
                     <span>₹{total}</span>
                   </div>
                 </div>
 
-                <DialogFooter className="gap-2">
-                  <Button type="button" variant="outline" onClick={onClose} className="flex-1 sm:flex-none" data-testid="button-cancel-checkout">
+                <DialogFooter className="gap-2 flex-col sm:flex-row">
+                  <Button type="button" variant="outline" onClick={onClose} className="w-full sm:flex-1" data-testid="button-cancel-checkout">
                     Cancel
                   </Button>
-                  <Button type="submit" disabled={isLoading} className="flex-1 sm:flex-none" data-testid="button-place-order">
+                  <Button type="submit" disabled={isLoading} className="w-full sm:flex-1" data-testid="button-place-order">
                     {isLoading ? "Placing Order..." : "Place Order"}
                   </Button>
                 </DialogFooter>
               </form>
             </TabsContent>
 
-            <TabsContent value="login" className="space-y-4">
-              <form onSubmit={handleLogin} className="space-y-4">
-                <div className="space-y-3">
-                  <div className="bg-blue-50 border border-blue-200 rounded-md p-3 text-sm text-blue-800">
+            <TabsContent value="login" className="space-y-3 sm:space-y-4 mt-4">
+              <form onSubmit={handleLogin} className="space-y-3 sm:space-y-4">
+                <div className="space-y-2 sm:space-y-3">
+                  <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-md p-2 sm:p-3 text-xs sm:text-sm text-blue-800 dark:text-blue-200">
                     Returning customer? Login to auto-fill your details
                   </div>
 
                   <div>
-                    <Label htmlFor="login-phone">Phone Number *</Label>
+                    <Label htmlFor="login-phone" className="text-sm">Phone Number *</Label>
                     <Input
                       id="login-phone"
                       type="tel"
@@ -388,11 +391,12 @@ export default function CheckoutDialog({ isOpen, onClose, carts, onOrderSuccess 
                       onChange={(e) => setPhone(e.target.value)}
                       placeholder="Enter your phone number"
                       required
+                      className="text-sm sm:text-base"
                     />
                   </div>
 
                   <div>
-                    <Label htmlFor="login-password">Password *</Label>
+                    <Label htmlFor="login-password" className="text-sm">Password *</Label>
                     <Input
                       id="login-password"
                       type="password"
@@ -400,6 +404,7 @@ export default function CheckoutDialog({ isOpen, onClose, carts, onOrderSuccess 
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="Enter your password"
                       required
+                      className="text-sm sm:text-base"
                     />
                     <p className="text-xs text-muted-foreground mt-1">
                       Default password is the last 6 digits of your phone number
@@ -407,11 +412,11 @@ export default function CheckoutDialog({ isOpen, onClose, carts, onOrderSuccess 
                   </div>
                 </div>
 
-                <DialogFooter className="gap-2">
-                  <Button type="button" variant="outline" onClick={onClose} className="flex-1 sm:flex-none">
+                <DialogFooter className="gap-2 flex-col sm:flex-row">
+                  <Button type="button" variant="outline" onClick={onClose} className="w-full sm:flex-1">
                     Cancel
                   </Button>
-                  <Button type="submit" disabled={isLoading} className="flex-1 sm:flex-none">
+                  <Button type="submit" disabled={isLoading} className="w-full sm:flex-1">
                     {isLoading ? "Logging in..." : "Login"}
                   </Button>
                 </DialogFooter>

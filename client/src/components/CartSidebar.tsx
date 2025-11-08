@@ -1,4 +1,4 @@
-
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -40,9 +40,42 @@ export default function CartSidebar({
   onUpdateQuantity,
   onCheckout,
 }: CartSidebarProps) {
+  // Controlled accordion state - tracks which categories are expanded
+  const [expandedIds, setExpandedIds] = useState<string[]>([]);
+
   const totalItems = carts.reduce((total, cart) => 
     total + cart.items.reduce((sum, item) => sum + item.quantity, 0), 0
   );
+
+  // Sync expanded state with carts - auto-expand new categories, prune removed ones
+  useEffect(() => {
+    // Get current cart category IDs (filter out empty/invalid IDs)
+    const currentCategoryIds = carts
+      .map(cart => cart.categoryId)
+      .filter(id => id && id.trim() !== '');
+
+    if (currentCategoryIds.length === 0) {
+      // No carts, clear expanded state
+      setExpandedIds([]);
+      return;
+    }
+
+    setExpandedIds(prev => {
+      // Auto-add any new category IDs that aren't already expanded
+      const newIds = currentCategoryIds.filter(id => !prev.includes(id));
+      // Remove category IDs that no longer exist in carts
+      const validIds = prev.filter(id => currentCategoryIds.includes(id));
+      // Combine and deduplicate
+      return Array.from(new Set([...validIds, ...newIds]));
+    });
+  }, [carts]);
+
+  // Handle accordion value change from user interaction
+  const handleAccordionChange = (value: string | string[]) => {
+    // Coerce to array since Shadcn Accordion can return string or string[]
+    const newValue = Array.isArray(value) ? value : value ? [value] : [];
+    setExpandedIds(newValue);
+  };
 
   if (!isOpen) return null;
 
@@ -55,7 +88,7 @@ export default function CartSidebar({
       />
       
       <div
-        className="fixed right-0 top-0 h-full w-full sm:w-96 bg-background border-l z-50 flex flex-col"
+        className="fixed right-0 top-0 h-full w-full max-w-md sm:w-96 bg-background border-l z-50 flex flex-col"
         data-testid="sidebar-cart"
       >
         <div className="flex items-center justify-between gap-4 p-4 border-b">
@@ -91,7 +124,12 @@ export default function CartSidebar({
         ) : (
           <>
             <ScrollArea className="flex-1 p-4">
-              <Accordion type="multiple" className="space-y-4">
+              <Accordion 
+                type="multiple" 
+                className="space-y-4" 
+                value={expandedIds}
+                onValueChange={handleAccordionChange}
+              >
                 {carts.map((cart) => {
                   const subtotal = cart.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
                   const deliveryFee = 40; // This will be dynamic based on chef location

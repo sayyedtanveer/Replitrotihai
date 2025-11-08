@@ -24,6 +24,8 @@ import AdminUsers from "@/pages/admin/AdminUsers";
 import AdminManagement from "@/pages/admin/AdminManagement";
 import PartnerLogin from "@/pages/partner/PartnerLogin";
 import PartnerDashboard from "@/pages/partner/PartnerDashboard";
+import DeliveryLogin from "./pages/delivery/DeliveryLogin";
+import DeliveryDashboard from "./pages/delivery/DeliveryDashboard";
 import AdminDeliverySettings from "@/pages/admin/AdminDeliverySettings";
 import AdminPayments from "./pages/admin/AdminPayments";
 import OrderTracking from "@/pages/OrderTracking";
@@ -51,6 +53,8 @@ function Router() {
 
       <Route path="/partner/login" component={PartnerLogin} />
       <Route path="/partner/dashboard" component={PartnerDashboard} />
+      <Route path="/delivery/login" component={DeliveryLogin} />
+      <Route path="/delivery/dashboard" component={DeliveryDashboard} />
 
       <Route path="/" component={Home} />
       <Route path="/my-orders" component={MyOrders} />

@@ -29,15 +29,16 @@ export default function OrderTracking() {
   const userToken = localStorage.getItem("userToken");
 
   const { data: order, isLoading } = useQuery<Order>({
-    queryKey: ["/api/orders", orderId, userToken],
+    queryKey: ["/api/orders", orderId],
     queryFn: async () => {
-      const headers: HeadersInit = {};
-      if (userToken) {
-        headers["Authorization"] = `Bearer ${userToken}`;
+      // Don't send auth headers for order tracking - it's publicly accessible by order ID
+      const response = await fetch(`/api/orders/${orderId}`);
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error("Order not found");
+        }
+        throw new Error("Failed to fetch order");
       }
-      
-      const response = await fetch(`/api/orders/${orderId}`, { headers });
-      if (!response.ok) throw new Error("Order not found");
       return response.json();
     },
     enabled: !!orderId,

@@ -66,7 +66,7 @@ export default function Home() {
   const handleAddToCart = (product: Product) => {
     const category = categories.find(c => c.id === product.categoryId);
     const categoryName = category?.name || 'Unknown';
-    
+
     const cartItem = {
       id: product.id,
       name: product.name,
@@ -390,8 +390,19 @@ export default function Home() {
         category={selectedCategoryForMenu}
         chef={selectedChefForMenu}
         products={products}
-        onAddToCart={(product) => handleAddToCart(product)}
-        onProceedToCart={() => setIsCartOpen(true)}
+        onAddToCart={handleAddToCart}
+        cartItems={selectedCategoryForMenu ?
+          (carts.find(c => c.categoryId === selectedCategoryForMenu.id)?.items.map(item => ({
+            id: item.id,
+            quantity: item.quantity,
+            price: item.price
+          })) || []) : []
+        }
+        autoCloseOnAdd={false}
+        onProceedToCart={() => {
+          setIsCategoryMenuOpen(false);
+          setIsCartOpen(true);
+        }}
       />
 
       <CartSidebar

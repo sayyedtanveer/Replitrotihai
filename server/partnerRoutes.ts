@@ -16,8 +16,11 @@ import { broadcastOrderUpdate } from "./websocket";
 export function registerPartnerRoutes(app: Express) {
   app.post("/api/partner/auth/login", async (req, res) => {
     try {
+      console.log("🔐 Partner login attempt:", req.body.username);
+      
       const validation = partnerLoginSchema.safeParse(req.body);
       if (!validation.success) {
+        console.log("❌ Validation failed:", fromZodError(validation.error).toString());
         res.status(400).json({ message: fromZodError(validation.error).toString() });
         return;
       }
@@ -26,15 +29,21 @@ export function registerPartnerRoutes(app: Express) {
       const partner = await storage.getPartnerByUsername(username);
 
       if (!partner) {
+        console.log("❌ Partner not found:", username);
         res.status(401).json({ message: "Invalid credentials" });
         return;
       }
 
+      console.log("✅ Partner found:", partner.username, "- Chef ID:", partner.chefId);
+      
       const isPasswordValid = await verifyPassword(password, partner.passwordHash);
       if (!isPasswordValid) {
+        console.log("❌ Invalid password for partner:", username);
         res.status(401).json({ message: "Invalid credentials" });
         return;
       }
+
+      console.log("✅ Password valid for partner:", username);
 
       await storage.updatePartnerLastLogin(partner.id);
 
@@ -50,6 +59,8 @@ export function registerPartnerRoutes(app: Express) {
 
       const chef = await storage.getChefById(partner.chefId);
 
+      console.log("✅ Partner login successful:", username, "- Chef:", chef?.name);
+
       res.json({
         accessToken,
         partner: {
@@ -60,9 +71,9 @@ export function registerPartnerRoutes(app: Express) {
           chefName: chef?.name,
         },
       });
-    } catch (error) {
-      console.error("Partner login error:", error);
-      res.status(500).json({ message: "Login failed" });
+    } catch (error: any) {
+      console.error("❌ Partner login error:", error?.message || error);
+      res.status(500).json({ message: "Login failed: " + (error?.message || "Unknown error") });
     }
   });
 
