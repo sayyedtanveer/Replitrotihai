@@ -9,9 +9,8 @@ import CheckoutDialog from "@/components/CheckoutDialog";
 import MenuDrawer from "@/components/MenuDrawer";
 import CategoryMenuDrawer from "@/components/CategoryMenuDrawer";
 import ChefListDrawer from "@/components/ChefListDrawer";
-import SubscriptionDrawer from "@/components/SubscriptionDrawer"; // Import SubscriptionDrawer
+import SubscriptionDrawer from "@/components/SubscriptionDrawer";
 import Footer from "@/components/Footer";
-
 import { Button } from "@/components/ui/button";
 import { UtensilsCrossed, ChefHat, Hotel } from "lucide-react";
 import type { Category, Chef, Product } from "@shared/schema";
@@ -30,7 +29,7 @@ export default function Home() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false);
   const [isChefListOpen, setIsChefListOpen] = useState(false);
-  const [isSubscriptionOpen, setIsSubscriptionOpen] = useState(false); // State for subscription drawer
+  const [isSubscriptionOpen, setIsSubscriptionOpen] = useState(false);
   const [selectedCategoryForChefList, setSelectedCategoryForChefList] = useState<Category | null>(null);
   const [selectedCategoryForMenu, setSelectedCategoryForMenu] = useState<Category | null>(null);
   const [selectedChefForMenu, setSelectedChefForMenu] = useState<Chef | null>(null);
@@ -41,10 +40,8 @@ export default function Home() {
 
   const handleCategoryTabChange = (value: string) => {
     setSelectedCategoryTab(value);
-    // Close drawers when changing tabs
     setIsChefListOpen(false);
     setIsCategoryMenuOpen(false);
-    // Scroll to products section
     const productsSection = document.getElementById("products-section");
     if (productsSection) {
       productsSection.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -65,7 +62,7 @@ export default function Home() {
 
   const handleAddToCart = (product: Product) => {
     const category = categories.find(c => c.id === product.categoryId);
-    const categoryName = category?.name || 'Unknown';
+    const categoryName = category?.name || "Unknown";
 
     const cartItem = {
       id: product.id,
@@ -77,26 +74,20 @@ export default function Home() {
       categoryId: product.categoryId,
     };
 
-    // Check if item can be added
     const checkResult = canAddItem(cartItem.chefId, cartItem.categoryId);
     if (!checkResult.canAdd) {
-      // Show confirmation dialog to clear category cart
       const confirmed = window.confirm(
-        `Your ${categoryName} cart contains items from ${checkResult.conflictChef}. Do you want to replace them with items from ${cartItem.chefName || 'this chef'}?`
+        `Your ${categoryName} cart contains items from ${checkResult.conflictChef}. Do you want to replace them with items from ${cartItem.chefName || "this chef"}?`
       );
-
       if (confirmed) {
-        // Clear this category cart
-        clearCart(cartItem.categoryId || '');
+        clearCart(cartItem.categoryId || "");
         cartAddToCart(cartItem, categoryName);
       }
       return;
     }
 
-    // Add to cart
     cartAddToCart(cartItem, categoryName);
   };
-
 
   const handleUpdateQuantity = (categoryId: string, id: string, quantity: number) => {
     useCart.getState().updateQuantity(categoryId, id, quantity);
@@ -104,25 +95,27 @@ export default function Home() {
 
   const totalItems = getTotalItems();
 
+  // ✅ FIX: Wait until cart closes, then open checkout
   const handleCheckout = (categoryId: string) => {
     setCheckoutCategoryId(categoryId);
     setIsCartOpen(false);
-    setIsCheckoutOpen(true);
+    // Wait for sidebar animation before showing checkout
+    setTimeout(() => {
+      setIsCheckoutOpen(true);
+    }, 250);
   };
 
+  // ✅ FIX: Properly reset checkout and cart states
   const handleOrderSuccess = () => {
-    useCart.getState().clearAllCarts();
     setIsCheckoutOpen(false);
+    setCheckoutCategoryId("");
   };
 
   const handleCategoryClick = (categoryId: string) => {
     const category = categories.find(c => c.id === categoryId);
     if (category) {
-      // Switch to the category tab
       setSelectedCategoryTab(categoryId);
-      // Close menu drawer
       setIsMenuOpen(false);
-      // Scroll to products section
       setTimeout(() => {
         const productsSection = document.getElementById("products-section");
         if (productsSection) {
@@ -141,11 +134,8 @@ export default function Home() {
   const handleBrowseCategory = (categoryId: string) => {
     const category = categories.find(c => c.id === categoryId);
     if (category) {
-      // Switch to the category tab
       setSelectedCategoryTab(categoryId);
-      // Close menu drawer
       setIsMenuOpen(false);
-      // Scroll to products section
       setTimeout(() => {
         const productsSection = document.getElementById("products-section");
         if (productsSection) {
@@ -157,11 +147,13 @@ export default function Home() {
 
   const filteredProducts = products.filter(product => {
     const searchLower = searchQuery.trim().toLowerCase();
-    const matchesSearch = !searchLower ||
+    const matchesSearch =
+      !searchLower ||
       product.name.toLowerCase().includes(searchLower) ||
       product.description.toLowerCase().includes(searchLower);
 
-    const matchesCategory = selectedCategoryTab === "all" || product.categoryId === selectedCategoryTab;
+    const matchesCategory =
+      selectedCategoryTab === "all" || product.categoryId === selectedCategoryTab;
 
     return matchesSearch && matchesCategory;
   });
@@ -173,7 +165,7 @@ export default function Home() {
         onCartClick={() => setIsCartOpen(true)}
         onMenuClick={() => setIsMenuOpen(true)}
         onChefListClick={() => setIsChefListOpen(true)}
-        onSubscriptionClick={() => setIsSubscriptionOpen(true)} // Added subscription click handler
+        onSubscriptionClick={() => setIsSubscriptionOpen(true)}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
       />
@@ -185,10 +177,8 @@ export default function Home() {
           {selectedCategoryTab === "all" && (
             <>
               <div className="text-center mb-8">
-                <h2 className="text-3xl sm:text-4xl font-bold mb-4" data-testid="text-categories-heading">
-                  Browse by Category
-                </h2>
-                <p className="text-lg text-muted-foreground mb-6" data-testid="text-categories-subheading">
+                <h2 className="text-3xl sm:text-4xl font-bold mb-4">Browse by Category</h2>
+                <p className="text-lg text-muted-foreground mb-6">
                   Choose from our popular categories
                 </p>
               </div>
@@ -199,7 +189,7 @@ export default function Home() {
                     Loading categories...
                   </div>
                 ) : (
-                  categories.map((category) => (
+                  categories.map(category => (
                     <CategoryCard
                       key={category.id}
                       id={`category-${category.id}`}
@@ -220,10 +210,8 @@ export default function Home() {
             {selectedCategoryTab === "all" ? (
               <>
                 <div className="text-center mb-8">
-                  <h2 className="text-3xl sm:text-4xl font-bold mb-4" data-testid="text-popular-heading">
-                    Popular Items
-                  </h2>
-                  <p className="text-lg text-muted-foreground" data-testid="text-popular-subheading">
+                  <h2 className="text-3xl sm:text-4xl font-bold mb-4">Popular Items</h2>
+                  <p className="text-lg text-muted-foreground">
                     Most loved by our customers
                   </p>
                 </div>
@@ -238,7 +226,7 @@ export default function Home() {
                       No products found matching "{searchQuery}"
                     </div>
                   ) : (
-                    filteredProducts.map((product) => (
+                    filteredProducts.map(product => (
                       <ProductCard
                         key={product.id}
                         id={product.id}
@@ -250,13 +238,8 @@ export default function Home() {
                         reviewCount={product.reviewCount}
                         isVeg={product.isVeg}
                         isCustomizable={product.isCustomizable}
-                        chefName={selectedChefForMenu?.name} // Pass chefName
-                        onAddToCart={(quantity) => {
-                          // This quantity parameter is not used in the new handleAddToCart,
-                          // but kept for signature compatibility if ProductCard expects it.
-                          // The actual quantity management is now within the zustand store.
-                          handleAddToCart(product);
-                        }}
+                        chefName={selectedChefForMenu?.name}
+                        onAddToCart={() => handleAddToCart(product)}
                       />
                     ))
                   )}
@@ -264,36 +247,13 @@ export default function Home() {
               </>
             ) : (
               <>
-                {/* Category tabs - Only visible when a specific category is selected */}
-                <div className="flex justify-center mb-8">
-                  <div className="inline-flex gap-2 p-1 bg-muted rounded-lg flex-wrap">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleCategoryTabChange("all")}
-                      data-testid="tab-all"
-                    >
-                      All
-                    </Button>
-                    {categories.map((category) => (
-                      <Button
-                        key={category.id}
-                        variant={selectedCategoryTab === category.id ? "default" : "ghost"}
-                        size="sm"
-                        onClick={() => handleCategoryTabChange(category.id)}
-                        data-testid={`tab-${category.id}`}
-                      >
-                        {category.name}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-
+                {/* Category-specific chefs */}
                 <div className="text-center mb-8">
-                  <h2 className="text-3xl sm:text-4xl font-bold mb-4" data-testid="text-popular-heading">
-                    {categories.find(c => c.id === selectedCategoryTab)?.name || 'Restaurants & Chefs'}
+                  <h2 className="text-3xl sm:text-4xl font-bold mb-4">
+                    {categories.find(c => c.id === selectedCategoryTab)?.name ||
+                      "Restaurants & Chefs"}
                   </h2>
-                  <p className="text-lg text-muted-foreground mb-6" data-testid="text-popular-subheading">
+                  <p className="text-lg text-muted-foreground mb-6">
                     Select a restaurant or chef to view their menu
                   </p>
                 </div>
@@ -306,7 +266,7 @@ export default function Home() {
                   ) : (
                     chefs
                       .filter(chef => chef.categoryId === selectedCategoryTab)
-                      .map((chef) => (
+                      .map(chef => (
                         <div
                           key={chef.id}
                           className="border rounded-lg overflow-hidden cursor-pointer hover:shadow-lg transition-all hover:border-primary"
@@ -316,7 +276,6 @@ export default function Home() {
                             setSelectedCategoryForMenu(category || null);
                             setIsCategoryMenuOpen(true);
                           }}
-                          data-testid={`chef-card-${chef.id}`}
                         >
                           <div className="relative h-48 overflow-hidden">
                             <img
@@ -328,29 +287,16 @@ export default function Home() {
                           </div>
 
                           <div className="p-4">
-                            <h3 className="font-bold text-xl mb-2" data-testid={`text-chef-name-${chef.id}`}>
-                              {chef.name}
-                            </h3>
-                            <p className="text-sm text-muted-foreground mb-3" data-testid={`text-chef-description-${chef.id}`}>
+                            <h3 className="font-bold text-xl mb-2">{chef.name}</h3>
+                            <p className="text-sm text-muted-foreground mb-3">
                               {chef.description}
                             </p>
                             <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <div className="flex items-center gap-1">
-                                  <svg className="h-4 w-4 fill-yellow-400 text-yellow-400" viewBox="0 0 20 20">
-                                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                                  </svg>
-                                  <span className="text-sm font-medium">{chef.rating}</span>
-                                </div>
-                                <span className="text-xs text-muted-foreground">
-                                  ({chef.reviewCount} reviews)
-                                </span>
-                              </div>
+                              <span className="text-sm text-muted-foreground">
+                                ⭐ {chef.rating} ({chef.reviewCount} reviews)
+                              </span>
                               <Button variant="ghost" size="sm" className="gap-1">
-                                View Menu
-                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                </svg>
+                                View Menu →
                               </Button>
                             </div>
                           </div>
@@ -366,6 +312,7 @@ export default function Home() {
 
       <Footer />
 
+      {/* Drawers */}
       <MenuDrawer
         isOpen={isMenuOpen}
         onClose={() => setIsMenuOpen(false)}
@@ -373,7 +320,7 @@ export default function Home() {
         onCategoryClick={handleCategoryClick}
         selectedCategoryTab={selectedCategoryTab}
         onCategoryTabChange={handleCategoryTabChange}
-        onSubscriptionClick={() => setIsSubscriptionOpen(true)} // Pass subscription handler
+        onSubscriptionClick={() => setIsSubscriptionOpen(true)}
       />
 
       <ChefListDrawer
@@ -391,12 +338,14 @@ export default function Home() {
         chef={selectedChefForMenu}
         products={products}
         onAddToCart={handleAddToCart}
-        cartItems={selectedCategoryForMenu ?
-          (carts.find(c => c.categoryId === selectedCategoryForMenu.id)?.items.map(item => ({
-            id: item.id,
-            quantity: item.quantity,
-            price: item.price
-          })) || []) : []
+        cartItems={
+          selectedCategoryForMenu
+            ? carts.find(c => c.categoryId === selectedCategoryForMenu.id)?.items.map(item => ({
+                id: item.id,
+                quantity: item.quantity,
+                price: item.price,
+              })) || []
+            : []
         }
         autoCloseOnAdd={false}
         onProceedToCart={() => {
@@ -405,6 +354,7 @@ export default function Home() {
         }}
       />
 
+      {/* ✅ Sidebar + Checkout Dialog */}
       <CartSidebar
         isOpen={isCartOpen}
         onClose={() => setIsCartOpen(false)}
@@ -413,17 +363,14 @@ export default function Home() {
         onCheckout={handleCheckout}
       />
 
-      <CheckoutDialog
-        isOpen={isCheckoutOpen}
-        onClose={() => setIsCheckoutOpen(false)}
-        carts={carts.filter(cart => cart.categoryId === checkoutCategoryId)}
-        onOrderSuccess={handleOrderSuccess}
-      />
+     <CheckoutDialog
+  isOpen={isCheckoutOpen}
+  onClose={() => setIsCheckoutOpen(false)}
+  cart={carts.find(cart => cart.categoryId === checkoutCategoryId) || null} // ✅ single cart
+  onOrderSuccess={handleOrderSuccess}
+/>
 
-      <SubscriptionDrawer
-        isOpen={isSubscriptionOpen}
-        onClose={() => setIsSubscriptionOpen(false)}
-      />
+      <SubscriptionDrawer isOpen={isSubscriptionOpen} onClose={() => setIsSubscriptionOpen(false)} />
     </div>
   );
 }

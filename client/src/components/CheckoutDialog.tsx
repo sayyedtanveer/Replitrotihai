@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { useMutation } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
@@ -15,7 +14,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import PaymentQRDialog from "./PaymentQRDialog";
 import { useCart } from "@/hooks/use-cart";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
 
 interface CategoryCart {
   categoryId: string;
@@ -28,15 +32,19 @@ interface CategoryCart {
 interface CheckoutDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  carts: CategoryCart[];
-  onOrderSuccess: () => void;
+  cart: CategoryCart | null; // ✅ Single cart
+  onOrderSuccess: (categoryId: string) => void;
 }
 
-export default function CheckoutDialog({ isOpen, onClose, carts, onOrderSuccess }: CheckoutDialogProps) {
+export default function CheckoutDialog({
+  isOpen,
+  onClose,
+  cart,
+  onOrderSuccess,
+}: CheckoutDialogProps) {
   const { clearCart } = useCart();
   const { toast } = useToast();
 
-  // ✅ Make token mutable so we can refresh it after auto-register
   let userToken = localStorage.getItem("userToken");
   const savedUserData = localStorage.getItem("userData");
   const parsedUserData = savedUserData ? JSON.parse(savedUserData) : null;
@@ -51,7 +59,7 @@ export default function CheckoutDialog({ isOpen, onClose, carts, onOrderSuccess 
   const [orderId, setOrderId] = useState("");
   const [activeTab, setActiveTab] = useState<"checkout" | "login">("checkout");
 
-  // Autofill user info if already logged in
+  // ✅ Autofill user info if already logged in
   useEffect(() => {
     if (isOpen && parsedUserData) {
       setCustomerName(parsedUserData.name || "");
@@ -61,15 +69,23 @@ export default function CheckoutDialog({ isOpen, onClose, carts, onOrderSuccess 
     }
   }, [isOpen, parsedUserData]);
 
-  // Totals
-  const subtotal = carts.reduce(
-    (sum, cart) => sum + cart.items.reduce((itemSum, item) => itemSum + item.price * item.quantity, 0),
-    0
-  );
-  const deliveryFee = carts.length > 0 ? 40 : 0;
+  // ✅ Reset state completely when dialog closes
+  useEffect(() => {
+    if (!isOpen) {
+      setShowQRDialog(false);
+      setOrderId("");
+      setIsLoading(false);
+      setActiveTab("checkout");
+    }
+  }, [isOpen]);
+
+  // 🧮 Totals — based on the selected cart
+  const subtotal =
+    cart?.items?.reduce((sum, item) => sum + item.price * item.quantity, 0) || 0;
+  const deliveryFee = cart ? 40 : 0;
   const total = subtotal + deliveryFee;
 
-  // Handle Login
+  // 🔐 Login handler
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -82,15 +98,12 @@ export default function CheckoutDialog({ isOpen, onClose, carts, onOrderSuccess 
       });
 
       if (!response.ok) throw new Error("Invalid credentials");
-
       const authData = await response.json();
 
-      // ✅ Store tokens
       localStorage.setItem("userToken", authData.accessToken);
       localStorage.setItem("userRefreshToken", authData.refreshToken);
       localStorage.setItem("userData", JSON.stringify(authData.user));
 
-      // Autofill
       setCustomerName(authData.user.name);
       setPhone(authData.user.phone);
       setEmail(authData.user.email || "");
@@ -113,13 +126,15 @@ export default function CheckoutDialog({ isOpen, onClose, carts, onOrderSuccess 
     }
   };
 
-  // ✅ Handle order + auto-register flow
+  // 🛒 Checkout handler
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!cart) return;
+
     setIsLoading(true);
 
     try {
-      // 🔹 If not logged in, auto-register first
+      // Auto-register if no token
       if (!userToken) {
         const autoRegisterResponse = await fetch("/api/user/auto-register", {
           method: "POST",
@@ -135,37 +150,31 @@ export default function CheckoutDialog({ isOpen, onClose, carts, onOrderSuccess 
         if (autoRegisterResponse.ok) {
           const authData = await autoRegisterResponse.json();
 
-          // ✅ Store tokens
           localStorage.setItem("userToken", authData.accessToken);
           localStorage.setItem("userRefreshToken", authData.refreshToken);
           localStorage.setItem("userData", JSON.stringify(authData.user));
 
-          // ✅ Refresh userToken in memory for immediate use
           userToken = authData.accessToken;
 
           if (authData.defaultPassword) {
             toast({
               title: "Account Created!",
-              description: `Your account has been created. Default password: ${authData.defaultPassword}.`,
+              description: `Default password: ${authData.defaultPassword}`,
               duration: 10000,
             });
           }
-        } else {
-          throw new Error("Auto-register failed");
-        }
+        } else throw new Error("Auto-register failed");
       }
 
-      // Flatten items
-      const allItems = carts.flatMap(cart =>
-        cart.items.map(item => ({
-          id: item.id,
-          name: item.name,
-          price: item.price,
-          quantity: item.quantity,
-          categoryId: cart.categoryId,
-          chefId: cart.chefId,
-        }))
-      );
+      // ✅ Order payload for this cart
+      const allItems = cart.items.map((item) => ({
+        id: item.id,
+        name: item.name,
+        price: item.price,
+        quantity: item.quantity,
+        categoryId: cart.categoryId,
+        chefId: cart.chefId,
+      }));
 
       const orderData = {
         customerName,
@@ -179,7 +188,6 @@ export default function CheckoutDialog({ isOpen, onClose, carts, onOrderSuccess 
         status: "pending",
       };
 
-      // ✅ Always re-check token before sending order
       const latestToken = localStorage.getItem("userToken");
       const headers: HeadersInit = { "Content-Type": "application/json" };
       if (latestToken) headers["Authorization"] = `Bearer ${latestToken}`;
@@ -191,11 +199,12 @@ export default function CheckoutDialog({ isOpen, onClose, carts, onOrderSuccess 
       });
 
       if (!response.ok) throw new Error("Failed to create order");
-
       const order = await response.json();
 
-      // ✅ Clear cart and show QR
-      carts.forEach(cart => clearCart(cart.categoryId));
+      // ✅ Clear only this cart category
+      clearCart(cart.categoryId);
+
+      // ✅ Instantly show QR dialog
       setOrderId(order.id);
       setShowQRDialog(true);
 
@@ -217,15 +226,10 @@ export default function CheckoutDialog({ isOpen, onClose, carts, onOrderSuccess 
 
   const handlePaymentClose = () => {
     setShowQRDialog(false);
-    onOrderSuccess();
+    if (cart) onOrderSuccess(cart.categoryId);
   };
 
-  const setFormData = (data: any) => {
-    setCustomerName(data.customerName);
-    setPhone(data.phone);
-    setEmail(data.email);
-    setAddress(data.address);
-  };
+  if (!cart) return null;
 
   return (
     <>
@@ -238,12 +242,20 @@ export default function CheckoutDialog({ isOpen, onClose, carts, onOrderSuccess 
             </DialogDescription>
           </DialogHeader>
 
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "checkout" | "login")} className="w-full">
+          <Tabs
+            value={activeTab}
+            onValueChange={(v) => setActiveTab(v as "checkout" | "login")}
+            className="w-full"
+          >
             <TabsList className="grid w-full grid-cols-2 h-9">
               <TabsTrigger value="checkout" className="text-xs sm:text-sm">
                 {userToken ? "Place Order" : "Guest Checkout"}
               </TabsTrigger>
-              <TabsTrigger value="login" disabled={!!userToken} className="text-xs sm:text-sm">
+              <TabsTrigger
+                value="login"
+                disabled={!!userToken}
+                className="text-xs sm:text-sm"
+              >
                 Login
               </TabsTrigger>
             </TabsList>
@@ -259,53 +271,53 @@ export default function CheckoutDialog({ isOpen, onClose, carts, onOrderSuccess 
                   )}
 
                   <div>
-                    <Label htmlFor="customerName" className="text-sm">Full Name *</Label>
+                    <Label htmlFor="customerName" className="text-sm">
+                      Full Name *
+                    </Label>
                     <Input
                       id="customerName"
                       value={customerName}
                       onChange={(e) => setCustomerName(e.target.value)}
-                      placeholder="Enter your full name"
                       required
-                      className="text-sm sm:text-base"
                     />
                   </div>
 
                   <div>
-                    <Label htmlFor="phone" className="text-sm">Phone Number *</Label>
+                    <Label htmlFor="phone" className="text-sm">
+                      Phone Number *
+                    </Label>
                     <Input
                       id="phone"
                       type="tel"
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
-                      placeholder="Enter your phone number"
                       required
                       disabled={!!userToken}
-                      className="text-sm sm:text-base"
                     />
                   </div>
 
                   <div>
-                    <Label htmlFor="email" className="text-sm">Email (Optional)</Label>
+                    <Label htmlFor="email" className="text-sm">
+                      Email (Optional)
+                    </Label>
                     <Input
                       id="email"
                       type="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      placeholder="Enter your email"
-                      className="text-sm sm:text-base"
                     />
                   </div>
 
                   <div>
-                    <Label htmlFor="address" className="text-sm">Delivery Address *</Label>
+                    <Label htmlFor="address" className="text-sm">
+                      Delivery Address *
+                    </Label>
                     <Textarea
                       id="address"
                       value={address}
                       onChange={(e) => setAddress(e.target.value)}
-                      placeholder="Enter complete delivery address with landmark"
                       required
                       rows={3}
-                      className="resize-none text-sm sm:text-base"
                     />
                     <p className="text-xs text-muted-foreground mt-1">
                       Please include street, area, and any landmarks in Kurla West, Mumbai
@@ -314,26 +326,26 @@ export default function CheckoutDialog({ isOpen, onClose, carts, onOrderSuccess 
                 </div>
 
                 {/* Totals */}
-                <div className="border-t pt-3 space-y-1.5 sm:space-y-2">
-                  <div className="flex justify-between text-xs sm:text-sm">
+                <div className="border-t pt-3 space-y-2">
+                  <div className="flex justify-between text-sm">
                     <span>Subtotal:</span>
                     <span>₹{subtotal}</span>
                   </div>
-                  <div className="flex justify-between text-xs sm:text-sm">
+                  <div className="flex justify-between text-sm">
                     <span>Delivery Fee:</span>
                     <span>₹{deliveryFee}</span>
                   </div>
-                  <div className="flex justify-between font-bold text-base sm:text-lg border-t pt-2">
+                  <div className="flex justify-between font-bold text-base border-t pt-2">
                     <span>Total:</span>
                     <span>₹{total}</span>
                   </div>
                 </div>
 
                 <DialogFooter className="gap-2 flex-col sm:flex-row">
-                  <Button type="button" variant="outline" onClick={onClose} className="w-full sm:flex-1">
+                  <Button type="button" variant="outline" onClick={onClose}>
                     Cancel
                   </Button>
-                  <Button type="submit" disabled={isLoading} className="w-full sm:flex-1">
+                  <Button type="submit" disabled={isLoading}>
                     {isLoading ? "Placing Order..." : "Place Order"}
                   </Button>
                 </DialogFooter>
@@ -349,28 +361,28 @@ export default function CheckoutDialog({ isOpen, onClose, carts, onOrderSuccess 
                   </div>
 
                   <div>
-                    <Label htmlFor="login-phone" className="text-sm">Phone Number *</Label>
+                    <Label htmlFor="login-phone" className="text-sm">
+                      Phone Number *
+                    </Label>
                     <Input
                       id="login-phone"
                       type="tel"
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
-                      placeholder="Enter your phone number"
                       required
-                      className="text-sm sm:text-base"
                     />
                   </div>
 
                   <div>
-                    <Label htmlFor="login-password" className="text-sm">Password *</Label>
+                    <Label htmlFor="login-password" className="text-sm">
+                      Password *
+                    </Label>
                     <Input
                       id="login-password"
                       type="password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Enter your password"
                       required
-                      className="text-sm sm:text-base"
                     />
                     <p className="text-xs text-muted-foreground mt-1">
                       Default password is the last 6 digits of your phone number
@@ -379,10 +391,10 @@ export default function CheckoutDialog({ isOpen, onClose, carts, onOrderSuccess 
                 </div>
 
                 <DialogFooter className="gap-2 flex-col sm:flex-row">
-                  <Button type="button" variant="outline" onClick={onClose} className="w-full sm:flex-1">
+                  <Button type="button" variant="outline" onClick={onClose}>
                     Cancel
                   </Button>
-                  <Button type="submit" disabled={isLoading} className="w-full sm:flex-1">
+                  <Button type="submit" disabled={isLoading}>
                     {isLoading ? "Logging in..." : "Login"}
                   </Button>
                 </DialogFooter>
@@ -392,6 +404,7 @@ export default function CheckoutDialog({ isOpen, onClose, carts, onOrderSuccess 
         </DialogContent>
       </Dialog>
 
+      {/* ✅ Immediate QR Popup after order */}
       <PaymentQRDialog
         isOpen={showQRDialog}
         onClose={handlePaymentClose}

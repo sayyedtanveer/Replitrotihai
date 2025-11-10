@@ -1,6 +1,5 @@
-
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 interface CartItem {
   id: string;
@@ -22,8 +21,8 @@ interface CategoryCart {
 }
 
 interface CartStore {
-  carts: CategoryCart[]; // Multiple carts - one per category
-  addToCart: (item: Omit<CartItem, 'quantity'>, categoryName: string) => boolean;
+  carts: CategoryCart[];
+  addToCart: (item: Omit<CartItem, "quantity">, categoryName: string) => boolean;
   removeFromCart: (categoryId: string, itemId: string) => void;
   updateQuantity: (categoryId: string, itemId: string, quantity: number) => void;
   clearCart: (categoryId: string) => void;
@@ -31,163 +30,194 @@ interface CartStore {
   getTotalItems: (categoryId?: string) => number;
   getTotalPrice: (categoryId: string) => number;
   getCart: (categoryId: string) => CategoryCart | undefined;
-  canAddItem: (chefId?: string, categoryId?: string) => { canAdd: boolean; conflictChef?: string };
+  getAllCarts: () => CategoryCart[];
+  canAddItem: (
+    chefId?: string,
+    categoryId?: string
+  ) => { canAdd: boolean; conflictChef?: string };
 }
 
 export const useCart = create<CartStore>()(
   persist(
     (set, get) => ({
       carts: [],
-      
+
+      // ✅ Check if item can be added (per category/chef rule)
       canAddItem: (chefId?: string, categoryId?: string) => {
         const { carts } = get();
-        
-        // If no chefId or categoryId provided, allow
-        if (!chefId || !categoryId) {
-          return { canAdd: true };
-        }
-        
-        // Find cart for this category
-        const categoryCart = carts.find(cart => cart.categoryId === categoryId);
-        
-        // If no cart exists for this category yet, allow
-        if (!categoryCart) {
-          return { canAdd: true };
-        }
-        
-        // If same chef, allow
+        if (!chefId || !categoryId) return { canAdd: true };
+
+        const categoryCart = carts.find(
+          (cart) => cart.categoryId === categoryId
+        );
+
+        if (!categoryCart) return { canAdd: true };
+
         if (categoryCart.chefId === chefId) {
           return { canAdd: true };
         }
-        
-        // Different chef for same category - not allowed
-        return { 
-          canAdd: false, 
-          conflictChef: categoryCart.chefName 
-        };
+
+        // ❌ Different chef for same category
+        return { canAdd: false, conflictChef: categoryCart.chefName };
       },
-      
+
+      // ✅ Add item to specific category cart
       addToCart: (item, categoryName) => {
         const { carts, canAddItem } = get();
-        
-        // Check if item can be added
+
+        // Safety check
+        if (!item.categoryId) {
+          console.warn("Attempted to add item without categoryId:", item);
+          return false;
+        }
+
         const checkResult = canAddItem(item.chefId, item.categoryId);
         if (!checkResult.canAdd) {
-          return false; // Cannot add - different chef in same category
+          console.warn(
+            `Cannot add item — existing chef in ${item.categoryId} is ${checkResult.conflictChef}`
+          );
+          return false;
         }
-        
-        // Find or create cart for this category
-        const categoryCartIndex = carts.findIndex(cart => cart.categoryId === item.categoryId);
-        
+
+        const categoryCartIndex = carts.findIndex(
+          (cart) => cart.categoryId === item.categoryId
+        );
+
+        // ✅ No cart yet → create new category cart
         if (categoryCartIndex === -1) {
-          // Create new cart for this category
           const newCart: CategoryCart = {
-            categoryId: item.categoryId || '',
-            categoryName: categoryName,
-            chefId: item.chefId || '',
-            chefName: item.chefName || '',
-            items: [{ ...item, quantity: 1 }]
+            categoryId: item.categoryId,
+            categoryName,
+            chefId: item.chefId || "",
+            chefName: item.chefName || "",
+            items: [{ ...item, quantity: 1 }],
           };
           set({ carts: [...carts, newCart] });
-        } else {
-          // Add to existing category cart
-          const categoryCart = carts[categoryCartIndex];
-          const existingItemIndex = categoryCart.items.findIndex(i => i.id === item.id);
-          
-          if (existingItemIndex !== -1) {
-            // Update quantity
-            const updatedItems = [...categoryCart.items];
-            updatedItems[existingItemIndex] = {
-              ...updatedItems[existingItemIndex],
-              quantity: updatedItems[existingItemIndex].quantity + 1
-            };
-            
-            const updatedCarts = [...carts];
-            updatedCarts[categoryCartIndex] = {
-              ...categoryCart,
-              items: updatedItems
-            };
-            set({ carts: updatedCarts });
-          } else {
-            // Add new item
-            const updatedCarts = [...carts];
-            updatedCarts[categoryCartIndex] = {
-              ...categoryCart,
-              items: [...categoryCart.items, { ...item, quantity: 1 }]
-            };
-            set({ carts: updatedCarts });
-          }
+          return true;
         }
-        
+
+        // ✅ Existing cart → update or add item
+        const categoryCart = carts[categoryCartIndex];
+        const existingItemIndex = categoryCart.items.findIndex(
+          (i) => i.id === item.id
+        );
+
+        const updatedCarts = [...carts];
+        if (existingItemIndex !== -1) {
+          // Increment quantity
+          const updatedItems = [...categoryCart.items];
+          updatedItems[existingItemIndex] = {
+            ...updatedItems[existingItemIndex],
+            quantity: updatedItems[existingItemIndex].quantity + 1,
+          };
+          updatedCarts[categoryCartIndex] = {
+            ...categoryCart,
+            items: updatedItems,
+          };
+        } else {
+          // Add new item
+          updatedCarts[categoryCartIndex] = {
+            ...categoryCart,
+            items: [...categoryCart.items, { ...item, quantity: 1 }],
+          };
+        }
+
+        set({ carts: updatedCarts });
         return true;
       },
-      
+
+      // ✅ Remove item from cart
       removeFromCart: (categoryId, itemId) => {
         const { carts } = get();
         const updatedCarts = carts
-          .map(cart => {
+          .map((cart) => {
             if (cart.categoryId === categoryId) {
-              const updatedItems = cart.items.filter(item => item.id !== itemId);
-              return { ...cart, items: updatedItems };
-            }
-            return cart;
-          })
-          .filter(cart => cart.items.length > 0); // Remove empty carts
-        
-        set({ carts: updatedCarts });
-      },
-      
-      updateQuantity: (categoryId, itemId, quantity) => {
-        if (quantity <= 0) {
-          get().removeFromCart(categoryId, itemId);
-        } else {
-          const { carts } = get();
-          const updatedCarts = carts.map(cart => {
-            if (cart.categoryId === categoryId) {
-              const updatedItems = cart.items.map(item =>
-                item.id === itemId ? { ...item, quantity } : item
+              const updatedItems = cart.items.filter(
+                (item) => item.id !== itemId
               );
               return { ...cart, items: updatedItems };
             }
             return cart;
-          });
-          set({ carts: updatedCarts });
-        }
-      },
-      
-      clearCart: (categoryId: string) => {
-        const { carts } = get();
-        const updatedCarts = carts.filter(cart => cart.categoryId !== categoryId);
+          })
+          .filter((cart) => cart.items.length > 0); // Remove empty carts
+
         set({ carts: updatedCarts });
       },
-      
+
+      // ✅ Update quantity (auto-removes if quantity <= 0)
+      updateQuantity: (categoryId, itemId, quantity) => {
+        if (quantity <= 0) {
+          get().removeFromCart(categoryId, itemId);
+          return;
+        }
+
+        const { carts } = get();
+        const updatedCarts = carts.map((cart) => {
+          if (cart.categoryId === categoryId) {
+            const updatedItems = cart.items.map((item) =>
+              item.id === itemId ? { ...item, quantity } : item
+            );
+            return { ...cart, items: updatedItems };
+          }
+          return cart;
+        });
+
+        set({ carts: updatedCarts });
+      },
+
+      // ✅ Clear specific category cart (used after order placement)
+      clearCart: (categoryId: string) => {
+        const { carts } = get();
+        const updatedCarts = carts.filter(
+          (cart) => cart.categoryId !== categoryId
+        );
+        set({ carts: updatedCarts });
+      },
+
+      // ✅ Clear all carts (for logout or full reset)
       clearAllCarts: () => {
         set({ carts: [] });
       },
-      
+
+      // ✅ Get total number of items
       getTotalItems: (categoryId?: string) => {
         const { carts } = get();
         if (categoryId) {
-          const cart = carts.find(c => c.categoryId === categoryId);
-          return cart ? cart.items.reduce((total, item) => total + item.quantity, 0) : 0;
+          const cart = carts.find((c) => c.categoryId === categoryId);
+          return cart
+            ? cart.items.reduce((total, item) => total + item.quantity, 0)
+            : 0;
         }
-        return carts.reduce((total, cart) => 
-          total + cart.items.reduce((sum, item) => sum + item.quantity, 0), 0
+
+        return carts.reduce(
+          (total, cart) =>
+            total +
+            cart.items.reduce((sum, item) => sum + item.quantity, 0),
+          0
         );
       },
-      
+
+      // ✅ Get total price for one category
       getTotalPrice: (categoryId: string) => {
         const { carts } = get();
-        const cart = carts.find(c => c.categoryId === categoryId);
-        return cart ? cart.items.reduce((total, item) => total + item.price * item.quantity, 0) : 0;
+        const cart = carts.find((c) => c.categoryId === categoryId);
+        return cart
+          ? cart.items.reduce((total, item) => total + item.price * item.quantity, 0)
+          : 0;
       },
-      
+
+      // ✅ Get cart by categoryId
       getCart: (categoryId: string) => {
-        return get().carts.find(cart => cart.categoryId === categoryId);
+        return get().carts.find((cart) => cart.categoryId === categoryId);
+      },
+
+      // ✅ Helper to get all carts (useful for debugging or analytics)
+      getAllCarts: () => {
+        return get().carts;
       },
     }),
     {
-      name: 'cart-storage',
+      name: "cart-storage", // persisted key in localStorage
     }
   )
 );
