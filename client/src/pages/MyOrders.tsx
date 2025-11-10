@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+
+import React, { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import Header from "@/components/Header";
@@ -17,6 +18,14 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
   ShoppingBag,
   Package,
   Clock,
@@ -25,12 +34,16 @@ import {
   ChefHat,
   Truck,
   Home,
+  MapPin,
+  Phone,
+  CreditCard,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { format } from "date-fns";
 import type { Category } from "../types/category";
 import type { Order } from "../types/order";
 import type { Chef } from "@shared/schema";
+import { queryClient } from "@/lib/queryClient";
 
 export default function MyOrders() {
   const [, setLocation] = useLocation();
@@ -41,6 +54,7 @@ export default function MyOrders() {
   const { user } = useAuth();
   const userToken = localStorage.getItem("userToken");
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
+  const [wsConnected, setWsConnected] = useState(false);
 
   // 🧠 Fetch orders for authenticated user
   const {
@@ -55,7 +69,6 @@ export default function MyOrders() {
       if (userToken) headers.Authorization = `Bearer ${userToken}`;
       const res = await fetch("/api/orders", { headers });
       if (res.status === 401) {
-        // Token expired or invalid
         localStorage.removeItem("userToken");
         localStorage.removeItem("userData");
         throw new Error("Session expired. Please log in again.");
@@ -89,6 +102,56 @@ export default function MyOrders() {
     },
   });
 
+  // WebSocket connection for live updates
+  useEffect(() => {
+    if (!orders || orders.length === 0) return;
+
+    // Find active orders (not delivered or cancelled)
+    const activeOrders = orders.filter(
+      (order) => !["delivered", "completed", "cancelled"].includes(order.status)
+    );
+
+    if (activeOrders.length === 0) return;
+
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsConnections: WebSocket[] = [];
+
+    activeOrders.forEach((order) => {
+      const wsUrl = `${protocol}//${window.location.host}/ws?type=customer&orderId=${order.id}`;
+      const ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        console.log(`WebSocket connected for order ${order.id}`);
+        setWsConnected(true);
+      };
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === "order_update") {
+          queryClient.setQueryData(["/api/orders", userToken], (oldData: Order[] | undefined) => {
+            if (!oldData) return oldData;
+            return oldData.map((o) => (o.id === data.data.id ? data.data : o));
+          });
+        }
+      };
+
+      ws.onclose = () => {
+        console.log(`WebSocket disconnected for order ${order.id}`);
+      };
+
+      ws.onerror = (error) => {
+        console.error(`WebSocket error for order ${order.id}:`, error);
+      };
+
+      wsConnections.push(ws);
+    });
+
+    return () => {
+      wsConnections.forEach((ws) => ws.close());
+      setWsConnected(false);
+    };
+  }, [orders, userToken]);
+
   // 🧩 Helpers
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -109,20 +172,16 @@ export default function MyOrders() {
     }
   };
 
-  const getStatusIcon = (status: string) => {
+  const getPaymentStatusColor = (status: string) => {
     switch (status) {
       case "pending":
-        return <Clock className="h-4 w-4" />;
+        return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200";
+      case "paid":
+        return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200";
       case "confirmed":
-      case "preparing":
-        return <Package className="h-4 w-4" />;
-      case "delivered":
-      case "completed":
-        return <CheckCircle className="h-4 w-4" />;
-      case "cancelled":
-        return <XCircle className="h-4 w-4" />;
+        return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200";
       default:
-        return <ShoppingBag className="h-4 w-4" />;
+        return "bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-200";
     }
   };
 
@@ -133,15 +192,12 @@ export default function MyOrders() {
         label: "Order Placed",
         icon: <ShoppingBag className="h-5 w-5" />,
         completed: true,
-        description:
-          order.paymentStatus === "pending"
-            ? "Waiting for payment"
-            : "Order received",
+        description: format(new Date(order.createdAt), "MMM d, h:mm a"),
       },
       {
         key: "payment",
         label: "Payment Confirmed",
-        icon: <CheckCircle className="h-5 w-5" />,
+        icon: <CreditCard className="h-5 w-5" />,
         completed:
           order.paymentStatus === "confirmed" ||
           order.status === "confirmed" ||
@@ -150,7 +206,7 @@ export default function MyOrders() {
           order.status === "delivered",
         description:
           order.paymentStatus === "pending"
-            ? "Pending verification"
+            ? "Waiting for verification"
             : "Payment verified",
       },
       {
@@ -163,10 +219,12 @@ export default function MyOrders() {
           order.status === "delivered",
         description:
           order.status === "preparing"
-            ? "Chef is preparing"
+            ? "Chef is preparing your food"
             : order.status === "confirmed"
             ? "Waiting for chef"
-            : "Ready",
+            : order.status === "out_for_delivery" || order.status === "delivered"
+            ? "Preparation complete"
+            : "Pending",
       },
       {
         key: "delivery",
@@ -177,6 +235,8 @@ export default function MyOrders() {
         description:
           order.status === "out_for_delivery"
             ? "On the way"
+            : order.status === "delivered"
+            ? "Delivered"
             : "Pending pickup",
       },
       {
@@ -192,6 +252,11 @@ export default function MyOrders() {
       },
     ];
   };
+
+  // Find the current active order (most recent non-completed order)
+  const activeOrder = orders.find(
+    (order) => !["delivered", "completed", "cancelled"].includes(order.status)
+  );
 
   // 🧩 UI rendering
   return (
@@ -255,143 +320,215 @@ export default function MyOrders() {
               </CardContent>
             </Card>
           ) : (
-            <div className="space-y-4">
-              {orders.map((order) => (
-                <Card key={order.id}>
+            <div className="space-y-6">
+              {/* Live Tracking for Active Order */}
+              {activeOrder && (
+                <Card>
                   <CardHeader>
-                    <div className="flex justify-between items-start">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                       <div>
-                        <CardTitle className="text-lg">
-                          Order #{order.id.slice(0, 8)}
+                        <CardTitle className="text-2xl">
+                          Current Order #{activeOrder.id.slice(0, 8)}
                         </CardTitle>
-                        <CardDescription>
-                          {format(new Date(order.createdAt), "PPpp")}
-                        </CardDescription>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          Placed on {format(new Date(activeOrder.createdAt), "PPpp")}
+                        </p>
                       </div>
-                      <Badge className={getStatusColor(order.status)}>
-                        <span className="flex items-center gap-1">
-                          {getStatusIcon(order.status)}
-                          {order.status}
-                        </span>
-                      </Badge>
+                      <div className="flex flex-col gap-2">
+                        <Badge className={getStatusColor(activeOrder.status)}>
+                          <Clock className="h-3 w-3 mr-1" />
+                          {activeOrder.status.toUpperCase().replace("_", " ")}
+                        </Badge>
+                        <Badge className={getPaymentStatusColor(activeOrder.paymentStatus)}>
+                          <CreditCard className="h-3 w-3 mr-1" />
+                          Payment: {activeOrder.paymentStatus.toUpperCase()}
+                        </Badge>
+                      </div>
                     </div>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-6">
-                      {order.status !== "cancelled" && (
-                        <div className="bg-muted/30 dark:bg-muted/20 rounded-lg p-4">
-                          <h4 className="font-semibold mb-4 text-sm">
-                            Order Status Tracker
-                          </h4>
-                          <div className="relative">
-                            {getOrderProgress(order).map((step, idx) => (
-                              <div
-                                key={step.key}
-                                className="flex gap-4 pb-6 last:pb-0"
-                              >
-                                <div className="relative flex flex-col items-center">
+                      {wsConnected && (
+                        <div className="bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg p-3 flex items-center gap-2">
+                          <div className="h-2 w-2 bg-green-500 rounded-full animate-pulse"></div>
+                          <p className="text-sm text-green-800 dark:text-green-200">
+                            Live tracking active - updates will appear automatically
+                          </p>
+                        </div>
+                      )}
+
+                      {activeOrder.paymentStatus === "pending" && (
+                        <div className="bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
+                          <div className="flex items-start gap-3">
+                            <Clock className="h-5 w-5 text-yellow-600 dark:text-yellow-400 mt-0.5" />
+                            <div>
+                              <h3 className="font-semibold text-yellow-900 dark:text-yellow-100">
+                                Waiting for Payment Confirmation
+                              </h3>
+                              <p className="text-sm text-yellow-800 dark:text-yellow-200 mt-1">
+                                Our team is verifying your payment. This usually takes a few minutes.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Order Status Tracker */}
+                      <div className="bg-muted/30 dark:bg-muted/20 rounded-lg p-4">
+                        <h4 className="font-semibold mb-4">Order Status Tracker</h4>
+                        <div className="relative">
+                          {getOrderProgress(activeOrder).map((step, idx) => (
+                            <div key={step.key} className="flex gap-4 pb-6 last:pb-0">
+                              <div className="relative flex flex-col items-center">
+                                <div
+                                  className={`w-10 h-10 rounded-full flex items-center justify-center z-10 ${
+                                    step.completed
+                                      ? "bg-primary text-primary-foreground"
+                                      : "bg-muted text-muted-foreground"
+                                  }`}
+                                >
+                                  {step.icon}
+                                </div>
+                                {idx < getOrderProgress(activeOrder).length - 1 && (
                                   <div
-                                    className={`w-10 h-10 rounded-full flex items-center justify-center z-10 ${
-                                      step.completed
-                                        ? "bg-primary text-primary-foreground"
-                                        : "bg-muted text-muted-foreground"
+                                    className={`w-0.5 h-full absolute top-10 ${
+                                      step.completed ? "bg-primary" : "bg-muted"
                                     }`}
-                                  >
-                                    {step.icon}
-                                  </div>
-                                  {idx <
-                                    getOrderProgress(order).length - 1 && (
-                                    <div
-                                      className={`w-0.5 h-full absolute top-10 ${
-                                        step.completed
-                                          ? "bg-primary"
-                                          : "bg-muted"
-                                      }`}
-                                    />
-                                  )}
-                                </div>
-                                <div className="flex-1 -mt-1">
-                                  <p
-                                    className={`font-medium ${
-                                      step.completed
-                                        ? "text-foreground"
-                                        : "text-muted-foreground"
-                                    }`}
-                                  >
-                                    {step.label}
-                                  </p>
-                                  <p className="text-sm text-muted-foreground">
-                                    {step.description}
-                                  </p>
-                                </div>
+                                  />
+                                )}
                               </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {order.status === "cancelled" && (
-                        <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg p-4">
-                          <div className="flex items-center gap-2 text-red-900 dark:text-red-100">
-                            <XCircle className="h-5 w-5" />
-                            <p className="font-medium">Order Cancelled</p>
-                          </div>
-                          {order.rejectionReason && (
-                            <p className="text-sm text-red-700 dark:text-red-300 mt-2">
-                              Reason: {order.rejectionReason}
-                            </p>
-                          )}
-                        </div>
-                      )}
-
-                      <div>
-                        <h4 className="font-semibold mb-2">Items</h4>
-                        <div className="space-y-2">
-                          {order.items.map((item: any, idx: number) => (
-                            <div
-                              key={idx}
-                              className="flex justify-between text-sm"
-                            >
-                              <span className="text-muted-foreground">
-                                {item.name} × {item.quantity}
-                              </span>
-                              <span className="font-medium">
-                                ₹{item.price * item.quantity}
-                              </span>
+                              <div className="flex-1 -mt-1">
+                                <p
+                                  className={`font-semibold ${
+                                    step.completed
+                                      ? "text-foreground"
+                                      : "text-muted-foreground"
+                                  }`}
+                                >
+                                  {step.label}
+                                </p>
+                                <p className="text-sm text-muted-foreground mt-0.5">
+                                  {step.description}
+                                </p>
+                              </div>
                             </div>
                           ))}
                         </div>
                       </div>
 
-                      <div className="border-t pt-3">
-                        <div className="flex justify-between text-sm mb-1">
-                          <span className="text-muted-foreground">Subtotal</span>
-                          <span>₹{order.subtotal}</span>
+                      {/* Order Details Grid */}
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div>
+                          <h4 className="font-semibold mb-2 flex items-center gap-2">
+                            <MapPin className="h-4 w-4" />
+                            Delivery Address
+                          </h4>
+                          <p className="text-sm text-muted-foreground">{activeOrder.address}</p>
+                          <div className="flex items-center gap-2 mt-2">
+                            <Phone className="h-4 w-4 text-muted-foreground" />
+                            <p className="text-sm">{activeOrder.phone}</p>
+                          </div>
                         </div>
-                        <div className="flex justify-between text-sm mb-2">
-                          <span className="text-muted-foreground">
-                            Delivery Fee
-                          </span>
-                          <span>₹{order.deliveryFee}</span>
+                        <div>
+                          <h4 className="font-semibold mb-2 flex items-center gap-2">
+                            <Package className="h-4 w-4" />
+                            Order Items
+                          </h4>
+                          <div className="space-y-1">
+                            {activeOrder.items.map((item: any, idx: number) => (
+                              <div key={idx} className="flex justify-between text-sm">
+                                <span className="text-muted-foreground">
+                                  {item.name} × {item.quantity}
+                                </span>
+                                <span className="font-medium">₹{item.price * item.quantity}</span>
+                              </div>
+                            ))}
+                            <div className="border-t pt-2 mt-2">
+                              <div className="flex justify-between font-bold">
+                                <span>Total</span>
+                                <span>₹{activeOrder.total}</span>
+                              </div>
+                            </div>
+                          </div>
                         </div>
-                        <div className="flex justify-between font-bold">
-                          <span>Total</span>
-                          <span>₹{order.total}</span>
-                        </div>
-                      </div>
-
-                      <div className="text-sm text-muted-foreground">
-                        <p>
-                          <strong>Delivery to:</strong> {order.address}
-                        </p>
-                        <p>
-                          <strong>Contact:</strong> {order.phone}
-                        </p>
                       </div>
                     </div>
                   </CardContent>
                 </Card>
-              ))}
+              )}
+
+              {/* All Orders Table */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Order History</CardTitle>
+                  <CardDescription>View all your past orders</CardDescription>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Order ID</TableHead>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Items</TableHead>
+                        <TableHead>Total</TableHead>
+                        <TableHead>Payment</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {orders.map((order) => (
+                        <TableRow key={order.id}>
+                          <TableCell className="font-medium">
+                            #{order.id.slice(0, 8)}
+                          </TableCell>
+                          <TableCell>
+                            {format(new Date(order.createdAt), "MMM d, yyyy")}
+                            <br />
+                            <span className="text-xs text-muted-foreground">
+                              {format(new Date(order.createdAt), "h:mm a")}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-sm">
+                              {order.items.slice(0, 2).map((item: any, idx: number) => (
+                                <div key={idx} className="text-muted-foreground">
+                                  {item.name} ×{item.quantity}
+                                </div>
+                              ))}
+                              {order.items.length > 2 && (
+                                <span className="text-xs text-muted-foreground">
+                                  +{order.items.length - 2} more
+                                </span>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="font-semibold">₹{order.total}</TableCell>
+                          <TableCell>
+                            <Badge className={getPaymentStatusColor(order.paymentStatus)} variant="outline">
+                              {order.paymentStatus}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge className={getStatusColor(order.status)}>
+                              {order.status.replace("_", " ")}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setLocation(`/track/${order.id}`)}
+                            >
+                              Track
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
             </div>
           )}
         </div>

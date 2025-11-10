@@ -30,7 +30,11 @@ export default function AdminOrders() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) throw new Error("Failed to fetch orders");
-      return response.json();
+      const allOrders = await response.json();
+      // Sort by latest first (descending order by createdAt)
+      return allOrders.sort((a: Order, b: Order) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
     },
   });
 
@@ -234,11 +238,12 @@ export default function AdminOrders() {
                           )}
                         </TableCell>
                         <TableCell className="text-sm">
-                          {format(new Date(order.createdAt), "MMM d, yyyy")}
-                          <br />
-                          <span className="text-xs text-slate-500">
+                          <div>
+                            {format(new Date(order.createdAt), "MMM d, yyyy")}
+                          </div>
+                          <div className="text-xs text-slate-500">
                             {format(new Date(order.createdAt), "h:mm a")}
-                          </span>
+                          </div>
                         </TableCell>
                         <TableCell>
                           <Badge className={getStatusColor(order.status)} data-testid={`badge-status-${order.id}`}>

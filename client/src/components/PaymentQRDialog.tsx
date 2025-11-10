@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Check, Loader2, Copy, User } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import QRCode from "qrcode";
-import { apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 
 interface PaymentQRDialogProps {
@@ -16,20 +15,26 @@ interface PaymentQRDialogProps {
   phone: string;
   email?: string;
   address: string;
+  accountCreated?: boolean;
+  defaultPassword?: string;
 }
 
-export default function PaymentQRDialog({ isOpen, onClose, orderId, amount, customerName, phone, email, address }: PaymentQRDialogProps) {
+export default function PaymentQRDialog({ 
+  isOpen, 
+  onClose, 
+  orderId, 
+  amount, 
+  customerName, 
+  phone, 
+  email, 
+  address,
+  accountCreated = false,
+  defaultPassword = ""
+}: PaymentQRDialogProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [upiId] = useState("rotihai@upi");
-  const [isRegistering, setIsRegistering] = useState(false);
-  const [accountCreated, setAccountCreated] = useState(false);
-  const [defaultPassword, setDefaultPassword] = useState("");
   const { toast } = useToast();
   const [, setLocation] = useLocation();
-
-  useEffect(() => {
-  console.log("🧠 PaymentQRDialog mounted → isOpen:", isOpen, "orderId:", orderId);
-}, [isOpen, orderId]);
 
   useEffect(() => {
     if (isOpen && canvasRef.current) {
@@ -63,35 +68,6 @@ export default function PaymentQRDialog({ isOpen, onClose, orderId, amount, cust
     }
   }, [isOpen, upiId, amount, orderId, toast]);
 
-  useEffect(() => {
-    if (isOpen && customerName && phone && !isRegistering && !accountCreated) {
-      setIsRegistering(true);
-      
-      apiRequest("POST", "/api/user/auto-register", {
-        customerName,
-        phone,
-        email,
-        address,
-      })
-        .then((res) => res.json())
-        .then((data: any) => {
-          localStorage.setItem("userToken", data.accessToken);
-          localStorage.setItem("userRefreshToken", data.refreshToken);
-          localStorage.setItem("userData", JSON.stringify(data.user));
-          setAccountCreated(true);
-          if (data.defaultPassword) {
-            setDefaultPassword(data.defaultPassword);
-          }
-        })
-        .catch((error) => {
-          console.error("Auto-register error:", error);
-        })
-        .finally(() => {
-          setIsRegistering(false);
-        });
-    }
-  }, [isOpen, customerName, phone, email, address, isRegistering, accountCreated]);
-
   const copyUpiId = () => {
     navigator.clipboard.writeText(upiId);
     toast({
@@ -100,14 +76,19 @@ export default function PaymentQRDialog({ isOpen, onClose, orderId, amount, cust
     });
   };
 
-  const handleClose = () => {
-     console.log("❎ PaymentQRDialog closing, calling onClose()");
+  const handleUserClose = () => {
     onClose();
     setLocation(`/track/${orderId}`);
   };
 
+  const handleDialogChange = (open: boolean) => {
+    if (!open) {
+      onClose();
+    }
+  };
+
   return (
-    <Dialog open={isOpen} onOpenChange={handleClose}>
+    <Dialog open={isOpen} onOpenChange={handleDialogChange}>
       <DialogContent className="w-full max-w-md mx-auto max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Complete Payment</DialogTitle>
@@ -175,7 +156,7 @@ export default function PaymentQRDialog({ isOpen, onClose, orderId, amount, cust
 
           <div className="space-y-2">
             <Button 
-              onClick={handleClose} 
+              onClick={handleUserClose} 
               className="w-full"
               data-testid="button-close-payment"
             >

@@ -1,20 +1,23 @@
 
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Package, DollarSign, Clock, CheckCircle, Bell, Wifi, WifiOff } from "lucide-react";
+import { Package, DollarSign, Clock, CheckCircle, Bell, Wifi, WifiOff, TrendingUp, Calendar } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { format } from "date-fns";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { format, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { usePartnerNotifications } from "@/hooks/usePartnerNotifications";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 export default function PartnerDashboard() {
   const partnerToken = localStorage.getItem("partnerToken");
   const chefName = localStorage.getItem("partnerChefName");
   const { toast } = useToast();
   const { wsConnected, newOrdersCount, requestNotificationPermission, clearNewOrdersCount } = usePartnerNotifications();
+  const [selectedTab, setSelectedTab] = useState("dashboard");
 
   useEffect(() => {
     requestNotificationPermission();
@@ -38,7 +41,42 @@ export default function PartnerDashboard() {
         headers: { Authorization: `Bearer ${partnerToken}` },
       });
       if (!response.ok) throw new Error("Failed to fetch orders");
+      const allOrders = await response.json();
+      // Sort by latest first
+      return allOrders.sort((a: any, b: any) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+    },
+  });
+
+  const { data: incomeReport } = useQuery({
+    queryKey: ["/api/partner/income-report"],
+    queryFn: async () => {
+      const response = await fetch("/api/partner/income-report", {
+        headers: { Authorization: `Bearer ${partnerToken}` },
+      });
+      if (!response.ok) throw new Error("Failed to fetch income report");
       return response.json();
+    },
+  });
+
+  const acceptOrderMutation = useMutation({
+    mutationFn: async (orderId: string) => {
+      const response = await fetch(`/api/partner/orders/${orderId}/accept`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${partnerToken}` },
+      });
+      if (!response.ok) throw new Error("Failed to accept order");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/partner/orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/partner/dashboard/metrics"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/partner/income-report"] });
+      toast({
+        title: "Order accepted",
+        description: "Order has been accepted and confirmed",
+      });
     },
   });
 
@@ -58,6 +96,7 @@ export default function PartnerDashboard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/partner/orders"] });
       queryClient.invalidateQueries({ queryKey: ["/api/partner/dashboard/metrics"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/partner/income-report"] });
       toast({
         title: "Order updated",
         description: "Order status has been updated successfully",
@@ -121,7 +160,15 @@ export default function PartnerDashboard() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <Tabs value={selectedTab} onValueChange={setSelectedTab} className="space-y-6">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
+            <TabsTrigger value="orders">All Orders</TabsTrigger>
+            <TabsTrigger value="income">Income Report</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="dashboard" className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium">Total Orders</CardTitle>
@@ -164,70 +211,253 @@ export default function PartnerDashboard() {
         </div>
 
         <Card>
-          <CardHeader>
-            <CardTitle>Recent Orders</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {orders && orders.length > 0 ? (
-                orders.slice(0, 10).map((order: any) => (
-                  <div
-                    key={order.id}
-                    className="flex items-center justify-between p-4 border rounded-lg"
-                  >
-                    <div className="flex-1">
-                      <p className="font-medium">Order #{order.id.slice(0, 8)}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {order.customerName} • {order.phone}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {format(new Date(order.createdAt), "PPp")}
-                      </p>
-                      <div className="mt-2">
-                        {(order.items as any[]).map((item, idx) => (
-                          <p key={idx} className="text-sm">
-                            {item.name} x {item.quantity}
+              <CardHeader>
+                <CardTitle>Recent Orders</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {orders && orders.length > 0 ? (
+                    orders.slice(0, 5).map((order: any) => (
+                      <div
+                        key={order.id}
+                        className="flex items-center justify-between p-4 border rounded-lg"
+                      >
+                        <div className="flex-1">
+                          <p className="font-medium">Order #{order.id.slice(0, 8)}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {order.customerName} • {order.phone}
                           </p>
-                        ))}
+                          <p className="text-sm text-muted-foreground">
+                            {format(new Date(order.createdAt), "PPp")}
+                          </p>
+                          <div className="mt-2">
+                            {(order.items as any[]).map((item, idx) => (
+                              <p key={idx} className="text-sm">
+                                {item.name} x {item.quantity}
+                              </p>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="text-right flex flex-col items-end gap-2">
+                          <Badge className={getStatusColor(order.status)}>
+                            {order.status.replace("_", " ").toUpperCase()}
+                          </Badge>
+                          <p className="font-bold">₹{order.total}</p>
+                          
+                          {/* Action buttons based on status */}
+                          <div className="flex gap-2 mt-2">
+                            {order.paymentStatus === "paid" && order.status === "pending" && (
+                              <Button
+                                size="sm"
+                                onClick={() => acceptOrderMutation.mutate(order.id)}
+                                disabled={acceptOrderMutation.isPending}
+                                variant="default"
+                              >
+                                Accept Order
+                              </Button>
+                            )}
+                            {order.status === "confirmed" && (
+                              <Button
+                                size="sm"
+                                onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: "preparing" })}
+                                disabled={updateStatusMutation.isPending}
+                              >
+                                Start Preparing
+                              </Button>
+                            )}
+                            {order.status === "preparing" && (
+                              <Button
+                                size="sm"
+                                onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: "out_for_delivery" })}
+                                disabled={updateStatusMutation.isPending}
+                                variant="default"
+                              >
+                                Ready for Delivery
+                              </Button>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                    <div className="text-right flex flex-col items-end gap-2">
-                      <Badge className={getStatusColor(order.status)}>
-                        {order.status.replace("_", " ").toUpperCase()}
-                      </Badge>
-                      <p className="font-bold">₹{order.total}</p>
-                      
-                      {/* Action buttons based on status */}
-                      <div className="flex gap-2 mt-2">
-                        {order.status === "confirmed" && (
-                          <Button
-                            size="sm"
-                            onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: "preparing" })}
-                            disabled={updateStatusMutation.isPending}
-                          >
-                            Start Preparing
-                          </Button>
-                        )}
-                        {order.status === "preparing" && (
-                          <Button
-                            size="sm"
-                            onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: "out_for_delivery" })}
-                            disabled={updateStatusMutation.isPending}
-                            variant="default"
-                          >
-                            Ready for Delivery
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <p className="text-center text-muted-foreground py-8">No orders yet</p>
-              )}
+                    ))
+                  ) : (
+                    <p className="text-center text-muted-foreground py-8">No orders yet</p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="orders" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>All Orders</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Order ID</TableHead>
+                      <TableHead>Customer</TableHead>
+                      <TableHead>Items</TableHead>
+                      <TableHead>Amount</TableHead>
+                      <TableHead>Date & Time</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Payment</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {orders && orders.length > 0 ? (
+                      orders.map((order: any) => (
+                        <TableRow key={order.id}>
+                          <TableCell className="font-medium">#{order.id.slice(0, 8)}</TableCell>
+                          <TableCell>
+                            <div>
+                              <div>{order.customerName}</div>
+                              <div className="text-xs text-muted-foreground">{order.phone}</div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-sm">
+                              {(order.items as any[]).map((item, idx) => (
+                                <div key={idx}>{item.name} x{item.quantity}</div>
+                              ))}
+                            </div>
+                          </TableCell>
+                          <TableCell className="font-bold">₹{order.total}</TableCell>
+                          <TableCell>
+                            <div>{format(new Date(order.createdAt), "MMM d, yyyy")}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {format(new Date(order.createdAt), "h:mm a")}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge className={getStatusColor(order.status)}>
+                              {order.status.replace("_", " ").toUpperCase()}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={order.paymentStatus === "confirmed" ? "default" : "secondary"}>
+                              {order.paymentStatus}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {order.paymentStatus === "paid" && order.status === "pending" && (
+                              <Button
+                                size="sm"
+                                onClick={() => acceptOrderMutation.mutate(order.id)}
+                                disabled={acceptOrderMutation.isPending}
+                              >
+                                Accept
+                              </Button>
+                            )}
+                            {order.status === "confirmed" && (
+                              <Button
+                                size="sm"
+                                onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: "preparing" })}
+                                disabled={updateStatusMutation.isPending}
+                              >
+                                Prepare
+                              </Button>
+                            )}
+                            {order.status === "preparing" && (
+                              <Button
+                                size="sm"
+                                onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: "out_for_delivery" })}
+                                disabled={updateStatusMutation.isPending}
+                              >
+                                Ready
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                          No orders found
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="income" className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium">Total Income</CardTitle>
+                  <DollarSign className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">₹{incomeReport?.totalIncome || 0}</div>
+                  <p className="text-xs text-muted-foreground mt-1">All time earnings</p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium">This Month</CardTitle>
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">₹{incomeReport?.thisMonth || 0}</div>
+                  <p className="text-xs text-muted-foreground mt-1">Current month revenue</p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium">Last Month</CardTitle>
+                  <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">₹{incomeReport?.lastMonth || 0}</div>
+                  <p className="text-xs text-muted-foreground mt-1">Previous month revenue</p>
+                </CardContent>
+              </Card>
             </div>
-          </CardContent>
-        </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Monthly Breakdown</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Month</TableHead>
+                      <TableHead>Orders</TableHead>
+                      <TableHead>Revenue</TableHead>
+                      <TableHead>Average Order Value</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {incomeReport?.monthlyBreakdown && incomeReport.monthlyBreakdown.length > 0 ? (
+                      incomeReport.monthlyBreakdown.map((month: any, idx: number) => (
+                        <TableRow key={idx}>
+                          <TableCell className="font-medium">{month.month}</TableCell>
+                          <TableCell>{month.orders}</TableCell>
+                          <TableCell className="font-bold">₹{month.revenue}</TableCell>
+                          <TableCell>₹{month.avgOrderValue}</TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                          No income data available
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </main>
     </div>
   );

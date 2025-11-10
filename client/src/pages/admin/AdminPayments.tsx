@@ -32,8 +32,12 @@ export default function AdminPayments() {
       if (!response.ok) throw new Error("Failed to fetch orders");
       const allOrders = await response.json();
       // Filter for only pending and paid payments (not yet confirmed)
-      return allOrders.filter((order: Order) => 
+      const filteredOrders = allOrders.filter((order: Order) => 
         order.paymentStatus === "pending" || order.paymentStatus === "paid"
+      );
+      // Sort by latest first (descending order by createdAt)
+      return filteredOrders.sort((a: Order, b: Order) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
     },
   });
