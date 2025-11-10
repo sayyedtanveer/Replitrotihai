@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -42,6 +43,7 @@ export default function CartSidebar({
 }: CartSidebarProps) {
   // Controlled accordion state - tracks which categories are expanded
   const [expandedIds, setExpandedIds] = useState<string[]>([]);
+  const prevCategoryIdsRef = useRef<string[]>([]);
 
   const totalItems = carts.reduce((total, cart) => 
     total + cart.items.reduce((sum, item) => sum + item.quantity, 0), 0
@@ -49,26 +51,21 @@ export default function CartSidebar({
 
   // Sync expanded state with carts - auto-expand new categories, prune removed ones
   useEffect(() => {
-    // Get current cart category IDs (filter out empty/invalid IDs)
-    const currentCategoryIds = carts
-      .map(cart => cart.categoryId)
-      .filter(id => id && id.trim() !== '');
+  const currentIds = carts
+    .map((c) => c.categoryId)
+    .filter(Boolean);
 
-    if (currentCategoryIds.length === 0) {
-      // No carts, clear expanded state
-      setExpandedIds([]);
-      return;
-    }
+  const prev = prevCategoryIdsRef.current;
+  const changed =
+    !prev ||
+    prev.length !== currentIds.length ||
+    prev.some((id, i) => id !== currentIds[i]);
 
-    setExpandedIds(prev => {
-      // Auto-add any new category IDs that aren't already expanded
-      const newIds = currentCategoryIds.filter(id => !prev.includes(id));
-      // Remove category IDs that no longer exist in carts
-      const validIds = prev.filter(id => currentCategoryIds.includes(id));
-      // Combine and deduplicate
-      return Array.from(new Set([...validIds, ...newIds]));
-    });
-  }, [carts]);
+  if (changed) {
+    prevCategoryIdsRef.current = currentIds;
+    setExpandedIds(currentIds);
+  }
+}, [carts]);
 
   // Handle accordion value change from user interaction
   const handleAccordionChange = (value: string | string[]) => {

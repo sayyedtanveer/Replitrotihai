@@ -79,6 +79,10 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   if (adminUser.role === "super_admin") {
     navigation.push({ name: "Admin Management", href: "/admin/admins", icon: ShieldCheck });
   }
+  
+  // Add Partners navigation item
+  navigation.push({ name: "Partners", href: "/admin/partners", icon: Users });
+
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
@@ -91,11 +95,11 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         </div>
 
         <aside
-          className={`fixed inset-y-0 left-0 z-50 w-64 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 transform transition-transform lg:translate-x-0 ${
+          className={`fixed inset-y-0 left-0 z-50 w-64 max-w-[85vw] bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 transform transition-transform lg:translate-x-0 ${
             isSidebarOpen ? "translate-x-0" : "-translate-x-full"
-          }`}
+          } flex flex-col`}
         >
-          <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-700">
+          <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-700 shrink-0">
             <div className="flex items-center gap-2">
               <ShieldCheck className="w-6 h-6 text-primary" />
               <span className="font-bold text-lg">Admin Panel</span>
@@ -111,13 +115,13 @@ export function AdminLayout({ children }: AdminLayoutProps) {
             </Button>
           </div>
 
-          <div className="p-4 border-b border-slate-200 dark:border-slate-700">
+          <div className="p-4 border-b border-slate-200 dark:border-slate-700 shrink-0">
             <div className="text-sm text-slate-600 dark:text-slate-400">Logged in as</div>
             <div className="font-semibold text-slate-900 dark:text-slate-100">{adminUser.username}</div>
             <div className="text-xs text-slate-500 dark:text-slate-400 capitalize">{adminUser.role?.replace("_", " ")}</div>
           </div>
 
-          <nav className="p-4 space-y-1">
+          <nav className="p-4 space-1 flex-1 overflow-y-auto">
             {navigation.map((item) => {
               const isActive = location === item.href;
               const Icon = item.icon;
@@ -151,7 +155,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
             </Link>
           </nav>
 
-          <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-slate-200 dark:border-slate-700">
+          <div className="p-4 border-t border-slate-200 dark:border-slate-700 shrink-0 mt-auto">
             <Button
               onClick={handleLogout}
               variant="outline"

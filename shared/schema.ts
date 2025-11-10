@@ -184,25 +184,26 @@ export const insertChefSchema = createInsertSchema(chefs).omit({
   id: true,
 });
 
+// Assuming orderItemSchema is defined elsewhere and needs to be available
+const orderItemSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  price: z.number(),
+  quantity: z.number(),
+});
+
 export const insertOrderSchema = z.object({
-  customerName: z.string(),
-  phone: z.string(),
-  email: z.string().email().optional(),
-  address: z.string(),
-  latitude: z.number().optional(),
-  longitude: z.number().optional(),
-  items: z.array(z.object({
-    id: z.string(),
-    name: z.string(),
-    price: z.number(),
-    quantity: z.number(),
-  })),
-  subtotal: z.number(),
-  deliveryFee: z.number(),
-  distance: z.number().optional(),
-  total: z.number(),
-  status: z.string(),
-  chefId: z.string().optional(),
+  customerName: z.string().min(1, "Customer name is required"),
+  phone: z.string().min(1, "Phone number is required"),
+  email: z.string().email().optional().or(z.literal("")),
+  address: z.string().min(1, "Delivery address is required"),
+  items: z.array(orderItemSchema).min(1, "At least one item is required"),
+  subtotal: z.number().min(0),
+  deliveryFee: z.number().min(0),
+  total: z.number().min(0),
+  chefId: z.string(),
+  paymentStatus: z.enum(["pending", "paid", "confirmed", "failed"]).default("pending"),
+  userId: z.string().optional(),
 });
 
 export type InsertCategory = z.infer<typeof insertCategorySchema>;

@@ -1,54 +1,62 @@
-import { useQuery } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useState, useEffect } from "react";
+
+interface UserData {
+  id: string;
+  name: string;
+  phone: string;
+  email?: string;
+  address?: string;
+}
 
 export function usePhoneAuth() {
-  const userToken = localStorage.getItem("userToken");
-  
-  const { data: user, isLoading, error } = useQuery({
-    queryKey: ["/api/user/profile"],
-    enabled: !!userToken,
-    retry: false,
-    queryFn: async () => {
-      const response = await fetch("/api/user/profile", {
-        headers: {
-          Authorization: `Bearer ${userToken}`,
-        },
-      });
+  const [user, setUser] = useState<UserData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-      if (!response.ok) {
-        if (response.status === 401) {
-          // Token expired or invalid, logout user
-          localStorage.removeItem("userToken");
-          localStorage.removeItem("userRefreshToken");
-          localStorage.removeItem("userData");
-          throw new Error("Session expired");
-        }
-        throw new Error("Failed to fetch profile");
-      }
-
-      return response.json();
-    },
-  });
-
-  // Auto-logout on session expiration
   useEffect(() => {
-    if (error && userToken) {
-      localStorage.removeItem("userToken");
-      localStorage.removeItem("userRefreshToken");
-      localStorage.removeItem("userData");
-      window.location.reload();
+    const savedUserData = localStorage.getItem("userData");
+    if (savedUserData) {
+      setUser(JSON.parse(savedUserData));
     }
-  }, [error, userToken]);
+    setIsLoading(false);
+  }, []);
+
+  async function login(phone: string, password: string) {
+    const res = await fetch("/api/user/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone, password }),
+    });
+
+    if (!res.ok) throw new Error("Invalid credentials");
+    const data = await res.json();
+
+    localStorage.setItem("userToken", data.accessToken);
+    localStorage.setItem("refreshToken", data.refreshToken);
+    localStorage.setItem("userData", JSON.stringify(data.user));
+
+    setUser(data.user);
+    return data.user;
+  }
+
+  async function logout() {
+    try {
+      await fetch("/api/user/logout", { method: "POST" });
+    } catch (err) {
+      console.warn("Logout request failed:", err);
+    } finally {
+      localStorage.removeItem("userToken");
+      localStorage.removeItem("refreshToken");
+      localStorage.removeItem("userData");
+      setUser(null);
+      window.location.href = "/"; // Redirect to home page
+    }
+  }
 
   return {
-    isAuthenticated: !!userToken && !error,
     user,
     isLoading,
-    logout: () => {
-      localStorage.removeItem("userToken");
-      localStorage.removeItem("userRefreshToken");
-      localStorage.removeItem("userData");
-      window.location.href = "/";
-    },
+    login,
+    logout,
+    isAuthenticated: !!user,
   };
 }

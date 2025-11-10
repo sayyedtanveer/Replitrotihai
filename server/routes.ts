@@ -100,6 +100,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // User logout (JWT-based)
+app.post("/api/user/logout", async (req, res) => {
+  try {
+    // For JWT, logout simply means the client deletes the token.
+    // (Tokens are stateless — there’s nothing to invalidate on the server)
+    // However, we could later add refresh token blacklisting here if needed.
+
+    console.log("User logout requested");
+
+    res.json({ message: "Logged out successfully" });
+  } catch (error: any) {
+    console.error("Logout error:", error);
+    res.status(500).json({ message: error.message || "Failed to logout" });
+  }
+});
+  
+
   app.post("/api/user/auto-register", async (req, res) => {
     try {
       const { customerName, phone, email, address } = req.body;
@@ -174,10 +191,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/user/orders", requireUser(), async (req: AuthenticatedUserRequest, res) => {
     try {
-      console.log("GET /api/user/orders - User ID:", req.authenticatedUser!.userId);
-      const orders = await storage.getOrdersByUserId(req.authenticatedUser!.userId);
-      console.log("GET /api/user/orders - Found", orders.length, "orders");
-      res.json(orders);
+      const userId = req.authenticatedUser!.userId;
+      console.log("GET /api/user/orders - User ID:", userId);
+
+      // Get user to find their phone number
+      const user = await storage.getUser(userId);
+      if (!user) {
+        res.status(404).json({ message: "User not found" });
+        return;
+      }
+
+      console.log("GET /api/user/orders - User phone:", user.phone);
+
+      // Get all orders and filter by user's phone number
+      const allOrders = await storage.getAllOrders();
+      const userOrders = allOrders.filter(order => 
+        order.phone === user.phone || order.userId === userId
+      );
+
+      console.log("GET /api/user/orders - Found", userOrders.length, "orders");
+      res.json(userOrders);
     } catch (error: any) {
       console.error("Error fetching user orders:", error);
       res.status(500).json({ message: error.message || "Failed to fetch orders" });
@@ -226,47 +259,93 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create an order (no authentication required - supports guest checkout)
-  app.post("/api/orders", async (req, res) => {
-    try {
-      const result = insertOrderSchema.safeParse(req.body);
-      if (!result.success) {
-        res.status(400).json({ message: "Invalid order data", errors: result.error });
-        return;
-      }
+  // Create an order (no authentication required - supports guest checkout)
+app.post("/api/orders", async (req: any, res) => {
+  try {
+    console.log(" Incoming order body:", JSON.stringify(req.body, null, 2));
 
-      const order = await storage.createOrder(result.data);
+    // 🔹 Sanitize request before validation
+    const body = req.body;
 
-      // Log new order notification
-      console.log(`
-╔════════════════════════════════════════════════════════════════
-║ 🔔 NEW ORDER - PAYMENT PENDING
-╠════════════════════════════════════════════════════════════════
-║ Order ID: ${order.id.slice(0, 8)}
-║ Customer: ${order.customerName}
-║ Phone: ${order.phone}
-║ Amount: ₹${order.total}
-║ Payment: ${order.paymentStatus} (QR shown to customer)
-║ Time: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
-╠════════════════════════════════════════════════════════════════
-║ ⏳ Waiting for customer payment & admin verification
-║ 📱 Notification sent to admin panel
-╚════════════════════════════════════════════════════════════════
-      `);
+    const sanitizeNumber = (val: any) =>
+      typeof val === "string" ? parseFloat(val) : val;
 
-      broadcastNewOrder(order);
-      res.status(201).json(order);
-    } catch (error) {
-      console.error("Create order error:", error);
-      res.status(500).json({ message: "Failed to create order" });
+    const sanitized = {
+      customerName: body.customerName?.trim(),
+      phone: body.phone?.trim(),
+      email: body.email || "",
+      address: body.address?.trim(),
+      items: Array.isArray(body.items)
+  ? body.items.map((i: any) => ({
+      id: i.id,
+      name: i.name,
+      price: sanitizeNumber(i.price),
+      quantity: sanitizeNumber(i.quantity),
+    }))
+  : [],
+      subtotal: sanitizeNumber(body.subtotal),
+      deliveryFee: sanitizeNumber(body.deliveryFee),
+      total: sanitizeNumber(body.total),
+      chefId: body.chefId || body.items?.[0]?.chefId || "",
+      paymentStatus: body.paymentStatus || "pending",
+      userId: body.userId || undefined,
+    };
+
+    const result = insertOrderSchema.safeParse(sanitized);
+    if (!result.success) {
+      console.error("❌ Order validation failed:", result.error.flatten());
+      return res.status(400).json({
+        message: "Invalid order data",
+        errors: result.error.flatten(),
+        received: sanitized,
+      });
     }
-  });
+
+    // Extract authenticated userId (JWT)
+    let userId: string | undefined;
+    if (req.headers.authorization?.startsWith("Bearer ")) {
+      const token = req.headers.authorization.substring(7);
+      const payload = verifyUserToken(token);
+      if (payload?.userId) userId = payload.userId;
+    }
+
+    // Build payload to create order
+    const orderPayload: any = {
+      ...result.data,
+      paymentStatus: "pending",
+      userId,
+    };
+
+    // Determine chefId if missing
+    if (!orderPayload.chefId && orderPayload.items.length > 0) {
+      const firstProduct = await storage.getProductById(orderPayload.items[0].id);
+      orderPayload.chefId = firstProduct?.chefId ?? undefined;
+    }
+
+    if (!orderPayload.chefId) {
+      return res
+        .status(400)
+        .json({ message: "Unable to determine chefId for the order" });
+    }
+
+    const order = await storage.createOrder(orderPayload);
+    broadcastNewOrder(order);
+
+    console.log("✅ Order created successfully:", order.id);
+    res.status(201).json(order);
+  } catch (error: any) {
+    console.error("❌ Create order error:", error);
+    res.status(500).json({ message: error.message || "Failed to create order" });
+  }
+});
+
 
   // Get user's orders (supports both authenticated users and phone-based lookup)
   app.get("/api/orders", async (req: any, res) => {
     try {
       console.log("GET /api/orders - Auth header:", req.headers.authorization ? "Present" : "Missing");
       console.log("GET /api/orders - Query params:", req.query);
-      
+
       // Check if user is authenticated via Replit auth
       if (req.isAuthenticated && req.isAuthenticated() && req.user?.claims?.sub) {
         const userId = req.user.claims.sub;

@@ -1,6 +1,5 @@
-
+import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
 import { useLocation } from "wouter";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
@@ -8,10 +7,25 @@ import MenuDrawer from "@/components/MenuDrawer";
 import CartSidebar from "@/components/CartSidebar";
 import ChefListDrawer from "@/components/ChefListDrawer";
 import SubscriptionDrawer from "@/components/SubscriptionDrawer";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ShoppingBag, Package, Clock, CheckCircle, XCircle, ChefHat, Truck, Home } from "lucide-react";
+import {
+  ShoppingBag,
+  Package,
+  Clock,
+  CheckCircle,
+  XCircle,
+  ChefHat,
+  Truck,
+  Home,
+} from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { format } from "date-fns";
 import type { Category } from "../types/category";
@@ -24,66 +38,58 @@ export default function MyOrders() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isChefListOpen, setIsChefListOpen] = useState(false);
   const [isSubscriptionOpen, setIsSubscriptionOpen] = useState(false);
-  const { user: replitUser } = useAuth();
+  const { user } = useAuth();
   const userToken = localStorage.getItem("userToken");
-  const savedUserData = localStorage.getItem("userData");
-  const parsedUserData = savedUserData ? JSON.parse(savedUserData) : null;
-
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
 
-  const { data: phoneOrders = [], isLoading: phoneOrdersLoading } = useQuery<Order[]>({
-  queryKey: ["/api/user/orders", userToken],
-  enabled: !!userToken && !replitUser,
-  queryFn: async () => {
-    const res = await fetch("/api/user/orders", {
-      headers: {
-        Authorization: `Bearer ${userToken}`,
-      },
-    });
-    if (res.status === 401) {
-      // Token is invalid or expired, clear it
-      localStorage.removeItem("userToken");
-      localStorage.removeItem("userData");
-      throw new Error("Session expired. Please log in again.");
-    }
-    if (!res.ok) throw new Error("Failed to fetch phone orders");
-    return res.json();
-  }
-});
+  // 🧠 Fetch orders for authenticated user
+  const {
+    data: orders = [],
+    isLoading,
+    error,
+  } = useQuery<Order[]>({
+    queryKey: ["/api/orders", userToken],
+    enabled: !!userToken,
+    queryFn: async () => {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (userToken) headers.Authorization = `Bearer ${userToken}`;
+      const res = await fetch("/api/orders", { headers });
+      if (res.status === 401) {
+        // Token expired or invalid
+        localStorage.removeItem("userToken");
+        localStorage.removeItem("userData");
+        throw new Error("Session expired. Please log in again.");
+      }
+      if (!res.ok) {
+        const text = await res.text();
+        console.error("Failed to fetch orders:", text);
+        throw new Error("Failed to fetch orders");
+      }
+      return res.json();
+    },
+  });
 
-const { data: replitOrders = [], isLoading: replitOrdersLoading } = useQuery<Order[]>({
-  queryKey: ["/api/orders"],
-  enabled: !!replitUser,
-  queryFn: async () => {
-    const res = await fetch("/api/orders");
-    if (!res.ok) throw new Error("Failed to fetch Replit orders");
-    return res.json();
-  }
-});
-
-  const orders = replitUser ? replitOrders : phoneOrders;
-  const isLoading = replitUser ? replitOrdersLoading : phoneOrdersLoading;
-  const user = replitUser || (userToken && parsedUserData ? parsedUserData : null);
-
+  // 🧩 Fetch categories
   const { data: categories = [] } = useQuery<Category[]>({
-  queryKey: ["/api/categories"],
-  queryFn: async () => {
-    const res = await fetch("/api/categories");
-    if (!res.ok) throw new Error("Failed to fetch categories");
-    return res.json();
-  }
-});
+    queryKey: ["/api/categories"],
+    queryFn: async () => {
+      const res = await fetch("/api/categories");
+      if (!res.ok) throw new Error("Failed to fetch categories");
+      return res.json();
+    },
+  });
 
-const { data: chefs = [] } = useQuery<Chef[]>({
-  queryKey: ["/api/chefs"],
-  queryFn: async () => {
-    const res = await fetch("/api/chefs");
-    if (!res.ok) throw new Error("Failed to fetch chefs");
-    return res.json();
-  }
-});
+  // 🧩 Fetch chefs
+  const { data: chefs = [] } = useQuery<Chef[]>({
+    queryKey: ["/api/chefs"],
+    queryFn: async () => {
+      const res = await fetch("/api/chefs");
+      if (!res.ok) throw new Error("Failed to fetch chefs");
+      return res.json();
+    },
+  });
 
-
+  // 🧩 Helpers
   const getStatusColor = (status: string) => {
     switch (status) {
       case "pending":
@@ -120,51 +126,77 @@ const { data: chefs = [] } = useQuery<Chef[]>({
     }
   };
 
-  const getOrderProgress = (order: any) => {
-    const steps = [
-      { 
-        key: "placed", 
-        label: "Order Placed", 
+  const getOrderProgress = (order: Order) => {
+    return [
+      {
+        key: "placed",
+        label: "Order Placed",
         icon: <ShoppingBag className="h-5 w-5" />,
         completed: true,
-        description: order.paymentStatus === "pending" ? "Waiting for payment" : "Order received"
+        description:
+          order.paymentStatus === "pending"
+            ? "Waiting for payment"
+            : "Order received",
       },
-      { 
-        key: "payment", 
-        label: "Payment Confirmed", 
+      {
+        key: "payment",
+        label: "Payment Confirmed",
         icon: <CheckCircle className="h-5 w-5" />,
-        completed: order.paymentStatus === "confirmed" || order.status === "confirmed" || order.status === "preparing" || order.status === "out_for_delivery" || order.status === "delivered",
-        description: order.paymentStatus === "pending" ? "Pending verification" : "Payment verified"
+        completed:
+          order.paymentStatus === "confirmed" ||
+          order.status === "confirmed" ||
+          order.status === "preparing" ||
+          order.status === "out_for_delivery" ||
+          order.status === "delivered",
+        description:
+          order.paymentStatus === "pending"
+            ? "Pending verification"
+            : "Payment verified",
       },
-      { 
-        key: "preparing", 
-        label: "Preparing", 
+      {
+        key: "preparing",
+        label: "Preparing",
         icon: <ChefHat className="h-5 w-5" />,
-        completed: order.status === "preparing" || order.status === "out_for_delivery" || order.status === "delivered",
-        description: order.status === "preparing" ? "Chef is preparing" : order.status === "confirmed" ? "Waiting for chef" : "Ready"
+        completed:
+          order.status === "preparing" ||
+          order.status === "out_for_delivery" ||
+          order.status === "delivered",
+        description:
+          order.status === "preparing"
+            ? "Chef is preparing"
+            : order.status === "confirmed"
+            ? "Waiting for chef"
+            : "Ready",
       },
-      { 
-        key: "delivery", 
-        label: "Out for Delivery", 
+      {
+        key: "delivery",
+        label: "Out for Delivery",
         icon: <Truck className="h-5 w-5" />,
-        completed: order.status === "out_for_delivery" || order.status === "delivered",
-        description: order.status === "out_for_delivery" ? "On the way" : "Pending pickup"
+        completed:
+          order.status === "out_for_delivery" || order.status === "delivered",
+        description:
+          order.status === "out_for_delivery"
+            ? "On the way"
+            : "Pending pickup",
       },
-      { 
-        key: "delivered", 
-        label: "Delivered", 
+      {
+        key: "delivered",
+        label: "Delivered",
         icon: <Home className="h-5 w-5" />,
-        completed: order.status === "delivered" || order.status === "completed",
-        description: order.status === "delivered" ? "Order delivered" : "Not yet delivered"
-      }
+        completed:
+          order.status === "delivered" || order.status === "completed",
+        description:
+          order.status === "delivered"
+            ? "Order delivered"
+            : "Not yet delivered",
+      },
     ];
-
-    return steps;
   };
 
+  // 🧩 UI rendering
   return (
     <div className="min-h-screen flex flex-col">
-      <Header 
+      <Header
         onMenuClick={() => setIsMenuOpen(true)}
         onCartClick={() => setIsCartOpen(true)}
         onChefListClick={() => setIsChefListOpen(true)}
@@ -175,7 +207,9 @@ const { data: chefs = [] } = useQuery<Chef[]>({
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="mb-8">
             <h1 className="text-3xl font-bold mb-2">My Orders</h1>
-            <p className="text-muted-foreground">Track and manage your orders</p>
+            <p className="text-muted-foreground">
+              Track and manage your orders
+            </p>
           </div>
 
           {!user ? (
@@ -185,10 +219,11 @@ const { data: chefs = [] } = useQuery<Chef[]>({
                 <div>
                   <CardTitle className="mb-2">Sign In Required</CardTitle>
                   <CardDescription>
-                    Place an order to automatically create an account and track your orders
+                    Place an order to automatically create an account and track
+                    your orders.
                   </CardDescription>
                 </div>
-                <Button onClick={() => setLocation("/")} data-testid="button-go-home">
+                <Button onClick={() => setLocation("/")}>
                   Start Shopping
                 </Button>
               </CardContent>
@@ -199,6 +234,14 @@ const { data: chefs = [] } = useQuery<Chef[]>({
                 <p className="text-muted-foreground">Loading your orders...</p>
               </CardContent>
             </Card>
+          ) : error ? (
+            <Card className="text-center py-12">
+              <CardContent>
+                <p className="text-red-600">
+                  Failed to load orders. Please refresh.
+                </p>
+              </CardContent>
+            </Card>
           ) : orders.length === 0 ? (
             <Card className="text-center py-12">
               <CardContent className="flex flex-col items-center gap-4">
@@ -206,19 +249,21 @@ const { data: chefs = [] } = useQuery<Chef[]>({
                 <div>
                   <CardTitle className="mb-2">No orders yet</CardTitle>
                   <CardDescription>
-                    Start ordering delicious food to see your orders here
+                    Start ordering delicious food to see your orders here.
                   </CardDescription>
                 </div>
               </CardContent>
             </Card>
           ) : (
             <div className="space-y-4">
-              {orders.map((order: any) => (
+              {orders.map((order) => (
                 <Card key={order.id}>
                   <CardHeader>
                     <div className="flex justify-between items-start">
                       <div>
-                        <CardTitle className="text-lg">Order #{order.id.slice(0, 8)}</CardTitle>
+                        <CardTitle className="text-lg">
+                          Order #{order.id.slice(0, 8)}
+                        </CardTitle>
                         <CardDescription>
                           {format(new Date(order.createdAt), "PPpp")}
                         </CardDescription>
@@ -233,32 +278,46 @@ const { data: chefs = [] } = useQuery<Chef[]>({
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-6">
-                      {/* Order Progress Timeline */}
                       {order.status !== "cancelled" && (
                         <div className="bg-muted/30 dark:bg-muted/20 rounded-lg p-4">
-                          <h4 className="font-semibold mb-4 text-sm">Order Status Tracker</h4>
+                          <h4 className="font-semibold mb-4 text-sm">
+                            Order Status Tracker
+                          </h4>
                           <div className="relative">
                             {getOrderProgress(order).map((step, idx) => (
-                              <div key={step.key} className="flex gap-4 pb-6 last:pb-0">
-                                {/* Timeline Line */}
+                              <div
+                                key={step.key}
+                                className="flex gap-4 pb-6 last:pb-0"
+                              >
                                 <div className="relative flex flex-col items-center">
-                                  <div className={`w-10 h-10 rounded-full flex items-center justify-center z-10 ${
-                                    step.completed 
-                                      ? "bg-primary text-primary-foreground" 
-                                      : "bg-muted text-muted-foreground"
-                                  }`}>
+                                  <div
+                                    className={`w-10 h-10 rounded-full flex items-center justify-center z-10 ${
+                                      step.completed
+                                        ? "bg-primary text-primary-foreground"
+                                        : "bg-muted text-muted-foreground"
+                                    }`}
+                                  >
                                     {step.icon}
                                   </div>
-                                  {idx < getOrderProgress(order).length - 1 && (
-                                    <div className={`w-0.5 h-full absolute top-10 ${
-                                      step.completed ? "bg-primary" : "bg-muted"
-                                    }`} />
+                                  {idx <
+                                    getOrderProgress(order).length - 1 && (
+                                    <div
+                                      className={`w-0.5 h-full absolute top-10 ${
+                                        step.completed
+                                          ? "bg-primary"
+                                          : "bg-muted"
+                                      }`}
+                                    />
                                   )}
                                 </div>
-                                
-                                {/* Step Content */}
                                 <div className="flex-1 -mt-1">
-                                  <p className={`font-medium ${step.completed ? "text-foreground" : "text-muted-foreground"}`}>
+                                  <p
+                                    className={`font-medium ${
+                                      step.completed
+                                        ? "text-foreground"
+                                        : "text-muted-foreground"
+                                    }`}
+                                  >
                                     {step.label}
                                   </p>
                                   <p className="text-sm text-muted-foreground">
@@ -271,7 +330,6 @@ const { data: chefs = [] } = useQuery<Chef[]>({
                         </div>
                       )}
 
-                      {/* Cancelled Order Message */}
                       {order.status === "cancelled" && (
                         <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg p-4">
                           <div className="flex items-center gap-2 text-red-900 dark:text-red-100">
@@ -290,9 +348,12 @@ const { data: chefs = [] } = useQuery<Chef[]>({
                         <h4 className="font-semibold mb-2">Items</h4>
                         <div className="space-y-2">
                           {order.items.map((item: any, idx: number) => (
-                            <div key={idx} className="flex justify-between text-sm">
+                            <div
+                              key={idx}
+                              className="flex justify-between text-sm"
+                            >
                               <span className="text-muted-foreground">
-                                {item.name} x {item.quantity}
+                                {item.name} × {item.quantity}
                               </span>
                               <span className="font-medium">
                                 ₹{item.price * item.quantity}
@@ -301,13 +362,16 @@ const { data: chefs = [] } = useQuery<Chef[]>({
                           ))}
                         </div>
                       </div>
+
                       <div className="border-t pt-3">
                         <div className="flex justify-between text-sm mb-1">
                           <span className="text-muted-foreground">Subtotal</span>
                           <span>₹{order.subtotal}</span>
                         </div>
                         <div className="flex justify-between text-sm mb-2">
-                          <span className="text-muted-foreground">Delivery Fee</span>
+                          <span className="text-muted-foreground">
+                            Delivery Fee
+                          </span>
                           <span>₹{order.deliveryFee}</span>
                         </div>
                         <div className="flex justify-between font-bold">
@@ -315,9 +379,14 @@ const { data: chefs = [] } = useQuery<Chef[]>({
                           <span>₹{order.total}</span>
                         </div>
                       </div>
+
                       <div className="text-sm text-muted-foreground">
-                        <p><strong>Delivery to:</strong> {order.address}</p>
-                        <p><strong>Contact:</strong> {order.phone}</p>
+                        <p>
+                          <strong>Delivery to:</strong> {order.address}
+                        </p>
+                        <p>
+                          <strong>Contact:</strong> {order.phone}
+                        </p>
                       </div>
                     </div>
                   </CardContent>
@@ -340,22 +409,15 @@ const { data: chefs = [] } = useQuery<Chef[]>({
         }}
       />
 
-      <CartSidebar
-        isOpen={isCartOpen}
-        onClose={() => setIsCartOpen(false)}
+      <CartSidebar isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
+
+      <ChefListDrawer
+        isOpen={isChefListOpen}
+        onClose={() => setIsChefListOpen(false)}
+        category={selectedCategory}
+        chefs={chefs}
+        onChefClick={(chef) => console.log("Selected chef:", chef)}
       />
-
- <ChefListDrawer
-  isOpen={isChefListOpen}
-  onClose={() => setIsChefListOpen(false)}
-  category={selectedCategory}
-  chefs={chefs}
-  onChefClick={(chef) => {
-    console.log("Selected chef:", chef);
-    // future navigation goes here
-  }}
-/>
-
 
       <SubscriptionDrawer
         isOpen={isSubscriptionOpen}

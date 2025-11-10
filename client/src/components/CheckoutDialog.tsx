@@ -1,6 +1,13 @@
 import { useState, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -29,8 +36,8 @@ export default function CheckoutDialog({ isOpen, onClose, carts, onOrderSuccess 
   const { clearCart } = useCart();
   const { toast } = useToast();
 
-  // Check if user is already logged in
-  const userToken = localStorage.getItem("userToken");
+  // ✅ Make token mutable so we can refresh it after auto-register
+  let userToken = localStorage.getItem("userToken");
   const savedUserData = localStorage.getItem("userData");
   const parsedUserData = savedUserData ? JSON.parse(savedUserData) : null;
 
@@ -44,7 +51,7 @@ export default function CheckoutDialog({ isOpen, onClose, carts, onOrderSuccess 
   const [orderId, setOrderId] = useState("");
   const [activeTab, setActiveTab] = useState<"checkout" | "login">("checkout");
 
-  // Auto-fill form when dialog opens if user is logged in
+  // Autofill user info if already logged in
   useEffect(() => {
     if (isOpen && parsedUserData) {
       setCustomerName(parsedUserData.name || "");
@@ -54,53 +61,15 @@ export default function CheckoutDialog({ isOpen, onClose, carts, onOrderSuccess 
     }
   }, [isOpen, parsedUserData]);
 
-  // Calculate totals from all carts
-  const subtotal = carts.reduce((sum, cart) => 
-    sum + cart.items.reduce((itemSum, item) => itemSum + item.price * item.quantity, 0), 
+  // Totals
+  const subtotal = carts.reduce(
+    (sum, cart) => sum + cart.items.reduce((itemSum, item) => itemSum + item.price * item.quantity, 0),
     0
   );
   const deliveryFee = carts.length > 0 ? 40 : 0;
   const total = subtotal + deliveryFee;
 
-  const orderMutation = useMutation({
-    mutationFn: async (orderData: any) => {
-      const response = await fetch("/api/orders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...orderData,
-          paymentStatus: "pending",
-          paymentQrShown: true,
-        }),
-      });
-
-      if (!response.ok) throw new Error("Failed to create order");
-      return response.json();
-    },
-    onSuccess: (data) => {
-      setOrderId(data.id);
-      onClose();
-      setShowQRDialog(true);
-      toast({
-        title: "Order Created!",
-        description: "Please complete the payment to confirm your order",
-      });
-      setFormData({
-        customerName: "",
-        phone: "",
-        email: "",
-        address: "",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Error",
-        description: "Failed to place order. Please try again.",
-        variant: "destructive",
-      });
-    },
-  });
-
+  // Handle Login
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -109,24 +78,19 @@ export default function CheckoutDialog({ isOpen, onClose, carts, onOrderSuccess 
       const response = await fetch("/api/user/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          phone,
-          password,
-        }),
+        body: JSON.stringify({ phone, password }),
       });
 
-      if (!response.ok) {
-        throw new Error("Invalid credentials");
-      }
+      if (!response.ok) throw new Error("Invalid credentials");
 
       const authData = await response.json();
 
-      // Store tokens
+      // ✅ Store tokens
       localStorage.setItem("userToken", authData.accessToken);
       localStorage.setItem("userRefreshToken", authData.refreshToken);
       localStorage.setItem("userData", JSON.stringify(authData.user));
 
-      // Auto-fill form with logged-in user data
+      // Autofill
       setCustomerName(authData.user.name);
       setPhone(authData.user.phone);
       setEmail(authData.user.email || "");
@@ -137,12 +101,11 @@ export default function CheckoutDialog({ isOpen, onClose, carts, onOrderSuccess 
         description: "Your details have been filled automatically.",
       });
 
-      // Switch to checkout tab
       setActiveTab("checkout");
-    } catch (error) {
+    } catch {
       toast({
         title: "Login failed",
-        description: "Invalid phone number or password. If you're a new user, use the Checkout tab.",
+        description: "Invalid phone number or password.",
         variant: "destructive",
       });
     } finally {
@@ -150,12 +113,13 @@ export default function CheckoutDialog({ isOpen, onClose, carts, onOrderSuccess 
     }
   };
 
+  // ✅ Handle order + auto-register flow
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
     try {
-      // If user is not logged in, auto-register them
+      // 🔹 If not logged in, auto-register first
       if (!userToken) {
         const autoRegisterResponse = await fetch("/api/user/auto-register", {
           method: "POST",
@@ -171,24 +135,28 @@ export default function CheckoutDialog({ isOpen, onClose, carts, onOrderSuccess 
         if (autoRegisterResponse.ok) {
           const authData = await autoRegisterResponse.json();
 
-          // Store tokens for future auto-login
+          // ✅ Store tokens
           localStorage.setItem("userToken", authData.accessToken);
           localStorage.setItem("userRefreshToken", authData.refreshToken);
           localStorage.setItem("userData", JSON.stringify(authData.user));
 
-          // Show password notification only for new users
+          // ✅ Refresh userToken in memory for immediate use
+          userToken = authData.accessToken;
+
           if (authData.defaultPassword) {
             toast({
               title: "Account Created!",
-              description: `Your account has been created. Default password: ${authData.defaultPassword}. You can change it later.`,
+              description: `Your account has been created. Default password: ${authData.defaultPassword}.`,
               duration: 10000,
             });
           }
+        } else {
+          throw new Error("Auto-register failed");
         }
       }
 
-      // Flatten all items from all carts
-      const allItems = carts.flatMap(cart => 
+      // Flatten items
+      const allItems = carts.flatMap(cart =>
         cart.items.map(item => ({
           id: item.id,
           name: item.name,
@@ -211,22 +179,23 @@ export default function CheckoutDialog({ isOpen, onClose, carts, onOrderSuccess 
         status: "pending",
       };
 
+      // ✅ Always re-check token before sending order
+      const latestToken = localStorage.getItem("userToken");
+      const headers: HeadersInit = { "Content-Type": "application/json" };
+      if (latestToken) headers["Authorization"] = `Bearer ${latestToken}`;
+
       const response = await fetch("/api/orders", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify(orderData),
-        credentials: "include",
       });
 
-      if (!response.ok) {
-        throw new Error("Failed to create order");
-      }
+      if (!response.ok) throw new Error("Failed to create order");
 
       const order = await response.json();
-      
-      // Clear all category carts that were in this checkout
-      carts.forEach(cart => clearCart(cart.categoryId));
 
+      // ✅ Clear cart and show QR
+      carts.forEach(cart => clearCart(cart.categoryId));
       setOrderId(order.id);
       setShowQRDialog(true);
 
@@ -251,14 +220,12 @@ export default function CheckoutDialog({ isOpen, onClose, carts, onOrderSuccess 
     onOrderSuccess();
   };
 
-  // Helper function to update form data state
   const setFormData = (data: any) => {
     setCustomerName(data.customerName);
     setPhone(data.phone);
     setEmail(data.email);
     setAddress(data.address);
   };
-
 
   return (
     <>
@@ -281,6 +248,7 @@ export default function CheckoutDialog({ isOpen, onClose, carts, onOrderSuccess 
               </TabsTrigger>
             </TabsList>
 
+            {/* ✅ Checkout Form */}
             <TabsContent value="checkout" className="space-y-3 sm:space-y-4 mt-4">
               <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
                 <div className="space-y-2 sm:space-y-3">
@@ -294,7 +262,6 @@ export default function CheckoutDialog({ isOpen, onClose, carts, onOrderSuccess 
                     <Label htmlFor="customerName" className="text-sm">Full Name *</Label>
                     <Input
                       id="customerName"
-                      data-testid="input-customer-name"
                       value={customerName}
                       onChange={(e) => setCustomerName(e.target.value)}
                       placeholder="Enter your full name"
@@ -308,7 +275,6 @@ export default function CheckoutDialog({ isOpen, onClose, carts, onOrderSuccess 
                     <Input
                       id="phone"
                       type="tel"
-                      data-testid="input-phone"
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
                       placeholder="Enter your phone number"
@@ -323,7 +289,6 @@ export default function CheckoutDialog({ isOpen, onClose, carts, onOrderSuccess 
                     <Input
                       id="email"
                       type="email"
-                      data-testid="input-email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="Enter your email"
@@ -335,7 +300,6 @@ export default function CheckoutDialog({ isOpen, onClose, carts, onOrderSuccess 
                     <Label htmlFor="address" className="text-sm">Delivery Address *</Label>
                     <Textarea
                       id="address"
-                      data-testid="textarea-address"
                       value={address}
                       onChange={(e) => setAddress(e.target.value)}
                       placeholder="Enter complete delivery address with landmark"
@@ -349,6 +313,7 @@ export default function CheckoutDialog({ isOpen, onClose, carts, onOrderSuccess 
                   </div>
                 </div>
 
+                {/* Totals */}
                 <div className="border-t pt-3 space-y-1.5 sm:space-y-2">
                   <div className="flex justify-between text-xs sm:text-sm">
                     <span>Subtotal:</span>
@@ -365,16 +330,17 @@ export default function CheckoutDialog({ isOpen, onClose, carts, onOrderSuccess 
                 </div>
 
                 <DialogFooter className="gap-2 flex-col sm:flex-row">
-                  <Button type="button" variant="outline" onClick={onClose} className="w-full sm:flex-1" data-testid="button-cancel-checkout">
+                  <Button type="button" variant="outline" onClick={onClose} className="w-full sm:flex-1">
                     Cancel
                   </Button>
-                  <Button type="submit" disabled={isLoading} className="w-full sm:flex-1" data-testid="button-place-order">
+                  <Button type="submit" disabled={isLoading} className="w-full sm:flex-1">
                     {isLoading ? "Placing Order..." : "Place Order"}
                   </Button>
                 </DialogFooter>
               </form>
             </TabsContent>
 
+            {/* Login Tab */}
             <TabsContent value="login" className="space-y-3 sm:space-y-4 mt-4">
               <form onSubmit={handleLogin} className="space-y-3 sm:space-y-4">
                 <div className="space-y-2 sm:space-y-3">

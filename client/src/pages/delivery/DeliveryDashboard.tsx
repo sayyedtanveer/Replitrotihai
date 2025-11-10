@@ -3,10 +3,12 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Package, CheckCircle, MapPin, Clock } from "lucide-react";
+import { Package, CheckCircle, MapPin, Clock, Bell, Wifi, WifiOff } from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
+import { useDeliveryNotifications } from "@/hooks/useDeliveryNotifications";
+import { useEffect } from "react";
 
 export default function DeliveryDashboard() {
   const deliveryToken = localStorage.getItem("deliveryToken");
@@ -14,6 +16,11 @@ export default function DeliveryDashboard() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
+  const { wsConnected, newAssignmentsCount, requestNotificationPermission, clearNewAssignmentsCount } = useDeliveryNotifications();
+
+  useEffect(() => {
+    requestNotificationPermission();
+  }, []);
 
   const { data: orders = [] } = useQuery({
     queryKey: ["/api/delivery/orders"],
@@ -104,9 +111,30 @@ export default function DeliveryDashboard() {
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
             {deliveryPersonName} - Delivery Dashboard
           </h1>
-          <Button variant="outline" onClick={handleLogout}>
-            Logout
-          </Button>
+          <div className="flex items-center gap-4">
+            {newAssignmentsCount > 0 && (
+              <Badge variant="destructive" className="flex items-center gap-1" onClick={clearNewAssignmentsCount}>
+                <Bell className="h-3 w-3" />
+                {newAssignmentsCount} New
+              </Badge>
+            )}
+            <div className="flex items-center gap-2">
+              {wsConnected ? (
+                <>
+                  <Wifi className="h-4 w-4 text-green-600" />
+                  <span className="text-sm text-green-600">Live</span>
+                </>
+              ) : (
+                <>
+                  <WifiOff className="h-4 w-4 text-red-600" />
+                  <span className="text-sm text-red-600">Offline</span>
+                </>
+              )}
+            </div>
+            <Button variant="outline" onClick={handleLogout}>
+              Logout
+            </Button>
+          </div>
         </div>
       </header>
 

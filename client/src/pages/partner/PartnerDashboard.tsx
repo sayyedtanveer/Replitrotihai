@@ -1,13 +1,24 @@
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Package, DollarSign, Clock, CheckCircle } from "lucide-react";
+import { Package, DollarSign, Clock, CheckCircle, Bell, Wifi, WifiOff } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
+import { useToast } from "@/hooks/use-toast";
+import { queryClient } from "@/lib/queryClient";
+import { usePartnerNotifications } from "@/hooks/usePartnerNotifications";
+import { useEffect } from "react";
 
 export default function PartnerDashboard() {
   const partnerToken = localStorage.getItem("partnerToken");
   const chefName = localStorage.getItem("partnerChefName");
+  const { toast } = useToast();
+  const { wsConnected, newOrdersCount, requestNotificationPermission, clearNewOrdersCount } = usePartnerNotifications();
+
+  useEffect(() => {
+    requestNotificationPermission();
+  }, []);
 
   const { data: metrics } = useQuery({
     queryKey: ["/api/partner/dashboard/metrics"],
@@ -31,6 +42,36 @@ export default function PartnerDashboard() {
     },
   });
 
+  const updateStatusMutation = useMutation({
+    mutationFn: async ({ orderId, status }: { orderId: string; status: string }) => {
+      const response = await fetch(`/api/partner/orders/${orderId}/status`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${partnerToken}`,
+        },
+        body: JSON.stringify({ status }),
+      });
+      if (!response.ok) throw new Error("Failed to update order status");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/partner/orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/partner/dashboard/metrics"] });
+      toast({
+        title: "Order updated",
+        description: "Order status has been updated successfully",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Update failed",
+        description: "Failed to update order status",
+        variant: "destructive",
+      });
+    },
+  });
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case "pending":
@@ -51,10 +92,31 @@ export default function PartnerDashboard() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
       <header className="bg-white dark:bg-slate-800 border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
             {chefName} - Partner Dashboard
           </h1>
+          <div className="flex items-center gap-4">
+            {newOrdersCount > 0 && (
+              <Badge variant="destructive" className="flex items-center gap-1">
+                <Bell className="h-3 w-3" />
+                {newOrdersCount} New
+              </Badge>
+            )}
+            <div className="flex items-center gap-2">
+              {wsConnected ? (
+                <>
+                  <Wifi className="h-4 w-4 text-green-600" />
+                  <span className="text-sm text-green-600">Live</span>
+                </>
+              ) : (
+                <>
+                  <WifiOff className="h-4 w-4 text-red-600" />
+                  <span className="text-sm text-red-600">Offline</span>
+                </>
+              )}
+            </div>
+          </div>
         </div>
       </header>
 
@@ -129,11 +191,34 @@ export default function PartnerDashboard() {
                         ))}
                       </div>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right flex flex-col items-end gap-2">
                       <Badge className={getStatusColor(order.status)}>
                         {order.status.replace("_", " ").toUpperCase()}
                       </Badge>
-                      <p className="font-bold mt-2">₹{order.total}</p>
+                      <p className="font-bold">₹{order.total}</p>
+                      
+                      {/* Action buttons based on status */}
+                      <div className="flex gap-2 mt-2">
+                        {order.status === "confirmed" && (
+                          <Button
+                            size="sm"
+                            onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: "preparing" })}
+                            disabled={updateStatusMutation.isPending}
+                          >
+                            Start Preparing
+                          </Button>
+                        )}
+                        {order.status === "preparing" && (
+                          <Button
+                            size="sm"
+                            onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: "out_for_delivery" })}
+                            disabled={updateStatusMutation.isPending}
+                            variant="default"
+                          >
+                            Ready for Delivery
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))

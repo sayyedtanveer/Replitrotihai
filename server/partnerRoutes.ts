@@ -1,230 +1,84 @@
+
+import jwt from "jsonwebtoken";
+import bcrypt from "bcryptjs";
+import type { Request, Response, NextFunction } from "express";
+import type { PartnerUser } from "@shared/schema";
+
+const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key-change-in-production";
+const ACCESS_TOKEN_EXPIRY = "15m";
+const REFRESH_TOKEN_EXPIRY = "7d";
+
+export interface PartnerTokenPayload {
+  partnerId: string;
+  chefId: string;
+  username: string;
+}
+
+export interface AuthenticatedPartnerRequest extends Request {
+  partner?: PartnerTokenPayload;
+}
+
+export async function hashPassword(password: string): Promise<string> {
+  return bcrypt.hash(password, 10);
+}
+
+export async function verifyPassword(password: string, hash: string): Promise<boolean> {
+  return bcrypt.compare(password, hash);
+}
+
+export function generateAccessToken(partner: PartnerUser): string {
+  const payload: PartnerTokenPayload = {
+    partnerId: partner.id,
+    chefId: partner.chefId,
+    username: partner.username,
+  };
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY });
+}
+
+export function generateRefreshToken(partner: PartnerUser): string {
+  const payload: PartnerTokenPayload = {
+    partnerId: partner.id,
+    chefId: partner.chefId,
+    username: partner.username,
+  };
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: REFRESH_TOKEN_EXPIRY });
+}
+
+export function verifyToken(token: string): PartnerTokenPayload | null {
+  try {
+    return jwt.verify(token, JWT_SECRET) as PartnerTokenPayload;
+  } catch {
+    return null;
+  }
+}
+
+export function requirePartner() {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      res.status(401).json({ message: "Unauthorized" });
+      return;
+    }
+
+    const token = authHeader.substring(7);
+    const payload = verifyToken(token);
+
+    if (!payload) {
+      res.status(401).json({ message: "Invalid or expired token" });
+      return;
+    }
+
+    (req as AuthenticatedPartnerRequest).partner = payload;
+    next();
+  };
+}
+
 import type { Express } from "express";
-import { storage } from "./storage";
-import {
-  hashPassword,
-  verifyPassword,
-  generateAccessToken,
-  generateRefreshToken,
-  requirePartner,
-  verifyToken,
-  type AuthenticatedPartnerRequest,
-} from "./partnerAuth";
-import { partnerLoginSchema } from "@shared/schema";
-import { fromZodError } from "zod-validation-error";
-import { broadcastOrderUpdate } from "./websocket";
 
-export function registerPartnerRoutes(app: Express) {
-  app.post("/api/partner/auth/login", async (req, res) => {
-    try {
-      console.log("🔐 Partner login attempt:", req.body.username);
-      
-      const validation = partnerLoginSchema.safeParse(req.body);
-      if (!validation.success) {
-        console.log("❌ Validation failed:", fromZodError(validation.error).toString());
-        res.status(400).json({ message: fromZodError(validation.error).toString() });
-        return;
-      }
-
-      const { username, password } = validation.data;
-      const partner = await storage.getPartnerByUsername(username);
-
-      if (!partner) {
-        console.log("❌ Partner not found:", username);
-        res.status(401).json({ message: "Invalid credentials" });
-        return;
-      }
-
-      console.log("✅ Partner found:", partner.username, "- Chef ID:", partner.chefId);
-      
-      const isPasswordValid = await verifyPassword(password, partner.passwordHash);
-      if (!isPasswordValid) {
-        console.log("❌ Invalid password for partner:", username);
-        res.status(401).json({ message: "Invalid credentials" });
-        return;
-      }
-
-      console.log("✅ Password valid for partner:", username);
-
-      await storage.updatePartnerLastLogin(partner.id);
-
-      const accessToken = generateAccessToken(partner);
-      const refreshToken = generateRefreshToken(partner);
-
-      res.cookie("partnerRefreshToken", refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "strict",
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-      });
-
-      const chef = await storage.getChefById(partner.chefId);
-
-      console.log("✅ Partner login successful:", username, "- Chef:", chef?.name);
-
-      res.json({
-        accessToken,
-        partner: {
-          id: partner.id,
-          username: partner.username,
-          email: partner.email,
-          chefId: partner.chefId,
-          chefName: chef?.name,
-        },
-      });
-    } catch (error: any) {
-      console.error("❌ Partner login error:", error?.message || error);
-      res.status(500).json({ message: "Login failed: " + (error?.message || "Unknown error") });
-    }
-  });
-
-  app.post("/api/partner/auth/logout", (req, res) => {
-    res.clearCookie("partnerRefreshToken");
-    res.json({ message: "Logged out successfully" });
-  });
-
-  app.post("/api/partner/auth/refresh", async (req, res) => {
-    try {
-      const refreshToken = req.cookies.partnerRefreshToken;
-
-      if (!refreshToken) {
-        res.status(401).json({ message: "No refresh token" });
-        return;
-      }
-
-      const payload = verifyToken(refreshToken);
-      if (!payload) {
-        res.status(401).json({ message: "Invalid refresh token" });
-        return;
-      }
-
-      const partner = await storage.getPartnerById(payload.partnerId);
-      if (!partner) {
-        res.status(401).json({ message: "Partner not found" });
-        return;
-      }
-
-      const newAccessToken = generateAccessToken(partner);
-      const newRefreshToken = generateRefreshToken(partner);
-
-      res.cookie("partnerRefreshToken", newRefreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "strict",
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-      });
-
-      const chef = await storage.getChefById(partner.chefId);
-
-      res.json({
-        accessToken: newAccessToken,
-        partner: {
-          id: partner.id,
-          username: partner.username,
-          email: partner.email,
-          chefId: partner.chefId,
-          chefName: chef?.name,
-        },
-      });
-    } catch (error) {
-      console.error("Token refresh error:", error);
-      res.status(401).json({ message: "Token refresh failed" });
-    }
-  });
-
-  app.get("/api/partner/dashboard/metrics", requirePartner(), async (req, res) => {
-    try {
-      const partnerReq = req as AuthenticatedPartnerRequest;
-      const chefId = partnerReq.partner!.chefId;
-      const metrics = await storage.getPartnerDashboardMetrics(chefId);
-      res.json(metrics);
-    } catch (error) {
-      console.error("Partner dashboard metrics error:", error);
-      res.status(500).json({ message: "Failed to fetch metrics" });
-    }
-  });
-
-  app.get("/api/partner/orders", requirePartner(), async (req, res) => {
-    try {
-      const partnerReq = req as AuthenticatedPartnerRequest;
-      const chefId = partnerReq.partner!.chefId;
-      const orders = await storage.getOrdersByChefId(chefId);
-      res.json(orders);
-    } catch (error) {
-      console.error("Get partner orders error:", error);
-      res.status(500).json({ message: "Failed to fetch orders" });
-    }
-  });
-
-  app.get("/api/partner/chef", requirePartner(), async (req, res) => {
-    try {
-      const partnerReq = req as AuthenticatedPartnerRequest;
-      const chefId = partnerReq.partner!.chefId;
-      const chef = await storage.getChefById(chefId);
-
-      if (!chef) {
-        res.status(404).json({ message: "Chef not found" });
-        return;
-      }
-
-      res.json(chef);
-    } catch (error) {
-      console.error("Get partner chef error:", error);
-      res.status(500).json({ message: "Failed to fetch chef details" });
-    }
-  });
-
-  app.patch("/api/partner/orders/:id/status", requirePartner, async (req: AuthenticatedPartnerRequest, res) => {
-    try {
-      const { status } = req.body;
-      const chefId = req.partner!.chefId;
-      const order = await storage.getOrderById(req.params.id);
-
-      if (!order || order.chefId !== chefId) {
-        res.status(404).json({ message: "Order not found" });
-        return;
-      }
-
-      const updatedOrder = await storage.updateOrderStatus(req.params.id, status);
-
-      if (!updatedOrder) {
-        res.status(404).json({ message: "Failed to update order" });
-        return;
-      }
-
-      // Log chef status update
-      if (status === "preparing") {
-        console.log(`
-╔════════════════════════════════════════════════════════════════
-║ 👨‍🍳 CHEF ACCEPTED ORDER
-╠════════════════════════════════════════════════════════════════
-║ Order ID: ${updatedOrder.id.slice(0, 8)}
-║ Chef: ${req.partner!.chefId}
-║ Status: Preparing
-║ Time: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
-╠════════════════════════════════════════════════════════════════
-║ 📱 Notification sent to admin & delivery partners
-╚════════════════════════════════════════════════════════════════
-        `);
-      } else if (status === "out_for_delivery") {
-        console.log(`
-╔════════════════════════════════════════════════════════════════
-║ 🚚 ORDER READY FOR DELIVERY
-╠════════════════════════════════════════════════════════════════
-║ Order ID: ${updatedOrder.id.slice(0, 8)}
-║ Status: Ready for pickup
-║ Time: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
-╠════════════════════════════════════════════════════════════════
-║ 📱 Notification sent to delivery partners
-╚════════════════════════════════════════════════════════════════
-        `);
-      }
-
-      broadcastOrderUpdate(updatedOrder);
-
-      res.json(updatedOrder);
-    } catch (error) {
-      console.error("Error updating order status:", error);
-      res.status(500).json({ message: "Failed to update order status" });
-    }
+export function registerPartnerRoutes(app: Express): void {
+  // Register partner-related endpoints here.
+  // Example placeholder route (remove or replace with real implementation):
+  app.get("/api/partner/ping", (_req, res) => {
+    res.json({ ok: true, message: "partner routes registered" });
   });
 }

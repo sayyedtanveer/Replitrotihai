@@ -123,6 +123,9 @@ export default function AdminOrders() {
           <p className="text-slate-600 dark:text-slate-400 mt-1">
             Manage customer orders and update their status
           </p>
+          <p className="text-xs text-slate-500 dark:text-slate-500 mt-2">
+            Flow: Pending → Confirmed (Admin) → Preparing (Chef) → Out for Delivery (Chef/Delivery) → Delivered (Delivery)
+          </p>
         </div>
 
         {/* Filters */}

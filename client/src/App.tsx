@@ -29,6 +29,7 @@ import DeliveryDashboard from "./pages/delivery/DeliveryDashboard";
 import AdminDeliverySettings from "@/pages/admin/AdminDeliverySettings";
 import AdminPayments from "./pages/admin/AdminPayments";
 import OrderTracking from "@/pages/OrderTracking";
+import AdminPartners from "./pages/admin/AdminPartners";
 
 function Router() {
   const { isAuthenticated } = useAuth();
@@ -47,8 +48,9 @@ function Router() {
       <Route path="/admin/subscriptions" component={AdminSubscriptions} />
       <Route path="/admin/reports" component={AdminReports} />
       <Route path="/admin/chefs" component={AdminChefs} />
-      <Route path="/admin/admins" component={AdminManagement} />
+      <Route path="/admin/partners" component={AdminPartners} />
       <Route path="/admin/users" component={AdminUsers} />
+      <Route path="/admin/admins" component={AdminManagement} />
       <Route path="/admin/delivery-settings" component={AdminDeliverySettings} />
 
       <Route path="/partner/login" component={PartnerLogin} />

@@ -16,4 +16,6 @@ export interface Order {
   total: number;
   address: string;
   phone: string;
+  paymentStatus: string;  
+  rejectionReason?: string;
 }

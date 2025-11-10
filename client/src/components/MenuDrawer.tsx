@@ -5,6 +5,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useLocation } from "wouter";
 import type { Category } from "@shared/schema";
+import { useAuth } from "@/hooks/useAuth";
 
 interface MenuDrawerProps {
   isOpen: boolean;
@@ -19,6 +20,7 @@ interface MenuDrawerProps {
 export default function MenuDrawer({ isOpen, onClose, categories = [], onCategoryClick, selectedCategoryTab = "all", onCategoryTabChange, onSubscriptionClick }: MenuDrawerProps) {
   const [, setLocation] = useLocation();
 
+  const { logout } = useAuth();
   if (!isOpen) return null;
 
   const handleCategoryClick = (categoryId: string) => {
@@ -47,10 +49,12 @@ export default function MenuDrawer({ isOpen, onClose, categories = [], onCategor
     console.log('Settings clicked');
     onClose();
   };
-
-  const handleLogoutClick = () => {
-    window.location.href = "/api/logout";
-  };
+  
+  
+  const handleLogoutClick = async () => {
+  await logout(); // clears tokens and redirects home
+  onClose();      // closes the drawer
+};
 
   return (
     <>
@@ -61,7 +65,7 @@ export default function MenuDrawer({ isOpen, onClose, categories = [], onCategor
       />
 
       <div
-        className="fixed top-0 left-0 h-full w-80 bg-background z-50 shadow-lg transform transition-transform duration-300 ease-in-out"
+        className="fixed top-0 left-0 h-full w-80 max-w-[85vw] bg-background z-50 shadow-lg transform transition-transform duration-300 ease-in-out"
         data-testid="menu-drawer"
       >
         <div className="flex flex-col h-full">

@@ -31,11 +31,14 @@ export default function PaymentQRDialog({ isOpen, onClose, orderId, amount, cust
     if (isOpen && canvasRef.current) {
       const upiUrl = `upi://pay?pa=${upiId}&pn=RotiHai&am=${amount}&cu=INR&tn=Order%20${orderId}`;
       
+      const isMobile = window.innerWidth < 768;
+      const qrSize = isMobile ? 200 : 256;
+      
       QRCode.toCanvas(
         canvasRef.current,
         upiUrl,
         {
-          width: 256,
+          width: qrSize,
           margin: 2,
           color: {
             dark: "#000000",
@@ -100,26 +103,26 @@ export default function PaymentQRDialog({ isOpen, onClose, orderId, amount, cust
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="w-full max-w-md mx-auto">
+      <DialogContent className="w-full max-w-md mx-auto max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Complete Payment</DialogTitle>
           <DialogDescription>Scan QR code to pay with any UPI app</DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6">
-          <div className="flex flex-col items-center justify-center space-y-4 py-4">
-            <div className="bg-white p-4 rounded-lg shadow-sm">
-              <canvas ref={canvasRef} data-testid="payment-qr-canvas" />
+        <div className="space-y-4 sm:space-y-6">
+          <div className="flex flex-col items-center justify-center space-y-3 sm:space-y-4 py-2 sm:py-4">
+            <div className="bg-white p-3 sm:p-4 rounded-lg shadow-sm">
+              <canvas ref={canvasRef} data-testid="payment-qr-canvas" className="w-full max-w-[240px] h-auto" />
             </div>
 
-            <div className="text-center space-y-2">
-              <p className="text-2xl font-bold">₹{amount}</p>
-              <p className="text-sm text-muted-foreground">Order #{orderId.slice(0, 8)}</p>
+            <div className="text-center space-y-1 sm:space-y-2">
+              <p className="text-xl sm:text-2xl font-bold">₹{amount}</p>
+              <p className="text-xs sm:text-sm text-muted-foreground">Order #{orderId.slice(0, 8)}</p>
             </div>
           </div>
 
-          <div className="border-t pt-4 space-y-3">
-            <div className="flex items-center justify-between bg-muted/50 p-3 rounded-lg">
+          <div className="border-t pt-3 sm:pt-4 space-y-2 sm:space-y-3">
+            <div className="flex items-center justify-between bg-muted/50 p-2 sm:p-3 rounded-lg">
               <span className="text-sm font-medium">UPI ID: {upiId}</span>
               <Button 
                 size="sm" 

@@ -1,7 +1,7 @@
 import { type Category, type InsertCategory, type Product, type InsertProduct, type Order, type InsertOrder, type User, type UpsertUser, type Chef, type AdminUser, type InsertAdminUser, type PartnerUser, type Subscription, type SubscriptionPlan, type DeliverySetting, type InsertDeliverySetting, type DeliveryPersonnel, type InsertDeliveryPersonnel } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { nanoid } from "nanoid";
-import { eq, and, gte, lte } from "drizzle-orm";
+import { eq, and, gte, lte, desc, or, isNull } from "drizzle-orm";
 import { db, sql, users, categories, products, orders, chefs, adminUsers, partnerUsers, subscriptions, subscriptionPlans, deliverySettings, deliveryPersonnel } from "@shared/db";
 
 export interface IStorage {
@@ -250,10 +250,11 @@ export class MemStorage implements IStorage {
       subtotal: insertOrder.subtotal,
       deliveryFee: insertOrder.deliveryFee,
       total: insertOrder.total,
-      status: insertOrder.status || "pending",
+      status: insertOrder.paymentStatus || "pending",
       paymentStatus: "pending" as const,
       paymentQrShown: true,
       chefId: insertOrder.chefId || null,
+      userId: insertOrder.userId || null,
       createdAt: new Date(),
     };
 
@@ -394,7 +395,13 @@ export class MemStorage implements IStorage {
   }
 
   async getOrdersByChefId(chefId: string): Promise<Order[]> {
-    return db.query.orders.findMany({ where: (o, { eq }) => eq(o.chefId, chefId) });
+    const orderRecords = await db
+      .select()
+      .from(orders)
+      .where(and(eq(orders.chefId, chefId), eq(orders.paymentStatus, 'confirmed')))
+      .orderBy(desc(orders.createdAt));
+
+    return orderRecords.map(this.mapOrder);
   }
 
   async getPartnerDashboardMetrics(chefId: string) {
@@ -685,6 +692,15 @@ export class MemStorage implements IStorage {
     return true;
   }
 
+  async getAllPartners(): Promise<PartnerUser[]> {
+    return await db.select().from(partnerUsers);
+  }
+
+  async deletePartner(id: string): Promise<boolean> {
+    await db.delete(partnerUsers).where(eq(partnerUsers.id, id));
+    return true;
+  }
+
   async approveOrder(orderId: string, approvedBy: string): Promise<Order | undefined> {
     const [order] = await db
       .update(orders)
@@ -765,9 +781,34 @@ export class MemStorage implements IStorage {
   }
 
   async getOrdersByDeliveryPerson(deliveryPersonId: string): Promise<Order[]> {
-    return db.query.orders.findMany({
-      where: (o, { eq }) => eq(o.assignedTo, deliveryPersonId)
-    });
+    const orderRecords = await db
+      .select()
+      .from(orders)
+      .where(
+        or(
+          eq(orders.assignedTo, deliveryPersonId),
+          and(
+            eq(orders.status, 'out_for_delivery'),
+            isNull(orders.assignedTo)
+          )
+        )
+      )
+      .orderBy(desc(orders.createdAt));
+
+    return orderRecords.map(this.mapOrder);
+  }
+
+  private mapOrder(order: any): Order {
+    return {
+      ...order,
+      items: typeof order.items === 'string' ? JSON.parse(order.items) : order.items,
+      createdAt: new Date(order.createdAt),
+      updatedAt: order.updatedAt ? new Date(order.updatedAt) : null,
+      deliveredAt: order.deliveredAt ? new Date(order.deliveredAt) : null,
+      pickedUpAt: order.pickedUpAt ? new Date(order.pickedUpAt) : null,
+      approvedAt: order.approvedAt ? new Date(order.approvedAt) : null,
+      assignedAt: order.assignedAt ? new Date(order.assignedAt) : null,
+    };
   }
 }
 

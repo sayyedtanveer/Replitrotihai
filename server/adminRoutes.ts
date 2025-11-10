@@ -692,6 +692,24 @@ export function registerAdminRoutes(app: Express) {
     }
   });
 
+  app.get("/api/admin/partners", requireAdmin(), async (req, res) => {
+    try {
+      const partners = await storage.getAllPartners();
+      const sanitized = partners.map((partner) => ({
+        id: partner.id,
+        username: partner.username,
+        email: partner.email,
+        chefId: partner.chefId,
+        lastLoginAt: partner.lastLoginAt,
+        createdAt: partner.createdAt,
+      }));
+      res.json(sanitized);
+    } catch (error) {
+      console.error("Get partners error:", error);
+      res.status(500).json({ message: "Failed to fetch partners" });
+    }
+  });
+
   app.post("/api/admin/partners", requireAdminOrManager(), async (req, res) => {
     try {
       const { chefId, username, email, password } = req.body;
@@ -731,6 +749,23 @@ export function registerAdminRoutes(app: Express) {
     } catch (error) {
       console.error("Create partner error:", error);
       res.status(500).json({ message: "Failed to create partner account" });
+    }
+  });
+
+  app.delete("/api/admin/partners/:id", requireSuperAdmin(), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const deleted = await storage.deletePartner(id);
+
+      if (!deleted) {
+        res.status(404).json({ message: "Partner not found" });
+        return;
+      }
+
+      res.json({ message: "Partner deleted successfully" });
+    } catch (error) {
+      console.error("Delete partner error:", error);
+      res.status(500).json({ message: "Failed to delete partner" });
     }
   });
 
