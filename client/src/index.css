@@ -353,3 +353,62 @@
     inset: -1px;
   }
 }
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+/* ✅ Zomato-style category scroll and alignment */
+.category-scroll-container {
+  display: flex;
+  overflow-x: auto;
+  justify-content: center; /* center by default */
+  gap: 1.5rem;
+  padding-bottom: 1rem;
+  flex-wrap: nowrap;
+  scroll-snap-type: x mandatory;
+}
+
+.category-bubble {
+  flex-shrink: 0;
+  text-align: center;
+  scroll-snap-align: start;
+  width: 90px;
+  transition: transform 0.3s ease;
+}
+
+.category-bubble:hover {
+  transform: translateY(-4px);
+}
+
+.category-image {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 2px solid rgba(0, 0, 0, 0.05);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+.category-label {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: hsl(var(--foreground));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ✅ Desktop & tablet: show as a centered wrapped grid instead of horizontal scroll */
+@media (min-width: 768px) {
+  .category-scroll-container {
+    justify-content: center;
+    flex-wrap: wrap;
+    overflow-x: visible;
+    scroll-snap-type: none;
+    gap: 2rem;
+  }
+}

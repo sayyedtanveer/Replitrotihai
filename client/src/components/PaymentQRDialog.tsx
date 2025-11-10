@@ -28,6 +28,10 @@ export default function PaymentQRDialog({ isOpen, onClose, orderId, amount, cust
   const [, setLocation] = useLocation();
 
   useEffect(() => {
+  console.log("🧠 PaymentQRDialog mounted → isOpen:", isOpen, "orderId:", orderId);
+}, [isOpen, orderId]);
+
+  useEffect(() => {
     if (isOpen && canvasRef.current) {
       const upiUrl = `upi://pay?pa=${upiId}&pn=RotiHai&am=${amount}&cu=INR&tn=Order%20${orderId}`;
       
@@ -97,6 +101,7 @@ export default function PaymentQRDialog({ isOpen, onClose, orderId, amount, cust
   };
 
   const handleClose = () => {
+     console.log("❎ PaymentQRDialog closing, calling onClose()");
     onClose();
     setLocation(`/track/${orderId}`);
   };
