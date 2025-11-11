@@ -115,7 +115,7 @@ app.post("/api/user/logout", async (req, res) => {
     res.status(500).json({ message: error.message || "Failed to logout" });
   }
 });
-  
+
 
   app.post("/api/user/auto-register", async (req, res) => {
     try {
@@ -289,6 +289,8 @@ app.post("/api/orders", async (req: any, res) => {
       chefId: body.chefId || body.items?.[0]?.chefId || "",
       paymentStatus: body.paymentStatus || "pending",
       userId: body.userId || undefined,
+      couponCode: body.couponCode || undefined, // Added for coupon code
+      discount: body.discount || 0, // Added for discount amount
     };
 
     const result = insertOrderSchema.safeParse(sanitized);
@@ -329,6 +331,12 @@ app.post("/api/orders", async (req: any, res) => {
     }
 
     const order = await storage.createOrder(orderPayload);
+
+      // Increment coupon usage if coupon was applied
+      if (orderPayload.couponCode) {
+        await storage.incrementCouponUsage(orderPayload.couponCode);
+      }
+
     broadcastNewOrder(order);
 
     console.log("✅ Order created successfully:", order.id);
@@ -433,25 +441,33 @@ app.post("/api/orders", async (req: any, res) => {
   // Calculate delivery fee based on distance
   app.post("/api/calculate-delivery", async (req, res) => {
     try {
-      const { latitude, longitude } = req.body;
+      const { latitude, longitude, chefId } = req.body;
 
       if (!latitude || !longitude) {
         res.status(400).json({ message: "Latitude and longitude are required" });
         return;
       }
 
-      // Store location - Kurla West, Mumbai
-      const STORE_LAT = 19.0728;
-      const STORE_LON = 72.8826;
+      // Get chef location or default to Kurla West, Mumbai
+      let chefLat = 19.0728;
+      let chefLon = 72.8826;
+
+      if (chefId) {
+        const chef = await storage.getChefById(chefId);
+        if (chef) {
+          chefLat = chef.latitude || 19.0728;
+          chefLon = chef.longitude || 72.8826;
+        }
+      }
 
       // Calculate distance using Haversine formula
       const R = 6371; // Earth's radius in km
-      const dLat = toRad(latitude - STORE_LAT);
-      const dLon = toRad(longitude - STORE_LON);
+      const dLat = toRad(latitude - chefLat);
+      const dLon = toRad(longitude - chefLon);
 
       const a =
         Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos(toRad(STORE_LAT)) *
+        Math.cos(toRad(chefLat)) *
         Math.cos(toRad(latitude)) *
         Math.sin(dLon / 2) *
         Math.sin(dLon / 2);
@@ -459,7 +475,7 @@ app.post("/api/orders", async (req: any, res) => {
       const c = 2 * Math.asin(Math.sqrt(a));
       const distance = parseFloat((R * c).toFixed(2));
 
-      // Calculate delivery fee
+      // Calculate delivery fee - ₹20 base + ₹10 per km after 2km
       const baseFee = 20;
       let deliveryFee = baseFee;
 

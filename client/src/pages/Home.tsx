@@ -334,42 +334,92 @@ export default function Home() {
                   ) : (
                     chefs
                       .filter(chef => chef.categoryId === selectedCategoryTab)
-                      .map(chef => (
-                        <div
-                          key={chef.id}
-                          className="border rounded-lg overflow-hidden cursor-pointer hover:shadow-lg transition-all hover:border-primary"
-                          onClick={() => {
-                            const category = categories.find(c => c.id === selectedCategoryTab);
-                            setSelectedChefForMenu(chef);
-                            setSelectedCategoryForMenu(category || null);
-                            setIsCategoryMenuOpen(true);
-                          }}
-                        >
-                          <div className="relative h-48 overflow-hidden">
-                            <img
-                              src={chef.image}
-                              alt={chef.name}
-                              className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
-                            />
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-                          </div>
+                      .map(chef => {
+                        const userLat = localStorage.getItem('userLatitude');
+                        const userLon = localStorage.getItem('userLongitude');
+                        let distance: number | null = null;
 
-                          <div className="p-4">
-                            <h3 className="font-bold text-xl mb-2">{chef.name}</h3>
-                            <p className="text-sm text-muted-foreground mb-3">
-                              {chef.description}
-                            </p>
-                            <div className="flex items-center justify-between">
-                              <span className="text-sm text-muted-foreground">
-                                ⭐ {chef.rating} ({chef.reviewCount} reviews)
-                              </span>
-                              <Button variant="ghost" size="sm" className="gap-1">
-                                View Menu →
-                              </Button>
+                        if (userLat && userLon && chef.latitude && chef.longitude) {
+                          const R = 6371; // Earth's radius in km
+                          const lat1 = parseFloat(userLat);
+                          const lon1 = parseFloat(userLon);
+                          const lat2 = chef.latitude;
+                          const lon2 = chef.longitude;
+                          
+                          // Validate coordinates are reasonable (within valid range)
+                          if (lat1 >= -90 && lat1 <= 90 && lon1 >= -180 && lon1 <= 180 &&
+                              lat2 >= -90 && lat2 <= 90 && lon2 >= -180 && lon2 <= 180) {
+                            
+                            const toRad = (deg: number) => deg * (Math.PI / 180);
+                            
+                            const dLat = toRad(lat2 - lat1);
+                            const dLon = toRad(lon2 - lon1);
+                            
+                            const a =
+                              Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                              Math.cos(toRad(lat1)) *
+                              Math.cos(toRad(lat2)) *
+                              Math.sin(dLon / 2) *
+                              Math.sin(dLon / 2);
+                            
+                            const c = 2 * Math.asin(Math.sqrt(a));
+                            const calculatedDistance = R * c;
+                            
+                            // Only set if distance is reasonable (< 100km for local delivery)
+                            if (calculatedDistance < 100) {
+                              distance = parseFloat(calculatedDistance.toFixed(1));
+                            }
+                          }
+                        }
+
+                        return (
+                          <div
+                            key={chef.id}
+                            className="border rounded-lg overflow-hidden cursor-pointer hover:shadow-lg transition-all hover:border-primary"
+                            onClick={() => {
+                              const category = categories.find(c => c.id === selectedCategoryTab);
+                              setSelectedChefForMenu(chef);
+                              setSelectedCategoryForMenu(category || null);
+                              setIsCategoryMenuOpen(true);
+                            }}
+                          >
+                            <div className="relative h-48 overflow-hidden">
+                              <img
+                                src={chef.image}
+                                alt={chef.name}
+                                className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
+                              />
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+                              {distance !== null && (
+                                <div className="absolute top-3 right-3 bg-white/95 backdrop-blur-sm px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1">
+                                  <span className="text-primary">📍</span>
+                                  {distance.toFixed(1)} km
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="p-4">
+                              <h3 className="font-bold text-xl mb-2">{chef.name}</h3>
+                              <p className="text-sm text-muted-foreground mb-3">
+                                {chef.description}
+                              </p>
+                              <div className="flex items-center justify-between flex-wrap gap-2">
+                                <span className="text-sm text-muted-foreground">
+                                  ⭐ {chef.rating} ({chef.reviewCount} reviews)
+                                </span>
+                                {distance !== null && (
+                                  <span className="text-xs text-muted-foreground">
+                                    ~{Math.ceil(distance * 2 + 15)} mins
+                                  </span>
+                                )}
+                                <Button variant="ghost" size="sm" className="gap-1">
+                                  View Menu →
+                                </Button>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))
+                        );
+                      })
                   )}
                 </div>
               </>

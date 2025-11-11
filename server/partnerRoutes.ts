@@ -2,12 +2,60 @@
 import type { Express } from "express";
 import { requirePartner, type AuthenticatedPartnerRequest } from "./partnerAuth";
 import { storage } from "./storage";
+import { broadcastOrderUpdate } from "./websocket";
 
 export function registerPartnerRoutes(app: Express): void {
+  // Get all orders for this partner
+  app.get("/api/partner/orders", requirePartner(), async (req: AuthenticatedPartnerRequest, res) => {
+    try {
+      const chefId = req.partner?.chefId;
+      if (!chefId) {
+        res.status(401).json({ message: "Unauthorized" });
+        return;
+      }
+
+      const orders = await storage.getOrdersByChefId(chefId);
+      res.json(orders);
+    } catch (error) {
+      console.error("Error fetching partner orders:", error);
+      res.status(500).json({ message: "Failed to fetch orders" });
+    }
+  });
+
+  // Get dashboard metrics
+  app.get("/api/partner/dashboard/metrics", requirePartner(), async (req: AuthenticatedPartnerRequest, res) => {
+    try {
+      const chefId = req.partner?.chefId;
+      if (!chefId) {
+        res.status(401).json({ message: "Unauthorized" });
+        return;
+      }
+
+      const allOrders = await storage.getOrdersByChefId(chefId);
+      const totalOrders = allOrders.length;
+      const pendingOrders = allOrders.filter(o => o.status === "pending" && o.paymentStatus === "paid").length;
+      const completedOrders = allOrders.filter(o => o.status === "delivered" || o.status === "completed").length;
+      const totalRevenue = allOrders
+        .filter(o => o.paymentStatus === "confirmed")
+        .reduce((sum, order) => sum + order.total, 0);
+
+      res.json({
+        totalOrders,
+        pendingOrders,
+        completedOrders,
+        totalRevenue,
+      });
+    } catch (error) {
+      console.error("Error fetching dashboard metrics:", error);
+      res.status(500).json({ message: "Failed to fetch metrics" });
+    }
+  });
+
   // Accept order
   app.post("/api/partner/orders/:orderId/accept", requirePartner(), async (req: AuthenticatedPartnerRequest, res) => {
     try {
       const { orderId } = req.params;
+      const partnerId = req.partner?.partnerId;
       const order = await storage.getOrderById(orderId);
 
       if (!order) {
@@ -20,11 +68,77 @@ export function registerPartnerRoutes(app: Express): void {
         return;
       }
 
-      const updatedOrder = await storage.updateOrderStatus(orderId, "confirmed");
+      const updatedOrder = await storage.acceptOrder(orderId, partnerId!);
+      
+      if (updatedOrder) {
+        broadcastOrderUpdate(updatedOrder);
+      }
+
       res.json(updatedOrder);
     } catch (error) {
       console.error("Error accepting order:", error);
       res.status(500).json({ message: "Failed to accept order" });
+    }
+  });
+
+  // Reject order
+  app.post("/api/partner/orders/:orderId/reject", requirePartner(), async (req: AuthenticatedPartnerRequest, res) => {
+    try {
+      const { orderId } = req.params;
+      const { reason } = req.body;
+      const partnerId = req.partner?.partnerId;
+      const order = await storage.getOrderById(orderId);
+
+      if (!order) {
+        res.status(404).json({ message: "Order not found" });
+        return;
+      }
+
+      if (order.chefId !== req.partner?.chefId) {
+        res.status(403).json({ message: "Unauthorized" });
+        return;
+      }
+
+      const updatedOrder = await storage.rejectOrder(orderId, partnerId!, reason || "Order rejected by partner");
+      
+      if (updatedOrder) {
+        broadcastOrderUpdate(updatedOrder);
+      }
+
+      res.json(updatedOrder);
+    } catch (error) {
+      console.error("Error rejecting order:", error);
+      res.status(500).json({ message: "Failed to reject order" });
+    }
+  });
+
+  // Update order status
+  app.patch("/api/partner/orders/:orderId/status", requirePartner(), async (req: AuthenticatedPartnerRequest, res) => {
+    try {
+      const { orderId } = req.params;
+      const { status } = req.body;
+      const order = await storage.getOrderById(orderId);
+
+      if (!order) {
+        res.status(404).json({ message: "Order not found" });
+        return;
+      }
+
+      if (order.chefId !== req.partner?.chefId) {
+        res.status(403).json({ message: "Unauthorized" });
+        return;
+      }
+
+      const updatedOrder = await storage.updateOrderStatus(orderId, status);
+      
+      if (updatedOrder) {
+        broadcastOrderUpdate(updatedOrder);
+      }
+
+      res.json(updatedOrder);
+    } catch (error) {
+      console.error("Error updating order status:", error);
+      res.status(500).json({ message: "Failed to update order status" });
     }
   });
 

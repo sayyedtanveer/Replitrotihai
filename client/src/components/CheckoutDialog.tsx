@@ -66,6 +66,13 @@ export default function CheckoutDialog({
   const [activeTab, setActiveTab] = useState<"checkout" | "login">("checkout");
   const [accountCreated, setAccountCreated] = useState(false);
   const [defaultPassword, setDefaultPassword] = useState("");
+  const [couponCode, setCouponCode] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState<{
+    code: string;
+    discountAmount: number;
+  } | null>(null);
+  const [couponError, setCouponError] = useState("");
+  const [isVerifyingCoupon, setIsVerifyingCoupon] = useState(false);
 
   // ✅ Autofill user info if already logged in
   useEffect(() => {
@@ -84,14 +91,121 @@ export default function CheckoutDialog({
       setActiveTab("checkout");
       setAccountCreated(false);
       setDefaultPassword("");
+      setDeliveryDistance(null);
+      setCouponCode("");
+      setAppliedCoupon(null);
+      setCouponError("");
     }
   }, [isOpen]);
+
+  // Calculate delivery fee when address changes or cart is available
+  useEffect(() => {
+    const calculateDeliveryFee = async () => {
+      if (!cart || !address.trim()) {
+        setDeliveryFee(40);
+        setDeliveryDistance(null);
+        return;
+      }
+
+      const userLat = localStorage.getItem('userLatitude');
+      const userLon = localStorage.getItem('userLongitude');
+
+      if (!userLat || !userLon) {
+        setDeliveryFee(40);
+        setDeliveryDistance(null);
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/calculate-delivery', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            latitude: parseFloat(userLat),
+            longitude: parseFloat(userLon),
+            chefId: cart.chefId,
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setDeliveryFee(data.deliveryFee);
+          setDeliveryDistance(data.distance);
+        } else {
+          setDeliveryFee(40);
+          setDeliveryDistance(null);
+        }
+      } catch (error) {
+        console.error('Error calculating delivery fee:', error);
+        setDeliveryFee(40);
+        setDeliveryDistance(null);
+      }
+    };
+
+    calculateDeliveryFee();
+  }, [cart, address]);
 
   // 🧮 Totals — based on the selected cart
   const subtotal =
     cart?.items?.reduce((sum, item) => sum + item.price * item.quantity, 0) || 0;
-  const deliveryFee = cart ? 40 : 0;
-  const total = subtotal + deliveryFee;
+  
+  // Calculate delivery fee based on distance from chef location
+  const [deliveryFee, setDeliveryFee] = useState(40);
+  const [deliveryDistance, setDeliveryDistance] = useState<number | null>(null);
+  
+  const discount = appliedCoupon?.discountAmount || 0;
+  const total = Math.max(0, subtotal + deliveryFee - discount);
+
+  // 🎟️ Apply Coupon
+  const handleApplyCoupon = async () => {
+    if (!couponCode.trim()) {
+      setCouponError("Please enter a coupon code");
+      return;
+    }
+
+    setIsVerifyingCoupon(true);
+    setCouponError("");
+
+    try {
+      const response = await fetch("/api/coupons/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code: couponCode.toUpperCase(),
+          orderAmount: subtotal,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        setCouponError(error.message || "Invalid coupon code");
+        setAppliedCoupon(null);
+        return;
+      }
+
+      const coupon = await response.json();
+      setAppliedCoupon({
+        code: coupon.code,
+        discountAmount: coupon.discountAmount,
+      });
+      setCouponError("");
+      toast({
+        title: "Coupon applied!",
+        description: `You saved ₹${coupon.discountAmount}`,
+      });
+    } catch (error) {
+      setCouponError("Failed to verify coupon");
+      setAppliedCoupon(null);
+    } finally {
+      setIsVerifyingCoupon(false);
+    }
+  };
+
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponCode("");
+    setCouponError("");
+  };
 
   // 🔐 Login handler
   const handleLogin = async (e: React.FormEvent) => {
@@ -194,6 +308,8 @@ export default function CheckoutDialog({
         items: allItems,
         subtotal,
         deliveryFee,
+        discount,
+        couponCode: appliedCoupon?.code || null,
         total,
         status: "pending",
       };
@@ -336,6 +452,52 @@ export default function CheckoutDialog({
                       Please include street, area, and any landmarks in Kurla West, Mumbai
                     </p>
                   </div>
+
+                  {/* Coupon Code */}
+                  <div>
+                    <Label htmlFor="couponCode" className="text-sm">
+                      Coupon Code (Optional)
+                    </Label>
+                    <div className="flex gap-2">
+                      <Input
+                        id="couponCode"
+                        value={couponCode}
+                        onChange={(e) => {
+                          setCouponCode(e.target.value.toUpperCase());
+                          setCouponError("");
+                        }}
+                        placeholder="Enter coupon code"
+                        disabled={!!appliedCoupon}
+                        className="uppercase"
+                      />
+                      {appliedCoupon ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={handleRemoveCoupon}
+                        >
+                          Remove
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={handleApplyCoupon}
+                          disabled={isVerifyingCoupon || !couponCode.trim()}
+                        >
+                          {isVerifyingCoupon ? "Verifying..." : "Apply"}
+                        </Button>
+                      )}
+                    </div>
+                    {couponError && (
+                      <p className="text-xs text-destructive mt-1">{couponError}</p>
+                    )}
+                    {appliedCoupon && (
+                      <p className="text-xs text-green-600 mt-1">
+                        ✓ Coupon "{appliedCoupon.code}" applied - You save ₹{appliedCoupon.discountAmount}
+                      </p>
+                    )}
+                  </div>
                 </div>
 
                 {/* Totals */}
@@ -345,9 +507,15 @@ export default function CheckoutDialog({
                     <span>₹{subtotal}</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span>Delivery Fee:</span>
+                    <span>Delivery Fee{deliveryDistance ? ` (${deliveryDistance.toFixed(1)}km)` : ''}:</span>
                     <span>₹{deliveryFee}</span>
                   </div>
+                  {discount > 0 && (
+                    <div className="flex justify-between text-sm text-green-600">
+                      <span>Discount:</span>
+                      <span>-₹{discount}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between font-bold text-base border-t pt-2">
                     <span>Total:</span>
                     <span>₹{total}</span>

@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin/AdminLayout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, ShoppingBag, DollarSign, Clock, CheckCircle } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { DollarSign, ShoppingCart, Users, Clock, TrendingUp, Package, UserCog, Truck, ShoppingBag, CheckCircle } from "lucide-react";
 
 interface DashboardMetrics {
   userCount: number;
@@ -22,6 +22,30 @@ export default function AdminDashboard() {
         },
       });
       if (!response.ok) throw new Error("Failed to fetch metrics");
+      return response.json();
+    },
+  });
+
+  const { data: partners } = useQuery({
+    queryKey: ["/api/admin/partners"],
+    queryFn: async () => {
+      const token = localStorage.getItem("adminToken");
+      const response = await fetch("/api/admin/partners", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error("Failed to fetch partners");
+      return response.json();
+    },
+  });
+
+  const { data: deliveryPersonnel } = useQuery({
+    queryKey: ["/api/admin/delivery-personnel"],
+    queryFn: async () => {
+      const token = localStorage.getItem("adminToken");
+      const response = await fetch("/api/admin/delivery-personnel", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error("Failed to fetch delivery personnel");
       return response.json();
     },
   });
@@ -90,28 +114,81 @@ export default function AdminDashboard() {
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-            {stats.map((stat) => {
-              const Icon = stat.icon;
-              return (
-                <Card key={stat.title} data-testid={`card-metric-${stat.title.toLowerCase().replace(/\s+/g, "-")}`}>
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400">
-                      {stat.title}
-                    </CardTitle>
-                    <div className={`p-2 rounded-lg ${stat.bgColor}`}>
-                      <Icon className={`w-4 h-4 ${stat.color}`} />
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold text-slate-900 dark:text-slate-100" data-testid={`text-${stat.title.toLowerCase().replace(/\s+/g, "-")}-value`}>
-                      {stat.value}
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
+          <>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+                  <DollarSign className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">₹{metrics?.totalRevenue?.toLocaleString() || 0}</div>
+                  <p className="text-xs text-muted-foreground">
+                    +12% from last month
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Total Orders</CardTitle>
+                  <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{metrics?.orderCount || 0}</div>
+                  <p className="text-xs text-muted-foreground">
+                    +8% from last month
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Active Users</CardTitle>
+                  <Users className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{metrics?.userCount || 0}</div>
+                  <p className="text-xs text-muted-foreground">
+                    +15% from last month
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Pending Orders</CardTitle>
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{metrics?.pendingOrders || 0}</div>
+                  <p className="text-xs text-muted-foreground">Requires attention</p>
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2 mt-4">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Partner Accounts</CardTitle>
+                  <UserCog className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{partners?.length || 0}</div>
+                  <p className="text-xs text-muted-foreground">Chef partners registered</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Delivery Personnel</CardTitle>
+                  <Truck className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{deliveryPersonnel?.length || 0}</div>
+                  <p className="text-xs text-muted-foreground">
+                    {deliveryPersonnel?.filter((p: any) => p.isActive).length || 0} active
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+          </>
         )}
 
         <Card>

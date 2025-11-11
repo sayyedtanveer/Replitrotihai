@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, decimal, boolean, timestamp, jsonb, index, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, decimal, boolean, timestamp, jsonb, index, pgEnum, real } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -64,6 +64,8 @@ export const chefs = pgTable("chefs", {
   rating: text("rating").notNull(),
   reviewCount: integer("review_count").notNull(),
   categoryId: text("category_id").notNull(),
+  latitude: real("latitude").default(19.0728), // Default: Kurla West
+  longitude: real("longitude").default(72.8826), // Default: Kurla West
 });
 
 export const products = pgTable("products", {
@@ -111,6 +113,8 @@ export const orders = pgTable("orders", {
   items: jsonb("items").notNull(),
   subtotal: integer("subtotal").notNull(),
   deliveryFee: integer("delivery_fee").notNull(),
+  discount: integer("discount").notNull().default(0),
+  couponCode: varchar("coupon_code", { length: 50 }),
   total: integer("total").notNull(),
   status: text("status").notNull().default("pending"),
   paymentStatus: paymentStatusEnum("payment_status").notNull().default("pending"),
@@ -136,6 +140,24 @@ export const deliverySettings = pgTable("delivery_settings", {
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const discountTypeEnum = pgEnum("discount_type", ["percentage", "fixed"]);
+
+export const coupons = pgTable("coupons", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  code: varchar("code", { length: 50 }).notNull().unique(),
+  description: text("description").notNull(),
+  discountType: discountTypeEnum("discount_type").notNull(),
+  discountValue: integer("discount_value").notNull(),
+  minOrderAmount: integer("min_order_amount").notNull().default(0),
+  maxDiscount: integer("max_discount"),
+  usageLimit: integer("usage_limit"),
+  usedCount: integer("used_count").notNull().default(0),
+  validFrom: timestamp("valid_from").notNull(),
+  validUntil: timestamp("valid_until").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
 export const subscriptionStatusEnum = pgEnum("subscription_status", ["active", "paused", "cancelled", "expired"]);
@@ -200,6 +222,8 @@ export const insertOrderSchema = z.object({
   items: z.array(orderItemSchema).min(1, "At least one item is required"),
   subtotal: z.number().min(0),
   deliveryFee: z.number().min(0),
+  discount: z.number().min(0).default(0),
+  couponCode: z.string().optional().nullable(),
   total: z.number().min(0),
   chefId: z.string(),
   paymentStatus: z.enum(["pending", "paid", "confirmed", "failed"]).default("pending"),
@@ -318,3 +342,12 @@ export const deliveryPersonnelLoginSchema = z.object({
 export type InsertDeliveryPersonnel = z.infer<typeof insertDeliveryPersonnelSchema>;
 export type DeliveryPersonnel = typeof deliveryPersonnel.$inferSelect;
 export type DeliveryPersonnelLogin = z.infer<typeof deliveryPersonnelLoginSchema>;
+
+export const insertCouponSchema = createInsertSchema(coupons).omit({
+  id: true,
+  usedCount: true,
+  createdAt: true,
+});
+
+export type InsertCoupon = z.infer<typeof insertCouponSchema>;
+export type Coupon = typeof coupons.$inferSelect;

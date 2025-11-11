@@ -31,4 +31,5 @@ export const {
   subscriptionPlans,
   deliverySettings,
   deliveryPersonnel,
+  coupons
 } = schema;

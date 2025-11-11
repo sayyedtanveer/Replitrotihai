@@ -184,4 +184,74 @@ export function registerDeliveryRoutes(app: Express) {
       res.status(500).json({ message: "Failed to update status" });
     }
   });
+
+  // Get earnings report
+  app.get("/api/delivery/earnings", requireDeliveryAuth(), async (req: AuthenticatedDeliveryRequest, res) => {
+    try {
+      const deliveryPersonId = req.delivery!.deliveryId;
+      const orders = await storage.getOrdersByDeliveryPerson(deliveryPersonId);
+      
+      // Calculate delivery fees (assuming delivery fee goes to delivery person)
+      const completedOrders = orders.filter(o => o.status === "delivered");
+      const totalEarnings = completedOrders.reduce((sum, order) => sum + order.deliveryFee, 0);
+      
+      const now = new Date();
+      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const startOfThisWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay());
+      const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      
+      const todayOrders = completedOrders.filter(o => new Date(o.deliveredAt!) >= startOfToday);
+      const weekOrders = completedOrders.filter(o => new Date(o.deliveredAt!) >= startOfThisWeek);
+      const monthOrders = completedOrders.filter(o => new Date(o.deliveredAt!) >= startOfThisMonth);
+      
+      const todayEarnings = todayOrders.reduce((sum, order) => sum + order.deliveryFee, 0);
+      const weekEarnings = weekOrders.reduce((sum, order) => sum + order.deliveryFee, 0);
+      const monthEarnings = monthOrders.reduce((sum, order) => sum + order.deliveryFee, 0);
+
+      res.json({
+        totalEarnings,
+        todayEarnings,
+        weekEarnings,
+        monthEarnings,
+        totalDeliveries: completedOrders.length,
+        todayDeliveries: todayOrders.length,
+        weekDeliveries: weekOrders.length,
+        monthDeliveries: monthOrders.length,
+      });
+    } catch (error) {
+      console.error("Error fetching earnings:", error);
+      res.status(500).json({ message: "Failed to fetch earnings" });
+    }
+  });
+
+  // Get delivery statistics
+  app.get("/api/delivery/stats", requireDeliveryAuth(), async (req: AuthenticatedDeliveryRequest, res) => {
+    try {
+      const deliveryPersonId = req.delivery!.deliveryId;
+      const deliveryPerson = await storage.getDeliveryPersonnelById(deliveryPersonId);
+      const orders = await storage.getOrdersByDeliveryPerson(deliveryPersonId);
+      
+      const pendingOrders = orders.filter(o => o.status === "assigned");
+      const activeOrders = orders.filter(o => ["preparing", "out_for_delivery"].includes(o.status));
+      const completedOrders = orders.filter(o => o.status === "delivered");
+
+      const now = new Date();
+      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const todayCompletedOrders = completedOrders.filter(o => 
+        new Date(o.deliveredAt!) >= startOfToday
+      );
+
+      res.json({
+        pendingCount: pendingOrders.length,
+        activeCount: activeOrders.length,
+        completedToday: todayCompletedOrders.length,
+        totalCompleted: completedOrders.length,
+        rating: deliveryPerson?.rating || "5.0",
+        status: deliveryPerson?.status || "offline",
+      });
+    } catch (error) {
+      console.error("Error fetching delivery stats:", error);
+      res.status(500).json({ message: "Failed to fetch statistics" });
+    }
+  });
 }

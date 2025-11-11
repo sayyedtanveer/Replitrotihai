@@ -199,7 +199,7 @@ export function registerAdminRoutes(app: Express) {
       }
 
       broadcastOrderUpdate(order);
-      
+
       // Notify assigned delivery person when order is confirmed
       if (status === "confirmed" && order.assignedTo) {
         notifyDeliveryAssignment(order, order.assignedTo);
@@ -274,12 +274,12 @@ export function registerAdminRoutes(app: Express) {
       }
 
       broadcastOrderUpdate(order);
-      
+
       // Notify assigned delivery person if order is confirmed
       if (order.status === "confirmed" && order.assignedTo) {
         notifyDeliveryAssignment(order, order.assignedTo);
       }
-      
+
       res.json(order);
     } catch (error) {
       console.error("Approve order error:", error);
@@ -710,7 +710,8 @@ export function registerAdminRoutes(app: Express) {
     }
   });
 
-  app.post("/api/admin/partners", requireAdminOrManager(), async (req, res) => {
+  // Create partner
+  app.post("/api/admin/partners", requireAdmin(), async (req: AuthenticatedAdminRequest, res) => {
     try {
       const { chefId, username, email, password } = req.body;
 
@@ -719,36 +720,42 @@ export function registerAdminRoutes(app: Express) {
         return;
       }
 
-      const chef = await storage.getChefById(chefId);
-      if (!chef) {
-        res.status(404).json({ message: "Chef not found" });
+      if (password.length < 8) {
+        res.status(400).json({ message: "Password must be at least 8 characters" });
         return;
       }
 
-      const existingPartner = await storage.getPartnerByUsername(username);
+      const normalizedUsername = username.trim().toLowerCase();
+
+      if (normalizedUsername.length < 3) {
+        res.status(400).json({ message: "Username must be at least 3 characters" });
+        return;
+      }
+
+      const existingPartner = await storage.getPartnerByUsername(normalizedUsername);
       if (existingPartner) {
-        res.status(409).json({ message: "Username already exists" });
+        res.status(400).json({ message: "Username already exists" });
+        return;
+      }
+
+      const chef = await storage.getChefById(chefId);
+      if (!chef) {
+        res.status(400).json({ message: "Chef not found" });
         return;
       }
 
       const passwordHash = await hashPassword(password);
       const partner = await storage.createPartner({
         chefId,
-        username,
-        email,
+        username: normalizedUsername,
+        email: email.trim().toLowerCase(),
         passwordHash,
-      });
+      } as any);
 
-      res.status(201).json({
-        id: partner.id,
-        username: partner.username,
-        email: partner.email,
-        chefId: partner.chefId,
-        createdAt: partner.createdAt,
-      });
+      res.json(partner);
     } catch (error) {
-      console.error("Create partner error:", error);
-      res.status(500).json({ message: "Failed to create partner account" });
+      console.error("Error creating partner:", error);
+      res.status(500).json({ message: "Failed to create partner" });
     }
   });
 

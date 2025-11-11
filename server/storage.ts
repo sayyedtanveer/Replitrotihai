@@ -1,8 +1,9 @@
 import { type Category, type InsertCategory, type Product, type InsertProduct, type Order, type InsertOrder, type User, type UpsertUser, type Chef, type AdminUser, type InsertAdminUser, type PartnerUser, type Subscription, type SubscriptionPlan, type DeliverySetting, type InsertDeliverySetting, type DeliveryPersonnel, type InsertDeliveryPersonnel } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { nanoid } from "nanoid";
-import { eq, and, gte, lte, desc, or, isNull } from "drizzle-orm";
-import { db, sql, users, categories, products, orders, chefs, adminUsers, partnerUsers, subscriptions, subscriptionPlans, deliverySettings, deliveryPersonnel } from "@shared/db";
+import { eq, and, gte, lte, desc, or, isNull, sql } from "drizzle-orm";
+import { db, users, categories, products, orders, chefs, adminUsers, partnerUsers, subscriptions, 
+  subscriptionPlans, deliverySettings, deliveryPersonnel ,coupons} from "@shared/db";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -34,8 +35,8 @@ export interface IStorage {
   deleteOrder(id: string): Promise<void>;
 
   getChefs(): Promise<Chef[]>;
-  getChefsByCategory(categoryId: string): Promise<Chef[]>;
   getChefById(id: string): Promise<Chef | null>;
+  getChefsByCategory(categoryId: string): Promise<Chef[]>;
   createChef(data: Omit<Chef, "id">): Promise<Chef>;
   updateChef(id: string, data: Partial<Chef>): Promise<Chef | undefined>;
   deleteChef(id: string): Promise<boolean>;
@@ -102,11 +103,15 @@ export interface IStorage {
 
   // Enhanced Order methods
   approveOrder(orderId: string, approvedBy: string): Promise<Order | undefined>;
+  acceptOrder(orderId: string, approvedBy: string): Promise<Order | undefined>;
   rejectOrder(orderId: string, rejectedBy: string, reason: string): Promise<Order | undefined>;
   assignOrderToDeliveryPerson(orderId: string, deliveryPersonId: string): Promise<Order | undefined>;
   updateOrderPickup(orderId: string): Promise<Order | undefined>;
   updateOrderDelivery(orderId: string): Promise<Order | undefined>;
   getOrdersByDeliveryPerson(deliveryPersonId: string): Promise<Order[]>;
+
+  // Admin dashboard metrics
+  getAdminDashboardMetrics(): Promise<{ partnerCount: number; deliveryPersonnelCount: number }>;
 }
 
 export class MemStorage implements IStorage {
@@ -307,7 +312,7 @@ export class MemStorage implements IStorage {
 
   async createChef(data: Omit<Chef, "id">): Promise<Chef> {
     const id = nanoid();
-    const chef: Chef = { id, ...data };
+    const chef: Chef = { id, ...data, latitude: data.latitude || 0, longitude: data.longitude || 0 };
     await db.insert(chefs).values(chef);
     return chef;
   }
@@ -369,8 +374,18 @@ export class MemStorage implements IStorage {
   }
 
   async getPartnerByUsername(username: string): Promise<PartnerUser | null> {
-    const partner = await db.query.partnerUsers.findFirst({ where: (p, { eq }) => eq(p.username, username) });
-    return partner || null;
+    try {
+      const trimmedUsername = username.trim().toLowerCase();
+      const result = await db
+        .select()
+        .from(partnerUsers)
+        .where(eq(partnerUsers.username, trimmedUsername))
+        .limit(1);
+      return result[0] || null;
+    } catch (error) {
+      console.error("Error getting partner by username:", error);
+      return null;
+    }
   }
 
   async getPartnerById(id: string): Promise<PartnerUser | null> {
@@ -451,6 +466,66 @@ export class MemStorage implements IStorage {
       pendingOrders,
       completedOrders,
     };
+  }
+
+  // Coupons
+  async verifyCoupon(code: string, orderAmount: number): Promise<{
+    code: string;
+    discountAmount: number;
+    discountType: string;
+  } | null> {
+    const coupon = await db.query.coupons.findFirst({
+      where: (coupons, { eq, and }) => 
+        and(
+          eq(coupons.code, code.toUpperCase()),
+          eq(coupons.isActive, true)
+        ),
+    });
+
+    if (!coupon) {
+      throw new Error("Invalid coupon code");
+    }
+
+    const now = new Date();
+    if (now < new Date(coupon.validFrom) || now > new Date(coupon.validUntil)) {
+      throw new Error("Coupon has expired");
+    }
+
+    if (orderAmount < coupon.minOrderAmount) {
+      throw new Error(`Minimum order amount of ₹${coupon.minOrderAmount} required`);
+    }
+
+    if (coupon.usageLimit && coupon.usedCount >= coupon.usageLimit) {
+      throw new Error("Coupon usage limit reached");
+    }
+
+    let discountAmount = 0;
+    if (coupon.discountType === "percentage") {
+      discountAmount = Math.floor((orderAmount * coupon.discountValue) / 100);
+      if (coupon.maxDiscount && discountAmount > coupon.maxDiscount) {
+        discountAmount = coupon.maxDiscount;
+      }
+    } else {
+      discountAmount = coupon.discountValue;
+    }
+
+    return {
+      code: coupon.code,
+      discountAmount,
+      discountType: coupon.discountType,
+    };
+  }
+
+  async incrementCouponUsage(code: string): Promise<void> {
+    const coupon = await db.query.coupons.findFirst({
+      where: (coupons, { eq }) => eq(coupons.code, code.toUpperCase()),
+    });
+
+    if (coupon) {
+      await db.update(coupons)
+        .set({ usedCount: coupon.usedCount + 1 })
+        .where(eq(coupons.code, code.toUpperCase()));
+    }
   }
 
   // Subscription Plans
@@ -714,6 +789,20 @@ export class MemStorage implements IStorage {
     return order;
   }
 
+  async acceptOrder(orderId: string, approvedBy: string): Promise<Order | undefined> {
+    const [order] = await db
+      .update(orders)
+      .set({
+        status: "confirmed",
+        paymentStatus: "confirmed",
+        approvedBy,
+        approvedAt: new Date()
+      })
+      .where(eq(orders.id, orderId))
+      .returning();
+    return order;
+  }
+
   async rejectOrder(orderId: string, rejectedBy: string, reason: string): Promise<Order | undefined> {
     const [order] = await db
       .update(orders)
@@ -797,6 +886,17 @@ export class MemStorage implements IStorage {
 
     return orderRecords.map(this.mapOrder);
   }
+
+  async getAdminDashboardMetrics(): Promise<{ partnerCount: number; deliveryPersonnelCount: number }> {
+    const partners = await db.select().from(partnerUsers);
+    const delivery = await db.select().from(deliveryPersonnel);
+
+    return {
+      partnerCount: partners.length,
+      deliveryPersonnelCount: delivery.length,
+    };
+  }
+
 
   private mapOrder(order: any): Order {
     return {

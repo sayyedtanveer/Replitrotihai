@@ -80,6 +80,36 @@ export default function PartnerDashboard() {
     },
   });
 
+  const rejectOrderMutation = useMutation({
+    mutationFn: async ({ orderId, reason }: { orderId: string; reason: string }) => {
+      const response = await fetch(`/api/partner/orders/${orderId}/reject`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${partnerToken}`,
+        },
+        body: JSON.stringify({ reason }),
+      });
+      if (!response.ok) throw new Error("Failed to reject order");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/partner/orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/partner/dashboard/metrics"] });
+      toast({
+        title: "Order rejected",
+        description: "Order has been rejected",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Rejection failed",
+        description: "Failed to reject order",
+        variant: "destructive",
+      });
+    },
+  });
+
   const updateStatusMutation = useMutation({
     mutationFn: async ({ orderId, status }: { orderId: string; status: string }) => {
       const response = await fetch(`/api/partner/orders/${orderId}/status`, {
@@ -245,22 +275,40 @@ export default function PartnerDashboard() {
                           <p className="font-bold">₹{order.total}</p>
                           
                           {/* Action buttons based on status */}
-                          <div className="flex gap-2 mt-2">
+                          <div className="flex gap-2 mt-2 flex-wrap">
                             {order.paymentStatus === "paid" && order.status === "pending" && (
-                              <Button
-                                size="sm"
-                                onClick={() => acceptOrderMutation.mutate(order.id)}
-                                disabled={acceptOrderMutation.isPending}
-                                variant="default"
-                              >
-                                Accept Order
-                              </Button>
+                              <>
+                                <Button
+                                  size="sm"
+                                  onClick={() => acceptOrderMutation.mutate(order.id)}
+                                  disabled={acceptOrderMutation.isPending || rejectOrderMutation.isPending}
+                                  variant="default"
+                                  data-testid={`button-accept-${order.id}`}
+                                >
+                                  Accept Order
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  onClick={() => {
+                                    const reason = window.prompt("Please provide a reason for rejection:");
+                                    if (reason) {
+                                      rejectOrderMutation.mutate({ orderId: order.id, reason });
+                                    }
+                                  }}
+                                  disabled={acceptOrderMutation.isPending || rejectOrderMutation.isPending}
+                                  variant="destructive"
+                                  data-testid={`button-reject-${order.id}`}
+                                >
+                                  Reject
+                                </Button>
+                              </>
                             )}
                             {order.status === "confirmed" && (
                               <Button
                                 size="sm"
                                 onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: "preparing" })}
                                 disabled={updateStatusMutation.isPending}
+                                data-testid={`button-prepare-${order.id}`}
                               >
                                 Start Preparing
                               </Button>
@@ -271,6 +319,7 @@ export default function PartnerDashboard() {
                                 onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: "out_for_delivery" })}
                                 disabled={updateStatusMutation.isPending}
                                 variant="default"
+                                data-testid={`button-ready-${order.id}`}
                               >
                                 Ready for Delivery
                               </Button>
@@ -342,33 +391,54 @@ export default function PartnerDashboard() {
                             </Badge>
                           </TableCell>
                           <TableCell>
-                            {order.paymentStatus === "paid" && order.status === "pending" && (
-                              <Button
-                                size="sm"
-                                onClick={() => acceptOrderMutation.mutate(order.id)}
-                                disabled={acceptOrderMutation.isPending}
-                              >
-                                Accept
-                              </Button>
-                            )}
-                            {order.status === "confirmed" && (
-                              <Button
-                                size="sm"
-                                onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: "preparing" })}
-                                disabled={updateStatusMutation.isPending}
-                              >
-                                Prepare
-                              </Button>
-                            )}
-                            {order.status === "preparing" && (
-                              <Button
-                                size="sm"
-                                onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: "out_for_delivery" })}
-                                disabled={updateStatusMutation.isPending}
-                              >
-                                Ready
-                              </Button>
-                            )}
+                            <div className="flex gap-2 flex-wrap">
+                              {order.paymentStatus === "paid" && order.status === "pending" && (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    onClick={() => acceptOrderMutation.mutate(order.id)}
+                                    disabled={acceptOrderMutation.isPending || rejectOrderMutation.isPending}
+                                    data-testid={`button-table-accept-${order.id}`}
+                                  >
+                                    Accept
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    onClick={() => {
+                                      const reason = window.prompt("Please provide a reason for rejection:");
+                                      if (reason) {
+                                        rejectOrderMutation.mutate({ orderId: order.id, reason });
+                                      }
+                                    }}
+                                    disabled={acceptOrderMutation.isPending || rejectOrderMutation.isPending}
+                                    variant="destructive"
+                                    data-testid={`button-table-reject-${order.id}`}
+                                  >
+                                    Reject
+                                  </Button>
+                                </>
+                              )}
+                              {order.status === "confirmed" && (
+                                <Button
+                                  size="sm"
+                                  onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: "preparing" })}
+                                  disabled={updateStatusMutation.isPending}
+                                  data-testid={`button-table-prepare-${order.id}`}
+                                >
+                                  Prepare
+                                </Button>
+                              )}
+                              {order.status === "preparing" && (
+                                <Button
+                                  size="sm"
+                                  onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: "out_for_delivery" })}
+                                  disabled={updateStatusMutation.isPending}
+                                  data-testid={`button-table-ready-${order.id}`}
+                                >
+                                  Ready
+                                </Button>
+                              )}
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))

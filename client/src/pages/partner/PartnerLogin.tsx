@@ -17,21 +17,49 @@ export default function PartnerLogin() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate inputs
+    if (!username.trim()) {
+      toast({
+        title: "Validation error",
+        description: "Please enter your username",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!password) {
+      toast({
+        title: "Validation error",
+        description: "Please enter your password",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsLoading(true);
 
     try {
       const response = await fetch("/api/partner/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ 
+          username: username.trim(), 
+          password 
+        }),
         credentials: "include",
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        throw new Error("Invalid credentials");
+        throw new Error(data.message || "Invalid credentials");
       }
 
-      const data = await response.json();
+      if (!data.accessToken || !data.partner) {
+        throw new Error("Invalid response from server");
+      }
+
       localStorage.setItem("partnerToken", data.accessToken);
       localStorage.setItem("partnerChefId", data.partner.chefId);
       localStorage.setItem("partnerChefName", data.partner.chefName);
@@ -42,10 +70,10 @@ export default function PartnerLogin() {
       });
 
       setLocation("/partner/dashboard");
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: "Login failed",
-        description: "Invalid username or password",
+        description: error.message || "Invalid username or password",
         variant: "destructive",
       });
     } finally {
