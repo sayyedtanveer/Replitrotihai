@@ -3,7 +3,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import cookieParser from "cookie-parser";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
-import { generateAccessToken, generateRefreshToken, verifyPassword } from "./partnerAuth";
+import { generateAccessToken, generateRefreshToken, verifyPassword, hashPassword, requirePartner, type AuthenticatedPartnerRequest } from "./partnerAuth";
 import { storage } from "./storage";
 
 const app = express();
@@ -153,6 +153,120 @@ app.use((req, res, next) => {
       });
     } catch (error) {
       console.error("Partner login error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Get partner profile
+  app.get("/api/partner/profile", requirePartner(), async (req, res) => {
+    try {
+      const partnerReq = req as AuthenticatedPartnerRequest;
+      const partner = await storage.getPartnerById(partnerReq.partner!.partnerId);
+      
+      if (!partner) {
+        res.status(404).json({ message: "Partner not found" });
+        return;
+      }
+
+      const chef = await storage.getChefById(partner.chefId);
+      
+      res.json({
+        id: partner.id,
+        username: partner.username,
+        email: partner.email,
+        profilePictureUrl: partner.profilePictureUrl,
+        chefId: partner.chefId,
+        chefName: chef?.name || "",
+        lastLoginAt: partner.lastLoginAt,
+        createdAt: partner.createdAt,
+      });
+    } catch (error) {
+      console.error("Get partner profile error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Update partner profile
+  app.put("/api/partner/profile", requirePartner(), async (req, res) => {
+    try {
+      const partnerReq = req as AuthenticatedPartnerRequest;
+      const { email, profilePictureUrl } = req.body;
+
+      if (email && (typeof email !== 'string' || !email.includes('@'))) {
+        res.status(400).json({ message: "Valid email is required" });
+        return;
+      }
+
+      if (profilePictureUrl && typeof profilePictureUrl !== 'string') {
+        res.status(400).json({ message: "Profile picture URL must be a string" });
+        return;
+      }
+
+      const partner = await storage.getPartnerById(partnerReq.partner!.partnerId);
+      if (!partner) {
+        res.status(404).json({ message: "Partner not found" });
+        return;
+      }
+
+      const updateData: any = {};
+      if (email) updateData.email = email;
+      if (profilePictureUrl !== undefined) updateData.profilePictureUrl = profilePictureUrl;
+
+      await storage.updatePartner(partner.id, updateData);
+
+      const updatedPartner = await storage.getPartnerById(partner.id);
+      const chef = await storage.getChefById(updatedPartner!.chefId);
+
+      res.json({
+        id: updatedPartner!.id,
+        username: updatedPartner!.username,
+        email: updatedPartner!.email,
+        profilePictureUrl: updatedPartner!.profilePictureUrl,
+        chefId: updatedPartner!.chefId,
+        chefName: chef?.name || "",
+        lastLoginAt: updatedPartner!.lastLoginAt,
+        createdAt: updatedPartner!.createdAt,
+      });
+    } catch (error) {
+      console.error("Update partner profile error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Change partner password
+  app.put("/api/partner/change-password", requirePartner(), async (req, res) => {
+    try {
+      const partnerReq = req as AuthenticatedPartnerRequest;
+      const { currentPassword, newPassword } = req.body;
+
+      if (!currentPassword || !newPassword) {
+        res.status(400).json({ message: "Current password and new password are required" });
+        return;
+      }
+
+      if (newPassword.length < 6) {
+        res.status(400).json({ message: "New password must be at least 6 characters" });
+        return;
+      }
+
+      const partner = await storage.getPartnerById(partnerReq.partner!.partnerId);
+      if (!partner || !partner.passwordHash) {
+        res.status(404).json({ message: "Partner not found" });
+        return;
+      }
+
+      const isValid = await verifyPassword(currentPassword, partner.passwordHash);
+      if (!isValid) {
+        res.status(401).json({ message: "Current password is incorrect" });
+        return;
+      }
+
+      const newPasswordHash = await hashPassword(newPassword);
+      await storage.updatePartner(partner.id, { passwordHash: newPasswordHash });
+
+      res.json({ message: "Password changed successfully" });
+    } catch (error) {
+      console.error("Change partner password error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });

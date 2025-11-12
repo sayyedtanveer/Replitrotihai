@@ -3,7 +3,7 @@ import { randomUUID } from "crypto";
 import { nanoid } from "nanoid";
 import { eq, and, gte, lte, desc, or, isNull, sql } from "drizzle-orm";
 import { db, users, categories, products, orders, chefs, adminUsers, partnerUsers, subscriptions, 
-  subscriptionPlans, deliverySettings, deliveryPersonnel ,coupons} from "@shared/db";
+  subscriptionPlans, deliverySettings, deliveryPersonnel, coupons, referrals } from "@shared/db";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -53,6 +53,7 @@ export interface IStorage {
   getPartnerByUsername(username: string): Promise<PartnerUser | null>;
   getPartnerById(id: string): Promise<PartnerUser | null>;
   createPartner(data: Omit<PartnerUser, "id" | "createdAt" | "lastLoginAt">): Promise<PartnerUser>;
+  updatePartner(id: string, data: Partial<Pick<PartnerUser, "email" | "passwordHash" | "profilePictureUrl">>): Promise<void>;
   updatePartnerLastLogin(id: string): Promise<void>;
   getOrdersByChefId(chefId: string): Promise<Order[]>;
   getPartnerDashboardMetrics(chefId: string): Promise<any>;
@@ -112,6 +113,14 @@ export interface IStorage {
 
   // Admin dashboard metrics
   getAdminDashboardMetrics(): Promise<{ partnerCount: number; deliveryPersonnelCount: number }>;
+
+  // Referral methods
+  generateReferralCode(userId: string): Promise<string>;
+  createReferral(referrerId: string, referredId: string): Promise<any>;
+  applyReferralBonus(referralCode: string, newUserId: string): Promise<void>;
+  getReferralsByUser(userId: string): Promise<any[]>;
+  getUserWalletBalance(userId: string): Promise<number>;
+  updateWalletBalance(userId: string, amount: number): Promise<void>;
 }
 
 export class MemStorage implements IStorage {
@@ -297,9 +306,15 @@ export class MemStorage implements IStorage {
     await db.delete(orders).where(eq(orders.id, id));
   }
 
-  async getChefs(): Promise<Chef[]> {
-    return db.query.chefs.findMany();
+   async getChefs(): Promise<Chef[]> {
+    const result = await db.select().from(chefs);
+    return result.map(chef => ({
+      ...chef,
+      latitude: chef.latitude ?? 19.0728,
+      longitude: chef.longitude ?? 72.8826,
+    }));
   }
+
 
   async getChefById(id: string): Promise<Chef | null> {
     const chef = await db.query.chefs.findFirst({ where: (c, { eq }) => eq(c.id, id) });
@@ -405,6 +420,10 @@ export class MemStorage implements IStorage {
     return newPartner;
   }
 
+  async updatePartner(id: string, data: Partial<Pick<PartnerUser, "email" | "passwordHash">>): Promise<void> {
+    await db.update(partnerUsers).set(data).where(eq(partnerUsers.id, id));
+  }
+
   async updatePartnerLastLogin(id: string): Promise<void> {
     await db.update(partnerUsers).set({ lastLoginAt: new Date() }).where(eq(partnerUsers.id, id));
   }
@@ -470,51 +489,60 @@ export class MemStorage implements IStorage {
 
   // Coupons
   async verifyCoupon(code: string, orderAmount: number): Promise<{
-    code: string;
-    discountAmount: number;
-    discountType: string;
-  } | null> {
-    const coupon = await db.query.coupons.findFirst({
-      where: (coupons, { eq, and }) => 
-        and(
-          eq(coupons.code, code.toUpperCase()),
-          eq(coupons.isActive, true)
-        ),
-    });
+  code: string;
+  discountAmount: number;
+  discountType: string;
+} | null> {
+  const coupon = await db.query.coupons.findFirst({
+    where: (coupons, { eq, and }) =>
+      and(eq(coupons.code, code.toUpperCase()), eq(coupons.isActive, true)),
+  });
 
-    if (!coupon) {
-      throw new Error("Invalid coupon code");
-    }
+  if (!coupon) throw new Error("Invalid coupon code");
 
-    const now = new Date();
-    if (now < new Date(coupon.validFrom) || now > new Date(coupon.validUntil)) {
-      throw new Error("Coupon has expired");
-    }
+  // 🧾 Log for debugging
+  console.log("🧾 Coupon validity check:", {
+    now: new Date().toISOString(),
+    validFrom: coupon.validFrom,
+    validUntil: coupon.validUntil,
+  });
 
-    if (orderAmount < coupon.minOrderAmount) {
-      throw new Error(`Minimum order amount of ₹${coupon.minOrderAmount} required`);
-    }
+  const now = Date.now();
+  const validFrom = new Date(coupon.validFrom).getTime();
+  const validUntil = new Date(coupon.validUntil).getTime();
 
-    if (coupon.usageLimit && coupon.usedCount >= coupon.usageLimit) {
-      throw new Error("Coupon usage limit reached");
-    }
-
-    let discountAmount = 0;
-    if (coupon.discountType === "percentage") {
-      discountAmount = Math.floor((orderAmount * coupon.discountValue) / 100);
-      if (coupon.maxDiscount && discountAmount > coupon.maxDiscount) {
-        discountAmount = coupon.maxDiscount;
-      }
-    } else {
-      discountAmount = coupon.discountValue;
-    }
-
-    return {
-      code: coupon.code,
-      discountAmount,
-      discountType: coupon.discountType,
-    };
+  if (isNaN(validFrom) || isNaN(validUntil)) {
+    throw new Error("Invalid coupon date format");
   }
+
+  if (now < validFrom) throw new Error("Coupon not active yet");
+  if (now > validUntil) throw new Error("Coupon has expired");
+
+  if (orderAmount < coupon.minOrderAmount) {
+    throw new Error(`Minimum order amount of ₹${coupon.minOrderAmount} required`);
+  }
+
+  if (coupon.usageLimit && coupon.usedCount >= coupon.usageLimit) {
+    throw new Error("Coupon usage limit reached");
+  }
+
+  let discountAmount = 0;
+  if (coupon.discountType === "percentage") {
+    discountAmount = Math.floor((orderAmount * coupon.discountValue) / 100);
+    if (coupon.maxDiscount && discountAmount > coupon.maxDiscount) {
+      discountAmount = coupon.maxDiscount;
+    }
+  } else {
+    discountAmount = coupon.discountValue;
+  }
+
+  return {
+    code: coupon.code,
+    discountAmount,
+    discountType: coupon.discountType,
+  };
+}
+
 
   async incrementCouponUsage(code: string): Promise<void> {
     const coupon = await db.query.coupons.findFirst({
@@ -897,6 +925,75 @@ export class MemStorage implements IStorage {
     };
   }
 
+  async generateReferralCode(userId: string): Promise<string> {
+    const code = `REF${nanoid(8).toUpperCase()}`;
+    await db.update(users).set({ referralCode: code }).where(eq(users.id, userId));
+    return code;
+  }
+
+  async createReferral(referrerId: string, referredId: string): Promise<any> {
+    const referrer = await this.getUser(referrerId);
+    if (!referrer?.referralCode) {
+      throw new Error("Referrer does not have a referral code");
+    }
+
+    const referral = {
+      referrerId,
+      referredId,
+      referralCode: referrer.referralCode,
+      status: "pending",
+      referrerBonus: 100, // ₹100 for referrer
+      referredBonus: 50,  // ₹50 for new user
+      referredOrderCompleted: false,
+    };
+
+    const [created] = await db.insert(referrals).values(referral).returning();
+    return created;
+  }
+
+  async applyReferralBonus(referralCode: string, newUserId: string): Promise<void> {
+    const referrer = await db.query.users.findFirst({
+      where: (u, { eq }) => eq(u.referralCode, referralCode),
+    });
+
+    if (!referrer) {
+      throw new Error("Invalid referral code");
+    }
+
+    // Check if user already used a referral
+    const existingReferral = await db.query.referrals.findFirst({
+      where: (r, { eq }) => eq(r.referredId, newUserId),
+    });
+
+    if (existingReferral) {
+      throw new Error("User already used a referral code");
+    }
+
+    // Create referral record
+    await this.createReferral(referrer.id, newUserId);
+
+    // Give instant bonus to new user
+    await db.update(users)
+      .set({ walletBalance: sql`${users.walletBalance} + 50` })
+      .where(eq(users.id, newUserId));
+  }
+
+  async getReferralsByUser(userId: string): Promise<any[]> {
+    return db.query.referrals.findMany({
+      where: (r, { eq }) => eq(r.referrerId, userId),
+    });
+  }
+
+  async getUserWalletBalance(userId: string): Promise<number> {
+    const user = await this.getUser(userId);
+    return user?.walletBalance || 0;
+  }
+
+  async updateWalletBalance(userId: string, amount: number): Promise<void> {
+    await db.update(users)
+      .set({ walletBalance: sql`${users.walletBalance} + ${amount}` })
+      .where(eq(users.id, userId));
+  }
 
   private mapOrder(order: any): Order {
     return {

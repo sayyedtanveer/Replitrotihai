@@ -6,6 +6,8 @@ interface UserData {
   phone: string;
   email?: string;
   address?: string;
+  profileImageUrl?: string;
+  firstName?: string;
 }
 
 export function usePhoneAuth() {

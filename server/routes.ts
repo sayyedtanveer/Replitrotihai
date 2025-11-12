@@ -14,6 +14,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerPartnerRoutes(app);
   registerDeliveryRoutes(app);
 
+  // Coupon verification route
+  app.post("/api/coupons/verify", async (req, res) => {
+    try {
+      const { code, orderAmount } = req.body;
+
+      if (!code || typeof code !== 'string') {
+        res.status(400).json({ message: "Coupon code is required" });
+        return;
+      }
+
+      if (!orderAmount || typeof orderAmount !== 'number' || orderAmount <= 0) {
+        res.status(400).json({ message: "Valid order amount is required" });
+        return;
+      }
+
+      const result = await storage.verifyCoupon(code, orderAmount);
+
+      if (!result) {
+        res.status(404).json({ message: "Invalid coupon code" });
+        return;
+      }
+
+      res.json(result);
+    } catch (error: any) {
+      console.error("Coupon verification error:", error);
+      res.status(400).json({ message: error.message || "Failed to verify coupon" });
+    }
+  });
 
   // User phone-based authentication routes
   app.post("/api/user/register", async (req, res) => {
@@ -37,6 +65,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         email: result.data.email || null,
         address: result.data.address || null,
         passwordHash,
+        referralCode: null,
+        walletBalance: 0,
       });
 
       const accessToken = generateAccessToken(user);
@@ -137,9 +167,11 @@ app.post("/api/user/logout", async (req, res) => {
         user = await storage.createUser({
           name: customerName,
           phone,
-          email: email || undefined,
-          address: address || undefined,
+          email: email || null,
+          address: address || null,
           passwordHash,
+          referralCode: null,
+          walletBalance: 0,
         });
         console.log("New user created:", user.id);
       } else {
@@ -182,10 +214,79 @@ app.post("/api/user/logout", async (req, res) => {
         phone: user.phone,
         email: user.email,
         address: user.address,
+        referralCode: user.referralCode,
+        walletBalance: user.walletBalance || 0,
       });
     } catch (error) {
       console.error("Error fetching profile:", error);
       res.status(500).json({ message: "Failed to fetch profile" });
+    }
+  });
+
+  // Generate referral code for user
+  app.post("/api/user/generate-referral", requireUser(), async (req: AuthenticatedUserRequest, res) => {
+    try {
+      const userId = req.authenticatedUser!.userId;
+      const user = await storage.getUser(userId);
+      
+      if (!user) {
+        res.status(404).json({ message: "User not found" });
+        return;
+      }
+
+      if (user.referralCode) {
+        res.json({ referralCode: user.referralCode });
+        return;
+      }
+
+      const referralCode = await storage.generateReferralCode(userId);
+      res.json({ referralCode });
+    } catch (error: any) {
+      console.error("Error generating referral code:", error);
+      res.status(500).json({ message: error.message || "Failed to generate referral code" });
+    }
+  });
+
+  // Apply referral code during registration
+  app.post("/api/user/apply-referral", requireUser(), async (req: AuthenticatedUserRequest, res) => {
+    try {
+      const userId = req.authenticatedUser!.userId;
+      const { referralCode } = req.body;
+
+      if (!referralCode) {
+        res.status(400).json({ message: "Referral code is required" });
+        return;
+      }
+
+      await storage.applyReferralBonus(referralCode, userId);
+      res.json({ message: "Referral bonus applied successfully", bonus: 50 });
+    } catch (error: any) {
+      console.error("Error applying referral:", error);
+      res.status(400).json({ message: error.message || "Failed to apply referral" });
+    }
+  });
+
+  // Get user's referrals
+  app.get("/api/user/referrals", requireUser(), async (req: AuthenticatedUserRequest, res) => {
+    try {
+      const userId = req.authenticatedUser!.userId;
+      const referrals = await storage.getReferralsByUser(userId);
+      res.json(referrals);
+    } catch (error: any) {
+      console.error("Error fetching referrals:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch referrals" });
+    }
+  });
+
+  // Get user's wallet balance
+  app.get("/api/user/wallet", requireUser(), async (req: AuthenticatedUserRequest, res) => {
+    try {
+      const userId = req.authenticatedUser!.userId;
+      const balance = await storage.getUserWalletBalance(userId);
+      res.json({ balance });
+    } catch (error: any) {
+      console.error("Error fetching wallet balance:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch wallet balance" });
     }
   });
 
@@ -337,6 +438,34 @@ app.post("/api/orders", async (req: any, res) => {
         await storage.incrementCouponUsage(orderPayload.couponCode);
       }
 
+      // Complete referral bonus if this is user's first order
+      if (userId) {
+        const { db: database } = await import("@shared/db");
+        const { referrals: referralsTable } = await import("@shared/db");
+        const { eq, and } = await import("drizzle-orm");
+        
+        const pendingReferral = await database.query.referrals.findFirst({
+          where: (r, { eq, and }) => and(
+            eq(r.referredId, userId),
+            eq(r.status, "pending")
+          ),
+        });
+
+        if (pendingReferral) {
+          // Mark referral as completed and give bonus to referrer
+          await database.update(referralsTable)
+            .set({ 
+              status: "completed", 
+              referredOrderCompleted: true,
+              completedAt: new Date()
+            })
+            .where(eq(referralsTable.id, pendingReferral.id));
+
+          // Add bonus to referrer's wallet
+          await storage.updateWalletBalance(pendingReferral.referrerId, pendingReferral.referrerBonus);
+        }
+      }
+
     broadcastNewOrder(order);
 
     console.log("✅ Order created successfully:", order.id);
@@ -449,14 +578,15 @@ app.post("/api/orders", async (req: any, res) => {
       }
 
       // Get chef location or default to Kurla West, Mumbai
-      let chefLat = 19.0728;
-      let chefLon = 72.8826;
+      let chefLat: number = 19.0728;
+      let chefLon: number = 72.8826;
 
       if (chefId) {
         const chef = await storage.getChefById(chefId);
-        if (chef) {
-          chefLat = chef.latitude || 19.0728;
-          chefLon = chef.longitude || 72.8826;
+        if (chef && chef.latitude !== null && chef.longitude !== null && 
+            chef.latitude !== undefined && chef.longitude !== undefined) {
+          chefLat = chef.latitude;
+          chefLon = chef.longitude;
         }
       }
 

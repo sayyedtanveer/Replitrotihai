@@ -22,6 +22,8 @@ export const users = pgTable("users", {
   email: varchar("email", { length: 255 }),
   address: text("address"),
   passwordHash: text("password_hash").notNull(),
+  referralCode: varchar("referral_code", { length: 20 }).unique(),
+  walletBalance: integer("wallet_balance").notNull().default(0),
   lastLoginAt: timestamp("last_login_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -43,6 +45,7 @@ export const partnerUsers = pgTable("partner_users", {
   username: varchar("username", { length: 50 }).notNull().unique(),
   email: varchar("email", { length: 255 }).notNull().unique(),
   passwordHash: text("password_hash").notNull(),
+  profilePictureUrl: text("profile_picture_url"),
   lastLoginAt: timestamp("last_login_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
@@ -64,9 +67,11 @@ export const chefs = pgTable("chefs", {
   rating: text("rating").notNull(),
   reviewCount: integer("review_count").notNull(),
   categoryId: text("category_id").notNull(),
-  latitude: real("latitude").default(19.0728), // Default: Kurla West
-  longitude: real("longitude").default(72.8826), // Default: Kurla West
+  latitude: real("latitude").notNull().default(19.0728),
+longitude: real("longitude").notNull().default(72.8826),
+
 });
+
 
 export const products = pgTable("products", {
   id: text("id").primaryKey(),
@@ -154,10 +159,23 @@ export const coupons = pgTable("coupons", {
   maxDiscount: integer("max_discount"),
   usageLimit: integer("usage_limit"),
   usedCount: integer("used_count").notNull().default(0),
-  validFrom: timestamp("valid_from").notNull(),
-  validUntil: timestamp("valid_until").notNull(),
+  validFrom: timestamp("valid_from", { withTimezone: true }).notNull(),
+  validUntil: timestamp("valid_until", { withTimezone: true }).notNull(),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const referrals = pgTable("referrals", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  referrerId: varchar("referrer_id").notNull(), // User who refers
+  referredId: varchar("referred_id").notNull(), // User who was referred
+  referralCode: varchar("referral_code", { length: 20 }).notNull().unique(),
+  status: varchar("status", { length: 20 }).notNull().default("pending"), // pending, completed, expired
+  referrerBonus: integer("referrer_bonus").notNull().default(0), // Bonus amount for referrer
+  referredBonus: integer("referred_bonus").notNull().default(0), // Bonus amount for referred user
+  referredOrderCompleted: boolean("referred_order_completed").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  completedAt: timestamp("completed_at"),
 });
 
 export const subscriptionStatusEnum = pgEnum("subscription_status", ["active", "paused", "cancelled", "expired"]);
@@ -351,3 +369,12 @@ export const insertCouponSchema = createInsertSchema(coupons).omit({
 
 export type InsertCoupon = z.infer<typeof insertCouponSchema>;
 export type Coupon = typeof coupons.$inferSelect;
+
+export const insertReferralSchema = createInsertSchema(referrals).omit({
+  id: true,
+  createdAt: true,
+  completedAt: true,
+});
+
+export type InsertReferral = z.infer<typeof insertReferralSchema>;
+export type Referral = typeof referrals.$inferSelect;

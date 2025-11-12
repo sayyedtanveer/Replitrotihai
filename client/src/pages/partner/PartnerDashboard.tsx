@@ -1,7 +1,7 @@
 
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Package, DollarSign, Clock, CheckCircle, Bell, Wifi, WifiOff, TrendingUp, Calendar } from "lucide-react";
+import { Package, DollarSign, Clock, CheckCircle, Bell, Wifi, WifiOff, TrendingUp, Calendar, UserCircle, LogOut } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -11,13 +11,21 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { usePartnerNotifications } from "@/hooks/usePartnerNotifications";
 import { useEffect, useState } from "react";
+import { useLocation } from "wouter";
 
 export default function PartnerDashboard() {
   const partnerToken = localStorage.getItem("partnerToken");
   const chefName = localStorage.getItem("partnerChefName");
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const { wsConnected, newOrdersCount, requestNotificationPermission, clearNewOrdersCount } = usePartnerNotifications();
   const [selectedTab, setSelectedTab] = useState("dashboard");
+
+  const handleLogout = () => {
+    localStorage.removeItem("partnerToken");
+    localStorage.removeItem("partnerChefName");
+    setLocation("/partner/login");
+  };
 
   useEffect(() => {
     requestNotificationPermission();
@@ -185,6 +193,22 @@ export default function PartnerDashboard() {
                 </>
               )}
             </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setLocation("/partner/profile")}
+              data-testid="button-profile"
+            >
+              <UserCircle className="h-5 w-5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleLogout}
+              data-testid="button-logout"
+            >
+              <LogOut className="h-5 w-5" />
+            </Button>
           </div>
         </div>
       </header>

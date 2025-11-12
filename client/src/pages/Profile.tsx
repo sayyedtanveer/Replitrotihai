@@ -8,14 +8,26 @@ import MenuDrawer from "@/components/MenuDrawer";
 import CartSidebar from "@/components/CartSidebar";
 import ChefListDrawer from "@/components/ChefListDrawer";
 import SubscriptionDrawer from "@/components/SubscriptionDrawer";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { User, Mail, MapPin, Phone, LogOut } from "lucide-react";
-import { Category } from "@shared/schema";
+import type { Category, Chef as BaseChef } from "@shared/schema";
+
+// ✅ Frontend-safe version of Chef (adds optional lat/long if Drizzle didn’t generate them yet)
+type FrontendChef = BaseChef & {
+  latitude?: number | null;
+  longitude?: number | null;
+};
 
 export default function Profile() {
   const { user: replitUser } = useAuth();
@@ -25,38 +37,88 @@ export default function Profile() {
   const parsedUserData = savedUserData ? JSON.parse(savedUserData) : null;
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
 
+  // 🧍 Fetch authenticated user
   const { data: phoneUser, isLoading: phoneUserLoading } = useQuery<ProfileUser>({
-  queryKey: ["/api/user/profile", userToken],
-  queryFn: async () => {
-    const res = await fetch("/api/user/profile", {
-      headers: {
-        Authorization: `Bearer ${userToken}`,
-      }
-    });
+    queryKey: ["/api/user/profile", userToken],
+    queryFn: async () => {
+      const res = await fetch("/api/user/profile", {
+        headers: { Authorization: `Bearer ${userToken}` },
+      });
+      if (!res.ok) throw new Error("Failed to load user");
+      return res.json();
+    },
+    enabled: !!userToken && !replitUser,
+  });
 
-    if (!res.ok) throw new Error("Failed to load user");
+  // 🧩 Categories
+  const { data: categories = [] } = useQuery<Category[]>({
+    queryKey: ["/api/categories"],
+    queryFn: async () => {
+      const res = await fetch("/api/categories");
+      return res.json();
+    },
+  });
 
-    return res.json();
-  },
-  enabled: !!userToken && !replitUser,
-});
-const { data: categories = [] } = useQuery<Category[]>({
-  queryKey: ["/api/categories"],
-  queryFn: async () => {
-    const res = await fetch("/api/categories");
-    return res.json();
-  }
-});
-const { data: chefs = [] } = useQuery<Chef[]>({
-  queryKey: ["/api/chefs"],
-  queryFn: async () => {
-    const res = await fetch("/api/chefs");
-    return res.json();
-  }
-});
+  // 🍳 Chefs — ensure lat/long exist
+  const { data: chefs = [] } = useQuery<FrontendChef[]>({
+    queryKey: ["/api/chefs"],
+    queryFn: async () => {
+      const res = await fetch("/api/chefs");
+      if (!res.ok) throw new Error("Failed to fetch chefs");
+      const data = await res.json();
 
+      return data.map((chef: any) => ({
+        ...chef,
+        latitude:
+          chef.latitude !== undefined && chef.latitude !== null
+            ? Number(chef.latitude)
+            : null,
+        longitude:
+          chef.longitude !== undefined && chef.longitude !== null
+            ? Number(chef.longitude)
+            : null,
+      })) as FrontendChef[];
+    },
+  });
 
+  // 🎁 Referral code
+  const { data: referralCode } = useQuery<{ referralCode: string }>({
+    queryKey: ["/api/user/referral-code", userToken],
+    queryFn: async () => {
+      const res = await fetch("/api/user/referral-code", {
+        headers: { Authorization: `Bearer ${userToken}` },
+      });
+      if (!res.ok) throw new Error("Failed to load referral code");
+      return res.json();
+    },
+    enabled: !!userToken,
+  });
 
+  // 👥 Referrals
+  const { data: referrals = [] } = useQuery<any[]>({
+    queryKey: ["/api/user/referrals", userToken],
+    queryFn: async () => {
+      const res = await fetch("/api/user/referrals", {
+        headers: { Authorization: `Bearer ${userToken}` },
+      });
+      if (!res.ok) throw new Error("Failed to load referrals");
+      return res.json();
+    },
+    enabled: !!userToken,
+  });
+
+  // 💰 Wallet
+  const { data: walletBalance } = useQuery<{ balance: number }>({
+    queryKey: ["/api/user/wallet", userToken],
+    queryFn: async () => {
+      const res = await fetch("/api/user/wallet", {
+        headers: { Authorization: `Bearer ${userToken}` },
+      });
+      if (!res.ok) throw new Error("Failed to load wallet balance");
+      return res.json();
+    },
+    enabled: !!userToken,
+  });
 
   const user: ProfileUser | null = replitUser || phoneUser || null;
   const isLoading = phoneUserLoading;
@@ -65,9 +127,6 @@ const { data: chefs = [] } = useQuery<Chef[]>({
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isChefListOpen, setIsChefListOpen] = useState(false);
   const [isSubscriptionOpen, setIsSubscriptionOpen] = useState(false);
-
-
-
 
   const handleLogout = () => {
     if (userToken) {
@@ -82,7 +141,7 @@ const { data: chefs = [] } = useQuery<Chef[]>({
 
   return (
     <div className="min-h-screen flex flex-col">
-      <Header 
+      <Header
         onMenuClick={() => setIsMenuOpen(true)}
         onCartClick={() => setIsCartOpen(true)}
         onChefListClick={() => setIsChefListOpen(true)}
@@ -118,117 +177,73 @@ const { data: chefs = [] } = useQuery<Chef[]>({
               </CardContent>
             </Card>
           ) : (
-          <div className="grid gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Profile Information</CardTitle>
-                <CardDescription>Your account details</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="flex items-center gap-6">
-                  <Avatar className="h-20 w-20">
-                    <AvatarFallback className="text-2xl">
-                      {(user.name?.[0] || user.phone?.[0] || "U").toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <h3 className="text-xl font-semibold">
-                      {user.name || `${user.firstName} ${user.lastName}` || "User"}
-                    </h3>
-                    {user.phone && <p className="text-muted-foreground">{user.phone}</p>}
-                    {user.email && <p className="text-sm text-muted-foreground">{user.email}</p>}
+            <>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Profile Information</CardTitle>
+                  <CardDescription>Your account details</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="flex items-center gap-6">
+                    <Avatar className="h-20 w-20">
+                      <AvatarFallback className="text-2xl">
+                        {(user.name?.[0] || user.phone?.[0] || "U").toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <h3 className="text-xl font-semibold">{user.name || "User"}</h3>
+                      {user.phone && <p className="text-muted-foreground">{user.phone}</p>}
+                      {user.email && (
+                        <p className="text-sm text-muted-foreground">{user.email}</p>
+                      )}
+                    </div>
                   </div>
-                </div>
 
-                <Separator />
+                  <Separator />
 
-                <div className="grid gap-4">
-                  {user.name && (
-                    <div className="grid gap-2">
-                      <Label htmlFor="name">Name</Label>
-                      <Input
-                        id="name"
-                        defaultValue={user.name}
-                        readOnly
-                        className="bg-muted"
-                      />
-                    </div>
-                  )}
-
-                  {user.phone && (
-                    <div className="grid gap-2">
-                      <Label htmlFor="phone">Phone Number</Label>
-                      <div className="flex gap-2">
-                        <Phone className="h-4 w-4 mt-3 text-muted-foreground" />
-                        <Input
-                          id="phone"
-                          defaultValue={user.phone}
-                          readOnly
-                          className="bg-muted"
-                        />
+                  <div className="grid gap-4">
+                    {user.address && (
+                      <div className="grid gap-2">
+                        <Label htmlFor="address">Address</Label>
+                        <div className="flex gap-2">
+                          <MapPin className="h-4 w-4 mt-3 text-muted-foreground" />
+                          <Input
+                            id="address"
+                            defaultValue={user.address}
+                            readOnly
+                            className="bg-muted"
+                          />
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
 
-                  {user.email && (
-                    <div className="grid gap-2">
-                      <Label htmlFor="email">Email</Label>
-                      <div className="flex gap-2">
-                        <Mail className="h-4 w-4 mt-3 text-muted-foreground" />
-                        <Input
-                          id="email"
-                          type="email"
-                          defaultValue={user.email}
-                          readOnly
-                          className="bg-muted"
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {user.address && (
-                    <div className="grid gap-2">
-                      <Label htmlFor="address">Address</Label>
-                      <div className="flex gap-2">
-                        <MapPin className="h-4 w-4 mt-3 text-muted-foreground" />
-                        <Input
-                          id="address"
-                          defaultValue={user.address}
-                          readOnly
-                          className="bg-muted"
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Account Actions</CardTitle>
-                <CardDescription>Manage your account</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <Button
-                  onClick={() => setLocation("/my-orders")}
-                  className="w-full sm:w-auto"
-                  data-testid="button-view-orders"
-                >
-                  View My Orders
-                </Button>
-                <Button
-                  variant="destructive"
-                  onClick={handleLogout}
-                  className="w-full sm:w-auto ml-0 sm:ml-2"
-                  data-testid="button-logout"
-                >
-                  <LogOut className="h-4 w-4 mr-2" />
-                  Logout
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
+              {userToken && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Account Actions</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <Button
+                      onClick={() => setLocation("/my-orders")}
+                      className="w-full sm:w-auto"
+                    >
+                      View My Orders
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      onClick={handleLogout}
+                      className="w-full sm:w-auto ml-0 sm:ml-2"
+                    >
+                      <LogOut className="h-4 w-4 mr-2" />
+                      Logout
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+            </>
           )}
         </div>
       </main>
@@ -245,22 +260,15 @@ const { data: chefs = [] } = useQuery<Chef[]>({
         }}
       />
 
-      <CartSidebar
-        isOpen={isCartOpen}
-        onClose={() => setIsCartOpen(false)}
-      />
+      <CartSidebar isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
 
       <ChefListDrawer
-  isOpen={isChefListOpen}
-  onClose={() => setIsChefListOpen(false)}
-  category={selectedCategory}
-  chefs={chefs}
-  onChefClick={(chef) => {
-    console.log("Selected chef:", chef);
-    // Navigate or open menu
-  }}
-/>
-
+        isOpen={isChefListOpen}
+        onClose={() => setIsChefListOpen(false)}
+        category={selectedCategory}
+        chefs={chefs}
+        onChefClick={(chef) => console.log("Selected chef:", chef)}
+      />
 
       <SubscriptionDrawer
         isOpen={isSubscriptionOpen}

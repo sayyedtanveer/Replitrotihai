@@ -63,25 +63,51 @@ export function requireAdmin(allowedRoles?: string[]) {
     const authHeader = req.headers.authorization;
 
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      res.status(401).json({ message: "No token provided" });
-      return;
+      return res.status(401).json({
+        message: "Session expired. Please log in again.",
+        reason: "no_token",
+      });
     }
 
     const token = authHeader.substring(7);
-    const payload = verifyToken(token);
 
-    if (!payload) {
-      res.status(401).json({ message: "Invalid or expired token" });
-      return;
+    try {
+      const payload = jwt.verify(token, JWT_SECRET) as AdminTokenPayload;
+
+      // ✅ Role-based access control
+      if (allowedRoles && !allowedRoles.includes(payload.role)) {
+        return res.status(403).json({
+          message: "You do not have permission to perform this action.",
+          reason: "forbidden",
+        });
+      }
+
+      req.admin = payload;
+      next();
+    } catch (error: any) {
+      console.error("❌ Admin auth error:", error.message);
+
+      // 🧠 Handle specific token errors
+      if (error.name === "TokenExpiredError") {
+        return res.status(401).json({
+          message: "Session expired. Please log in again.",
+          reason: "token_expired",
+        });
+      }
+
+      if (error.name === "JsonWebTokenError") {
+        return res.status(401).json({
+          message: "Invalid authentication token. Please log in again.",
+          reason: "token_invalid",
+        });
+      }
+
+      // Generic fallback
+      return res.status(401).json({
+        message: "Authentication failed. Please log in again.",
+        reason: "auth_failed",
+      });
     }
-
-    if (allowedRoles && !allowedRoles.includes(payload.role)) {
-      res.status(403).json({ message: "Insufficient permissions" });
-      return;
-    }
-
-    req.admin = payload;
-    next();
   };
 }
 

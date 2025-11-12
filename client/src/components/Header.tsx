@@ -45,9 +45,14 @@ export default function Header({ cartItemCount = 0, onCartClick, onMenuClick, se
             >
               <Menu className="h-4 w-4 sm:h-5 sm:w-5" />
             </Button>
-            <h1 className="text-xl sm:text-2xl font-bold text-primary" data-testid="text-logo">
-              RotiHai
-            </h1>
+            <div className="flex flex-col">
+              <h1 className="text-xl sm:text-2xl font-bold text-primary leading-tight" data-testid="text-logo">
+                RotiHai
+              </h1>
+              <span className="text-[10px] sm:text-xs text-muted-foreground font-medium -mt-1">
+                घर की रोटी
+              </span>
+            </div>
             <Button
               variant="ghost"
               className="hidden lg:flex items-center gap-2 h-9 text-sm"
