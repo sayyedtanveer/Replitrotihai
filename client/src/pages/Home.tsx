@@ -194,8 +194,12 @@ export default function Home() {
     const matchesCategory =
       searchLower || selectedCategoryTab === "all" || product.categoryId === selectedCategoryTab;
 
-    return matchesSearch && matchesCategory;
+    // Ensure the product is available
+    const isAvailable = product.isAvailable !== false;
+
+    return matchesSearch && matchesCategory && isAvailable;
   });
+
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -345,26 +349,26 @@ export default function Home() {
                           const lon1 = parseFloat(userLon);
                           const lat2 = chef.latitude;
                           const lon2 = chef.longitude;
-                          
+
                           // Validate coordinates are reasonable (within valid range)
                           if (lat1 >= -90 && lat1 <= 90 && lon1 >= -180 && lon1 <= 180 &&
                               lat2 >= -90 && lat2 <= 90 && lon2 >= -180 && lon2 <= 180) {
-                            
+
                             const toRad = (deg: number) => deg * (Math.PI / 180);
-                            
+
                             const dLat = toRad(lat2 - lat1);
                             const dLon = toRad(lon2 - lon1);
-                            
+
                             const a =
                               Math.sin(dLat / 2) * Math.sin(dLat / 2) +
                               Math.cos(toRad(lat1)) *
                               Math.cos(toRad(lat2)) *
                               Math.sin(dLon / 2) *
                               Math.sin(dLon / 2);
-                            
+
                             const c = 2 * Math.asin(Math.sqrt(a));
                             const calculatedDistance = R * c;
-                            
+
                             // Only set if distance is reasonable (< 100km for local delivery)
                             if (calculatedDistance < 100) {
                               distance = parseFloat(calculatedDistance.toFixed(1));

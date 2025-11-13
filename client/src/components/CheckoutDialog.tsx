@@ -7,6 +7,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+
+// TypeScript declaration for window timeout
+declare global {
+  interface Window {
+    phoneCheckTimeout?: NodeJS.Timeout;
+  }
+}
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -73,6 +80,9 @@ export default function CheckoutDialog({
   } | null>(null);
   const [couponError, setCouponError] = useState("");
   const [isVerifyingCoupon, setIsVerifyingCoupon] = useState(false);
+  const [isCheckingPhone, setIsCheckingPhone] = useState(false);
+  const [phoneExists, setPhoneExists] = useState<boolean | null>(null);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
 
   // ✅ Autofill user info if already logged in
   useEffect(() => {
@@ -95,6 +105,9 @@ export default function CheckoutDialog({
       setCouponCode("");
       setAppliedCoupon(null);
       setCouponError("");
+      setPhoneExists(null);
+      setShowForgotPassword(false);
+      setPassword("");
     }
   }, [isOpen]);
 
@@ -117,20 +130,38 @@ export default function CheckoutDialog({
       }
 
       try {
+        const lat = parseFloat(userLat);
+        const lon = parseFloat(userLon);
+
+        // Validate coordinates
+        if (isNaN(lat) || isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+          console.error('Invalid coordinates');
+          setDeliveryFee(40);
+          setDeliveryDistance(null);
+          return;
+        }
+
         const response = await fetch('/api/calculate-delivery', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            latitude: parseFloat(userLat),
-            longitude: parseFloat(userLon),
+            latitude: lat,
+            longitude: lon,
             chefId: cart.chefId,
           }),
         });
 
         if (response.ok) {
           const data = await response.json();
-          setDeliveryFee(data.deliveryFee);
-          setDeliveryDistance(data.distance);
+          // Validate the distance is reasonable (within 50km)
+          if (data.distance && data.distance < 50) {
+            setDeliveryFee(data.deliveryFee);
+            setDeliveryDistance(data.distance);
+          } else {
+            console.error('Distance out of range:', data.distance);
+            setDeliveryFee(40);
+            setDeliveryDistance(null);
+          }
         } else {
           setDeliveryFee(40);
           setDeliveryDistance(null);
@@ -207,6 +238,98 @@ export default function CheckoutDialog({
     setCouponError("");
   };
 
+  // 📱 Check if phone number exists
+  const checkPhoneNumber = async (phoneNumber: string) => {
+    if (!phoneNumber || phoneNumber.length < 10) {
+      setPhoneExists(null);
+      return;
+    }
+
+    setIsCheckingPhone(true);
+    try {
+      const response = await fetch("/api/user/check-phone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: phoneNumber }),
+      });
+
+      const data = await response.json();
+      setPhoneExists(data.exists);
+
+      if (data.exists) {
+        toast({
+          title: "Account Found",
+          description: "Please login to continue with your existing account.",
+          duration: 3000,
+        });
+        // Switch to login tab if phone exists
+        setActiveTab("login");
+      }
+    } catch (error) {
+      console.error("Error checking phone:", error);
+    } finally {
+      setIsCheckingPhone(false);
+    }
+  };
+
+  // Handle phone input change with debounce
+  const handlePhoneChange = (value: string) => {
+    setPhone(value);
+    setPhoneExists(null);
+    setShowForgotPassword(false); // Reset forgot password state
+    
+    // Clear any existing timeout
+    if (window.phoneCheckTimeout) {
+      clearTimeout(window.phoneCheckTimeout);
+    }
+
+    // Check phone after 1 second of no typing
+    if (value.length >= 10 && !userToken) {
+      window.phoneCheckTimeout = setTimeout(() => {
+        checkPhoneNumber(value);
+      }, 1000);
+    } else if (value.length < 10) {
+      // Reset state if phone is incomplete
+      setPhoneExists(null);
+    }
+  };
+
+  // 🔑 Forgot password handler
+  const handleForgotPassword = async () => {
+    if (!phone) {
+      toast({
+        title: "Phone Required",
+        description: "Please enter your phone number first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/user/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone }),
+      });
+
+      if (!response.ok) throw new Error("Failed to reset password");
+
+      const data = await response.json();
+      toast({
+        title: "Password Reset",
+        description: `Your new password: ${data.newPassword}. Please save it and change it after login.`,
+        duration: 15000,
+      });
+      setShowForgotPassword(false);
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to reset password. Please contact support.",
+        variant: "destructive",
+      });
+    }
+  };
+
   // 🔐 Login handler
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -252,6 +375,17 @@ export default function CheckoutDialog({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!cart) return;
+
+    // ⚠️ Prevent checkout if phone exists but user not logged in
+    if (phoneExists && !userToken) {
+      toast({
+        title: "Login Required",
+        description: "Please login to continue with your existing account.",
+        variant: "destructive",
+      });
+      setActiveTab("login");
+      return;
+    }
 
     setIsLoading(true);
 
@@ -377,7 +511,11 @@ export default function CheckoutDialog({
             className="w-full"
           >
             <TabsList className="grid w-full grid-cols-2 h-9">
-              <TabsTrigger value="checkout" className="text-xs sm:text-sm">
+              <TabsTrigger 
+                value="checkout" 
+                className="text-xs sm:text-sm"
+                disabled={phoneExists && !userToken}
+              >
                 {userToken ? "Place Order" : "Guest Checkout"}
               </TabsTrigger>
               <TabsTrigger
@@ -398,6 +536,12 @@ export default function CheckoutDialog({
                       ✓ Logged in as {parsedUserData?.name || parsedUserData?.phone}
                     </div>
                   )}
+                  
+                  {phoneExists && !userToken && (
+                    <div className="bg-orange-50 dark:bg-orange-950 border border-orange-200 dark:border-orange-800 rounded-md p-2 sm:p-3 text-xs sm:text-sm text-orange-800 dark:text-orange-200">
+                      ⚠️ This phone number is already registered. Please switch to the Login tab to continue.
+                    </div>
+                  )}
 
                   <div>
                     <Label htmlFor="customerName" className="text-sm">
@@ -415,14 +559,27 @@ export default function CheckoutDialog({
                     <Label htmlFor="phone" className="text-sm">
                       Phone Number *
                     </Label>
-                    <Input
-                      id="phone"
-                      type="tel"
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      required
-                      disabled={!!userToken}
-                    />
+                    <div className="relative">
+                      <Input
+                        id="phone"
+                        type="tel"
+                        value={phone}
+                        onChange={(e) => handlePhoneChange(e.target.value)}
+                        required
+                        disabled={!!userToken}
+                        placeholder="Enter 10-digit mobile number"
+                      />
+                      {isCheckingPhone && (
+                        <div className="absolute right-3 top-3">
+                          <div className="h-4 w-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                        </div>
+                      )}
+                    </div>
+                    {phoneExists && !userToken && (
+                      <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">
+                        ⚠️ This number is registered. Please login to continue.
+                      </p>
+                    )}
                   </div>
 
                   <div>
@@ -507,7 +664,12 @@ export default function CheckoutDialog({
                     <span>₹{subtotal}</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span>Delivery Fee{deliveryDistance ? ` (${deliveryDistance.toFixed(1)}km)` : ''}:</span>
+                    <span>
+                      Delivery Fee
+                      {deliveryDistance && deliveryDistance < 100 
+                        ? ` (${deliveryDistance.toFixed(1)} km)` 
+                        : ''}:
+                    </span>
                     <span>₹{deliveryFee}</span>
                   </div>
                   {discount > 0 && (
@@ -551,24 +713,60 @@ export default function CheckoutDialog({
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
                       required
+                      placeholder="Enter your registered number"
                     />
                   </div>
 
                   <div>
-                    <Label htmlFor="login-password" className="text-sm">
-                      Password *
-                    </Label>
+                    <div className="flex items-center justify-between mb-1">
+                      <Label htmlFor="login-password" className="text-sm">
+                        Password *
+                      </Label>
+                      <button
+                        type="button"
+                        onClick={() => setShowForgotPassword(true)}
+                        className="text-xs text-primary hover:underline"
+                      >
+                        Forgot Password?
+                      </button>
+                    </div>
                     <Input
                       id="login-password"
                       type="password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       required
+                      placeholder="Enter your password"
                     />
                     <p className="text-xs text-muted-foreground mt-1">
                       Default password is the last 6 digits of your phone number
                     </p>
                   </div>
+
+                  {showForgotPassword && (
+                    <div className="bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 rounded-md p-3 space-y-2">
+                      <p className="text-xs text-yellow-800 dark:text-yellow-200">
+                        Reset your password? A new password will be sent to you.
+                      </p>
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setShowForgotPassword(false)}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={handleForgotPassword}
+                        >
+                          Reset Password
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <DialogFooter className="gap-2 flex-col sm:flex-row">

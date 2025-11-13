@@ -43,6 +43,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Check if phone number exists
+  app.post("/api/user/check-phone", async (req, res) => {
+    try {
+      const { phone } = req.body;
+      
+      if (!phone) {
+        res.status(400).json({ message: "Phone number is required" });
+        return;
+      }
+
+      const user = await storage.getUserByPhone(phone);
+      res.json({ exists: !!user });
+    } catch (error) {
+      console.error("Phone check error:", error);
+      res.status(500).json({ message: "Failed to check phone number" });
+    }
+  });
+
+  // Reset password endpoint
+  app.post("/api/user/reset-password", async (req, res) => {
+    try {
+      const { phone } = req.body;
+
+      if (!phone) {
+        res.status(400).json({ message: "Phone number is required" });
+        return;
+      }
+
+      const user = await storage.getUserByPhone(phone);
+      if (!user) {
+        res.status(404).json({ message: "User not found" });
+        return;
+      }
+
+      // Generate new password (last 6 digits of phone + first 2 letters of name)
+      const newPassword = phone.slice(-6) + (user.name ? user.name.slice(0, 2).toLowerCase() : "00");
+      const passwordHash = await hashPassword(newPassword);
+
+      await storage.updateUser(user.id, { passwordHash });
+
+      res.json({ 
+        message: "Password reset successful",
+        newPassword 
+      });
+    } catch (error) {
+      console.error("Password reset error:", error);
+      res.status(500).json({ message: "Failed to reset password" });
+    }
+  });
+
   // User phone-based authentication routes
   app.post("/api/user/register", async (req, res) => {
     try {
@@ -278,6 +328,24 @@ app.post("/api/user/logout", async (req, res) => {
     }
   });
 
+  // Get user's referral code
+  app.get("/api/user/referral-code", requireUser(), async (req: AuthenticatedUserRequest, res) => {
+    try {
+      const userId = req.authenticatedUser!.userId;
+      const referralCode = await storage.getUserReferralCode(userId);
+      
+      if (!referralCode) {
+        res.status(404).json({ message: "No referral code found. Generate one first." });
+        return;
+      }
+      
+      res.json({ referralCode });
+    } catch (error: any) {
+      console.error("Error fetching referral code:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch referral code" });
+    }
+  });
+
   // Get user's wallet balance
   app.get("/api/user/wallet", requireUser(), async (req: AuthenticatedUserRequest, res) => {
     try {
@@ -287,6 +355,31 @@ app.post("/api/user/logout", async (req, res) => {
     } catch (error: any) {
       console.error("Error fetching wallet balance:", error);
       res.status(500).json({ message: error.message || "Failed to fetch wallet balance" });
+    }
+  });
+
+  // Get wallet transactions
+  app.get("/api/user/wallet/transactions", requireUser(), async (req: AuthenticatedUserRequest, res) => {
+    try {
+      const userId = req.authenticatedUser!.userId;
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      const transactions = await storage.getWalletTransactions(userId, limit);
+      res.json(transactions);
+    } catch (error: any) {
+      console.error("Error fetching wallet transactions:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch wallet transactions" });
+    }
+  });
+
+  // Get referral stats
+  app.get("/api/user/referral-stats", requireUser(), async (req: AuthenticatedUserRequest, res) => {
+    try {
+      const userId = req.authenticatedUser!.userId;
+      const stats = await storage.getReferralStats(userId);
+      res.json(stats);
+    } catch (error: any) {
+      console.error("Error fetching referral stats:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch referral stats" });
     }
   });
 

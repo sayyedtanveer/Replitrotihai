@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useLocation } from "wouter";
+import { useToast } from "@/hooks/use-toast";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import MenuDrawer from "@/components/MenuDrawer";
@@ -32,6 +33,8 @@ type FrontendChef = BaseChef & {
 export default function Profile() {
   const { user: replitUser } = useAuth();
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const userToken = localStorage.getItem("userToken");
   const savedUserData = localStorage.getItem("userData");
   const parsedUserData = savedUserData ? JSON.parse(savedUserData) : null;
@@ -221,27 +224,137 @@ export default function Profile() {
               </Card>
 
               {userToken && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Account Actions</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <Button
-                      onClick={() => setLocation("/my-orders")}
-                      className="w-full sm:w-auto"
-                    >
-                      View My Orders
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      onClick={handleLogout}
-                      className="w-full sm:w-auto ml-0 sm:ml-2"
-                    >
-                      <LogOut className="h-4 w-4 mr-2" />
-                      Logout
-                    </Button>
-                  </CardContent>
-                </Card>
+                <>
+                  {/* Wallet & Referral Section */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>💰 Wallet & Referrals</CardTitle>
+                      <CardDescription>Your rewards and referral earnings</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                      {/* Wallet Balance */}
+                      <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950 dark:to-emerald-950 p-4 rounded-lg">
+                        <p className="text-sm text-muted-foreground mb-1">Wallet Balance</p>
+                        <p className="text-3xl font-bold text-green-600 dark:text-green-400">
+                          ₹{walletBalance?.balance || 0}
+                        </p>
+                      </div>
+
+                      <Separator />
+
+                      {/* Referral Code */}
+                      <div>
+                        <h3 className="font-semibold mb-3">Your Referral Code</h3>
+                        {referralCode?.referralCode ? (
+                          <div className="bg-primary/10 p-4 rounded-lg border-2 border-primary/20">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="text-xs text-muted-foreground mb-1">Share this code</p>
+                                <p className="text-2xl font-bold font-mono tracking-wider">
+                                  {referralCode.referralCode}
+                                </p>
+                              </div>
+                              <Button
+                                size="sm"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(referralCode.referralCode);
+                                  toast({
+                                    title: "Copied!",
+                                    description: "Referral code copied to clipboard",
+                                  });
+                                }}
+                              >
+                                Copy
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <Button
+                            onClick={async () => {
+                              try {
+                                const res = await fetch("/api/user/generate-referral", {
+                                  method: "POST",
+                                  headers: { Authorization: `Bearer ${userToken}` },
+                                });
+                                if (res.ok) {
+                                  queryClient.invalidateQueries({ queryKey: ["/api/user/referral-code"] });
+                                  toast({
+                                    title: "Success!",
+                                    description: "Your referral code has been generated",
+                                  });
+                                }
+                              } catch (error) {
+                                toast({
+                                  title: "Error",
+                                  description: "Failed to generate referral code",
+                                  variant: "destructive",
+                                });
+                              }
+                            }}
+                          >
+                            Generate Referral Code
+                          </Button>
+                        )}
+                      </div>
+
+                      {/* Referral Stats */}
+                      {referrals.length > 0 && (
+                        <>
+                          <Separator />
+                          <div>
+                            <h3 className="font-semibold mb-3">Your Referrals</h3>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="bg-blue-50 dark:bg-blue-950 p-3 rounded-lg">
+                                <p className="text-xs text-muted-foreground">Total Referrals</p>
+                                <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                                  {referrals.length}
+                                </p>
+                              </div>
+                              <div className="bg-green-50 dark:bg-green-950 p-3 rounded-lg">
+                                <p className="text-xs text-muted-foreground">Completed</p>
+                                <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+                                  {referrals.filter(r => r.status === "completed").length}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        </>
+                      )}
+
+                      {/* How it Works */}
+                      <div className="bg-muted/50 p-4 rounded-lg">
+                        <h4 className="font-semibold mb-2 text-sm">How Referrals Work</h4>
+                        <ul className="text-xs space-y-1 text-muted-foreground">
+                          <li>• Share your code with friends</li>
+                          <li>• They get ₹50 bonus on signup</li>
+                          <li>• You get ₹100 when they complete their first order</li>
+                        </ul>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Account Actions</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <Button
+                        onClick={() => setLocation("/my-orders")}
+                        className="w-full sm:w-auto"
+                      >
+                        View My Orders
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        onClick={handleLogout}
+                        className="w-full sm:w-auto ml-0 sm:ml-2"
+                      >
+                        <LogOut className="h-4 w-4 mr-2" />
+                        Logout
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </>
               )}
             </>
           )}

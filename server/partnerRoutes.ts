@@ -68,9 +68,12 @@ export function registerPartnerRoutes(app: Express): void {
         return;
       }
 
-      const updatedOrder = await storage.acceptOrder(orderId, partnerId!);
+      // Accept order and change status to preparing
+      let updatedOrder = await storage.acceptOrder(orderId, partnerId!);
       
       if (updatedOrder) {
+        // Update status to preparing when chef accepts
+        updatedOrder = await storage.updateOrderStatus(orderId, "preparing") || updatedOrder;
         broadcastOrderUpdate(updatedOrder);
       }
 

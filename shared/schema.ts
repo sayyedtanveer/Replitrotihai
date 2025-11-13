@@ -126,10 +126,13 @@ export const orders = pgTable("orders", {
   paymentQrShown: boolean("payment_qr_shown").notNull().default(false),
   chefId: text("chef_id"),
   approvedBy: text("approved_by"),
+  rejectedAt: timestamp("rejected_at"),
   approvedAt: timestamp("approved_at"),
   rejectedBy: text("rejected_by"),
   rejectionReason: text("rejection_reason"),
   assignedTo: text("assigned_to"),
+  deliveryPersonName: text("delivery_person_name"),
+  deliveryPersonPhone: text("delivery_person_phone"),
   assignedAt: timestamp("assigned_at"),
   pickedUpAt: timestamp("picked_up_at"),
   deliveredAt: timestamp("delivered_at"),
@@ -169,13 +172,47 @@ export const referrals = pgTable("referrals", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   referrerId: varchar("referrer_id").notNull(), // User who refers
   referredId: varchar("referred_id").notNull(), // User who was referred
-  referralCode: varchar("referral_code", { length: 20 }).notNull().unique(),
+  referralCode: varchar("referral_code", { length: 20 }).notNull(),
   status: varchar("status", { length: 20 }).notNull().default("pending"), // pending, completed, expired
   referrerBonus: integer("referrer_bonus").notNull().default(0), // Bonus amount for referrer
   referredBonus: integer("referred_bonus").notNull().default(0), // Bonus amount for referred user
   referredOrderCompleted: boolean("referred_order_completed").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   completedAt: timestamp("completed_at"),
+}, (table) => [
+  index("IDX_referrals_referrer").on(table.referrerId, table.status),
+  index("IDX_referrals_referred").on(table.referredId),
+]);
+
+export const transactionTypeEnum = pgEnum("transaction_type", ["credit", "debit", "referral_bonus", "order_discount"]);
+
+export const walletTransactions = pgTable("wallet_transactions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  amount: integer("amount").notNull(),
+  type: transactionTypeEnum("type").notNull(),
+  description: text("description").notNull(),
+  referenceId: varchar("reference_id"), // Order ID or Referral ID
+  referenceType: varchar("reference_type", { length: 50 }), // 'order', 'referral', etc
+  balanceBefore: integer("balance_before").notNull(),
+  balanceAfter: integer("balance_after").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("IDX_wallet_user_created").on(table.userId, table.createdAt),
+]);
+
+export const referralRewards = pgTable("referral_rewards", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  referrerBonus: integer("referrer_bonus").notNull().default(50), // ₹50 for referrer
+  referredBonus: integer("referred_bonus").notNull().default(50), // ₹50 for referred user
+  minOrderAmount: integer("min_order_amount").notNull().default(0), // Min order to qualify
+  maxReferralsPerMonth: integer("max_referrals_per_month").default(10),
+  maxEarningsPerMonth: integer("max_earnings_per_month").default(500),
+  expiryDays: integer("expiry_days").default(30), // Days for referred user to complete first order
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
 export const subscriptionStatusEnum = pgEnum("subscription_status", ["active", "paused", "cancelled", "expired"]);
@@ -232,20 +269,28 @@ const orderItemSchema = z.object({
   quantity: z.number(),
 });
 
-export const insertOrderSchema = z.object({
-  customerName: z.string().min(1, "Customer name is required"),
-  phone: z.string().min(1, "Phone number is required"),
-  email: z.string().email().optional().or(z.literal("")),
-  address: z.string().min(1, "Delivery address is required"),
-  items: z.array(orderItemSchema).min(1, "At least one item is required"),
-  subtotal: z.number().min(0),
-  deliveryFee: z.number().min(0),
-  discount: z.number().min(0).default(0),
-  couponCode: z.string().optional().nullable(),
-  total: z.number().min(0),
-  chefId: z.string(),
-  paymentStatus: z.enum(["pending", "paid", "confirmed", "failed"]).default("pending"),
-  userId: z.string().optional(),
+export const insertOrderSchema = createInsertSchema(orders, {
+  items: z.array(z.object({
+    id: z.string(),
+    name: z.string(),
+    price: z.number(),
+    quantity: z.number(),
+  })),
+  status: z.enum(['pending', 'confirmed', 'assigned', 'preparing', 'out_for_delivery', 'delivered', 'cancelled', 'completed']).default('pending'),
+  paymentStatus: z.enum(['pending', 'paid', 'confirmed']).default('pending'),
+}).omit({
+  id: true,
+  createdAt: true,
+  approvedAt: true,
+  approvedBy: true,
+  rejectedAt: true,
+  rejectedBy: true,
+  rejectionReason: true,
+  pickedUpAt: true,
+  deliveredAt: true,
+  assignedTo: true,
+  deliveryPersonName: true,
+  deliveryPersonPhone: true,
 });
 
 export type InsertCategory = z.infer<typeof insertCategorySchema>;
@@ -378,3 +423,20 @@ export const insertReferralSchema = createInsertSchema(referrals).omit({
 
 export type InsertReferral = z.infer<typeof insertReferralSchema>;
 export type Referral = typeof referrals.$inferSelect;
+
+export const insertWalletTransactionSchema = createInsertSchema(walletTransactions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertWalletTransaction = z.infer<typeof insertWalletTransactionSchema>;
+export type WalletTransaction = typeof walletTransactions.$inferSelect;
+
+export const insertReferralRewardSchema = createInsertSchema(referralRewards).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertReferralReward = z.infer<typeof insertReferralRewardSchema>;
+export type ReferralReward = typeof referralRewards.$inferSelect;

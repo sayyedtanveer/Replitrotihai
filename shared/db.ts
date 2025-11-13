@@ -32,5 +32,7 @@ export const {
   deliverySettings,
   deliveryPersonnel,
   coupons,
-  referrals
+  referrals,
+  walletTransactions,
+  referralRewards
 } = schema;

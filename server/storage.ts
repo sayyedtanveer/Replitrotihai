@@ -1,9 +1,9 @@
-import { type Category, type InsertCategory, type Product, type InsertProduct, type Order, type InsertOrder, type User, type UpsertUser, type Chef, type AdminUser, type InsertAdminUser, type PartnerUser, type Subscription, type SubscriptionPlan, type DeliverySetting, type InsertDeliverySetting, type DeliveryPersonnel, type InsertDeliveryPersonnel } from "@shared/schema";
+import { type Category, type InsertCategory, type Product, type InsertProduct, type Order, type InsertOrder, type User, type UpsertUser, type Chef, type AdminUser, type InsertAdminUser, type PartnerUser, type Subscription, type SubscriptionPlan, type DeliverySetting, type InsertDeliverySetting, type DeliveryPersonnel, type InsertDeliveryPersonnel, type WalletTransaction, type ReferralReward } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { nanoid } from "nanoid";
 import { eq, and, gte, lte, desc, or, isNull, sql } from "drizzle-orm";
 import { db, users, categories, products, orders, chefs, adminUsers, partnerUsers, subscriptions, 
-  subscriptionPlans, deliverySettings, deliveryPersonnel, coupons, referrals } from "@shared/db";
+  subscriptionPlans, deliverySettings, deliveryPersonnel, coupons, referrals, walletTransactions, referralRewards } from "@shared/db";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -121,6 +121,27 @@ export interface IStorage {
   getReferralsByUser(userId: string): Promise<any[]>;
   getUserWalletBalance(userId: string): Promise<number>;
   updateWalletBalance(userId: string, amount: number): Promise<void>;
+
+  // Enhanced Wallet & Referral methods
+  createWalletTransaction(transaction: {
+    userId: string;
+    amount: number;
+    type: "credit" | "debit" | "referral_bonus" | "order_discount";
+    description: string;
+    referenceId?: string;
+    referenceType?: string;
+  }): Promise<void>;
+  getWalletTransactions(userId: string, limit?: number): Promise<any[]>;
+  getReferralStats(userId: string): Promise<{
+    totalReferrals: number;
+    pendingReferrals: number;
+    completedReferrals: number;
+    totalEarnings: number;
+    referralCode: string;
+  }>;
+  getUserReferralCode(userId: string): Promise<string | null>;
+  markReferralComplete(referralId: string): Promise<void>;
+  checkReferralEligibility(userId: string): Promise<{ eligible: boolean; reason?: string }>;
 }
 
 export class MemStorage implements IStorage {
@@ -845,19 +866,24 @@ export class MemStorage implements IStorage {
   }
 
   async assignOrderToDeliveryPerson(orderId: string, deliveryPersonId: string): Promise<Order | undefined> {
-    const [order] = await db
-      .update(orders)
-      .set({
-        assignedTo: deliveryPersonId,
-        assignedAt: new Date(),
-        status: "assigned"
-      })
-      .where(eq(orders.id, orderId))
-      .returning();
+    try {
+      const [updatedOrder] = await db
+        .update(orders)
+        .set({ 
+          assignedTo: deliveryPersonId,
+          assignedAt: new Date(),
+          status: "assigned"
+        })
+        .where(eq(orders.id, orderId))
+        .returning();
 
-    await db.update(deliveryPersonnel).set({ status: "busy" }).where(eq(deliveryPersonnel.id, deliveryPersonId));
+      await db.update(deliveryPersonnel).set({ status: "busy" }).where(eq(deliveryPersonnel.id, deliveryPersonId));
 
-    return order;
+      return updatedOrder || undefined;
+    } catch (error) {
+      console.error("Error assigning order to delivery person:", error);
+      throw error;
+    }
   }
 
   async updateOrderPickup(orderId: string): Promise<Order | undefined> {
@@ -993,6 +1019,111 @@ export class MemStorage implements IStorage {
     await db.update(users)
       .set({ walletBalance: sql`${users.walletBalance} + ${amount}` })
       .where(eq(users.id, userId));
+  }
+
+  async createWalletTransaction(transaction: {
+    userId: string;
+    amount: number;
+    type: "credit" | "debit" | "referral_bonus" | "order_discount";
+    description: string;
+    referenceId?: string;
+    referenceType?: string;
+  }): Promise<void> {
+    const user = await this.getUser(transaction.userId);
+    if (!user) throw new Error("User not found");
+
+    const balanceBefore = user.walletBalance;
+    const balanceAfter = balanceBefore + (transaction.type === "debit" ? -transaction.amount : transaction.amount);
+
+    await db.insert(walletTransactions).values({
+      userId: transaction.userId,
+      amount: transaction.amount,
+      type: transaction.type,
+      description: transaction.description,
+      referenceId: transaction.referenceId || null,
+      referenceType: transaction.referenceType || null,
+      balanceBefore,
+      balanceAfter,
+    });
+
+    // Update user's wallet balance
+    await db.update(users)
+      .set({ walletBalance: balanceAfter })
+      .where(eq(users.id, transaction.userId));
+  }
+
+  async getWalletTransactions(userId: string, limit: number = 50): Promise<any[]> {
+    return db.query.walletTransactions.findMany({
+      where: (t, { eq }) => eq(t.userId, userId),
+      orderBy: (t, { desc }) => [desc(t.createdAt)],
+      limit,
+    });
+  }
+
+  async getReferralStats(userId: string): Promise<{
+    totalReferrals: number;
+    pendingReferrals: number;
+    completedReferrals: number;
+    totalEarnings: number;
+    referralCode: string;
+  }> {
+    const user = await this.getUser(userId);
+    const referralCode = user?.referralCode || "";
+
+    const allReferrals = await db.query.referrals.findMany({
+      where: (r, { eq }) => eq(r.referrerId, userId),
+    });
+
+    const totalReferrals = allReferrals.length;
+    const pendingReferrals = allReferrals.filter(r => r.status === "pending").length;
+    const completedReferrals = allReferrals.filter(r => r.status === "completed").length;
+    const totalEarnings = allReferrals
+      .filter(r => r.status === "completed")
+      .reduce((sum, r) => sum + r.referrerBonus, 0);
+
+    return {
+      totalReferrals,
+      pendingReferrals,
+      completedReferrals,
+      totalEarnings,
+      referralCode,
+    };
+  }
+
+  async getUserReferralCode(userId: string): Promise<string | null> {
+    const user = await this.getUser(userId);
+    return user?.referralCode || null;
+  }
+
+  async markReferralComplete(referralId: string): Promise<void> {
+    await db.update(referrals)
+      .set({ status: "completed", completedAt: new Date() })
+      .where(eq(referrals.id, referralId));
+  }
+
+  async checkReferralEligibility(userId: string): Promise<{ eligible: boolean; reason?: string }> {
+    // Check if user has completed their first order
+    const userOrders = await this.getOrdersByUserId(userId);
+    const completedOrders = userOrders.filter(o => o.status === "delivered");
+
+    if (completedOrders.length > 0) {
+      return { eligible: false, reason: "User has already completed an order" };
+    }
+
+    // Check if user was referred
+    const referral = await db.query.referrals.findFirst({
+      where: (r, { eq }) => eq(r.referredId, userId),
+    });
+
+    if (!referral) {
+      return { eligible: false, reason: "User was not referred" };
+    }
+
+    if (referral.status === "completed") {
+      return { eligible: false, reason: "Referral bonus already claimed" };
+    }
+
+    return { eligible: true };
   }
 
   private mapOrder(order: any): Order {

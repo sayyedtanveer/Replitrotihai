@@ -328,10 +328,16 @@ export function registerAdminRoutes(app: Express) {
         return;
       }
 
-      const order = await storage.assignOrderToDeliveryPerson(id, deliveryPersonId);
+      // First assign the delivery person
+      let order = await storage.assignOrderToDeliveryPerson(id, deliveryPersonId);
       if (!order) {
         res.status(404).json({ message: "Order not found" });
         return;
+      }
+
+      // Update status to 'assigned' if order is confirmed
+      if (order.status === "confirmed") {
+        order = await storage.updateOrderStatus(id, "assigned") || order;
       }
 
       broadcastOrderUpdate(order);

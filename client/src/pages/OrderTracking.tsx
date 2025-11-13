@@ -380,6 +380,33 @@ export default function OrderTracking() {
               </div>
             </CardContent>
           </Card>
+
+          {order.assignedTo && order.deliveryPersonName && (
+            <Card className="col-span-2">
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Truck className="h-5 w-5" />
+                  Delivery Person
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                    <Truck className="h-6 w-6 text-primary" />
+                  </div>
+                  <div>
+                    <p className="font-medium">{order.deliveryPersonName}</p>
+                    {order.deliveryPersonPhone && (
+                      <div className="flex items-center gap-2 mt-1">
+                        <Phone className="h-4 w-4 text-muted-foreground" />
+                        <p className="text-sm text-muted-foreground">{order.deliveryPersonPhone}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {order.status === "delivered" && (

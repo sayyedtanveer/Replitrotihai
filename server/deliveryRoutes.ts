@@ -90,7 +90,8 @@ export function registerDeliveryRoutes(app: Express) {
         return;
       }
 
-      await storage.updateOrderStatus(orderId, "preparing");
+      // Just acknowledge acceptance - don't change status yet
+      // Status will be changed to 'preparing' when chef starts preparing
       const updatedOrder = await storage.getOrderById(orderId);
       
       if (updatedOrder) {

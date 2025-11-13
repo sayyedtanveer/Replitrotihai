@@ -8,11 +8,13 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
-import type { Order } from "@shared/schema";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import type { Order, DeliveryPersonnel } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { format } from "date-fns";
-import { Search, Filter } from "lucide-react";
+import { Search, Filter, Truck, User } from "lucide-react";
 import { useState } from "react";
 
 export default function AdminOrders() {
@@ -20,6 +22,9 @@ export default function AdminOrders() {
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  const [selectedOrderForAssignment, setSelectedOrderForAssignment] = useState<Order | null>(null);
+  const [selectedDeliveryPersonId, setSelectedDeliveryPersonId] = useState("");
   const itemsPerPage = 100;
 
   const { data: orders, isLoading } = useQuery<Order[]>({
@@ -46,6 +51,18 @@ export default function AdminOrders() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) throw new Error("Failed to fetch chefs");
+      return response.json();
+    },
+  });
+
+  const { data: deliveryPersonnel } = useQuery<DeliveryPersonnel[]>({
+    queryKey: ["/api/admin", "delivery-personnel"],
+    queryFn: async () => {
+      const token = localStorage.getItem("adminToken");
+      const response = await fetch("/api/admin/delivery-personnel", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error("Failed to fetch delivery personnel");
       return response.json();
     },
   });
@@ -81,6 +98,40 @@ export default function AdminOrders() {
     },
   });
 
+  const assignDeliveryMutation = useMutation({
+    mutationFn: async ({ orderId, deliveryPersonId }: { orderId: string; deliveryPersonId: string }) => {
+      const token = localStorage.getItem("adminToken");
+      const response = await fetch(`/api/admin/orders/${orderId}/assign`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ deliveryPersonId }),
+      });
+      if (!response.ok) throw new Error("Failed to assign delivery person");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin", "orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin", "delivery-personnel"] });
+      setAssignDialogOpen(false);
+      setSelectedOrderForAssignment(null);
+      setSelectedDeliveryPersonId("");
+      toast({
+        title: "Delivery assigned",
+        description: "Delivery person has been assigned successfully",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Assignment failed",
+        description: "Failed to assign delivery person",
+        variant: "destructive",
+      });
+    },
+  });
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case "pending":
@@ -99,6 +150,41 @@ export default function AdminOrders() {
       default:
         return "bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-200";
     }
+  };
+
+  const canAssignDelivery = (order: Order) => {
+    return order.status === "confirmed" || order.status === "preparing";
+  };
+
+  const getDeliveryPersonName = (deliveryPersonId: string | null) => {
+    if (!deliveryPersonId || !deliveryPersonnel) return null;
+    const person = deliveryPersonnel.find((dp) => dp.id === deliveryPersonId);
+    return person ? person.name : "Unknown";
+  };
+
+  const availableDeliveryPersonnel = deliveryPersonnel?.filter((dp) => 
+    dp.isActive && dp.status === "available"
+  ) || [];
+
+  const handleOpenAssignDialog = (order: Order) => {
+    setSelectedOrderForAssignment(order);
+    setSelectedDeliveryPersonId(order.assignedTo || "");
+    setAssignDialogOpen(true);
+  };
+
+  const handleAssignDelivery = () => {
+    if (!selectedOrderForAssignment || !selectedDeliveryPersonId) {
+      toast({
+        title: "Validation error",
+        description: "Please select a delivery person",
+        variant: "destructive",
+      });
+      return;
+    }
+    assignDeliveryMutation.mutate({
+      orderId: selectedOrderForAssignment.id,
+      deliveryPersonId: selectedDeliveryPersonId,
+    });
   };
 
   // Filter and search orders
@@ -201,6 +287,7 @@ export default function AdminOrders() {
                       <TableHead>Items</TableHead>
                       <TableHead>Total</TableHead>
                       <TableHead>Chef</TableHead>
+                      <TableHead>Delivery</TableHead>
                       <TableHead>Date</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Action</TableHead>
@@ -236,6 +323,29 @@ export default function AdminOrders() {
                           ) : (
                             <span className="text-sm text-slate-400">-</span>
                           )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col gap-2">
+                            {order.assignedTo ? (
+                              <Badge variant="outline" className="flex items-center gap-1 w-fit">
+                                <User className="h-3 w-3" />
+                                {getDeliveryPersonName(order.assignedTo)}
+                              </Badge>
+                            ) : (
+                              <span className="text-sm text-slate-400">Not assigned</span>
+                            )}
+                            {canAssignDelivery(order) && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleOpenAssignDialog(order)}
+                                data-testid={`button-assign-delivery-${order.id}`}
+                              >
+                                <Truck className="h-3 w-3 mr-1" />
+                                {order.assignedTo ? "Reassign" : "Assign"}
+                              </Button>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell className="text-sm">
                           <div>
@@ -327,6 +437,83 @@ export default function AdminOrders() {
             )}
           </CardContent>
         </Card>
+
+        {/* Assign Delivery Person Dialog */}
+        <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Assign Delivery Person</DialogTitle>
+              <DialogDescription>
+                {selectedOrderForAssignment && (
+                  <>
+                    Assign a delivery person to Order #{selectedOrderForAssignment.id.slice(0, 8)} for {selectedOrderForAssignment.customerName}
+                  </>
+                )}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              {availableDeliveryPersonnel.length > 0 ? (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="delivery-person">Select Delivery Person</Label>
+                    <Select
+                      value={selectedDeliveryPersonId}
+                      onValueChange={setSelectedDeliveryPersonId}
+                    >
+                      <SelectTrigger id="delivery-person" data-testid="select-delivery-person">
+                        <SelectValue placeholder="Choose a delivery person" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableDeliveryPersonnel.map((person) => (
+                          <SelectItem key={person.id} value={person.id}>
+                            <div className="flex items-center gap-2">
+                              <User className="h-4 w-4" />
+                              <span>{person.name}</span>
+                              <span className="text-xs text-muted-foreground">• {person.phone}</span>
+                              <Badge variant="outline" className="ml-auto">
+                                {person.status}
+                              </Badge>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {deliveryPersonnel && deliveryPersonnel.length > availableDeliveryPersonnel.length && (
+                    <p className="text-sm text-muted-foreground">
+                      Showing {availableDeliveryPersonnel.length} available delivery personnel.
+                      {deliveryPersonnel.length - availableDeliveryPersonnel.length} are currently busy or inactive.
+                    </p>
+                  )}
+                </>
+              ) : (
+                <div className="text-center py-8">
+                  <Truck className="h-12 w-12 mx-auto text-slate-400 mb-4" />
+                  <p className="text-slate-600 dark:text-slate-400">No available delivery personnel</p>
+                  <p className="text-sm text-slate-500 dark:text-slate-500 mt-1">
+                    All delivery personnel are currently busy or inactive
+                  </p>
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setAssignDialogOpen(false)}
+                disabled={assignDeliveryMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleAssignDelivery}
+                disabled={assignDeliveryMutation.isPending || !selectedDeliveryPersonId}
+                data-testid="button-confirm-assign"
+              >
+                {assignDeliveryMutation.isPending ? "Assigning..." : "Assign Delivery"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </AdminLayout>
   );

@@ -18,6 +18,8 @@ interface ProductCardProps {
   chefId?: string;
   categoryId?: string;
   chefName?: string;
+  isAvailable?: boolean; // Added for availability check
+  stock?: number; // Added for stock check
 }
 
 export default function ProductCard({
@@ -34,13 +36,21 @@ export default function ProductCard({
   chefId,
   categoryId,
   chefName,
+  isAvailable = true, // Default to available
+  stock = 0, // Default to 0 stock
 }: ProductCardProps) {
   const [quantity, setQuantity] = useState(0);
 
+  const isOutOfStock = stock <= 0; // Determine if out of stock
+  const isUnavailable = !isAvailable; // Determine if unavailable
+
   const handleAdd = () => {
-    const newQuantity = quantity + 1;
-    setQuantity(newQuantity);
-    onAddToCart?.(newQuantity);
+    // Only allow adding if not out of stock and available
+    if (!isOutOfStock && !isUnavailable && quantity < stock) {
+      const newQuantity = quantity + 1;
+      setQuantity(newQuantity);
+      onAddToCart?.(newQuantity);
+    }
   };
 
   const handleRemove = () => {
@@ -112,9 +122,12 @@ export default function ProductCard({
           </div>
 
           {quantity === 0 ? (
-            <Button size="sm" onClick={handleAdd} className="gap-2" data-testid={`button-add-${id}`}>
-              <Plus className="h-4 w-4" />
-              Add
+            <Button
+              onClick={handleAdd}
+              disabled={isOutOfStock || isUnavailable}
+              className="w-full rounded-full bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isUnavailable ? "Unavailable" : isOutOfStock ? "Out of Stock" : "Add to Cart"}
             </Button>
           ) : (
             <div className="flex items-center gap-2" data-testid={`controls-quantity-${id}`}>
@@ -133,6 +146,7 @@ export default function ProductCard({
                 size="icon"
                 variant="outline"
                 onClick={handleAdd}
+                disabled={quantity >= stock} // Disable if max stock reached
                 data-testid={`button-increase-${id}`}
               >
                 <Plus className="h-4 w-4" />
