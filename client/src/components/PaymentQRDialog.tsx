@@ -39,10 +39,10 @@ export default function PaymentQRDialog({
   useEffect(() => {
     if (isOpen && canvasRef.current) {
       const upiUrl = `upi://pay?pa=${upiId}&pn=RotiHai&am=${amount}&cu=INR&tn=Order%20${orderId}`;
-      
+
       const isMobile = window.innerWidth < 768;
       const qrSize = isMobile ? 200 : 256;
-      
+
       QRCode.toCanvas(
         canvasRef.current,
         upiUrl,
@@ -121,15 +121,37 @@ export default function PaymentQRDialog({
             </div>
 
             {accountCreated && (
-              <div className="bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg p-4 space-y-2">
-                <div className="flex items-center gap-2 text-green-900 dark:text-green-100">
-                  <User className="h-4 w-4" />
-                  <p className="text-sm font-medium">Account Created!</p>
+              <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-full bg-green-100 dark:bg-green-800 flex items-center justify-center">
+                    <span className="text-green-600 dark:text-green-300 text-lg">✓</span>
+                  </div>
+                  <p className="text-sm font-semibold text-green-800 dark:text-green-200">
+                    Account Created Successfully!
+                  </p>
                 </div>
-                <p className="text-xs text-green-700 dark:text-green-300">
-                  Your account has been created. You can now track your orders and access your profile.
-                  {defaultPassword && ` Your password is: ${defaultPassword} (last 6 digits of your phone)`}
-                </p>
+
+                <div className="bg-white dark:bg-slate-800 rounded-lg p-3 border border-green-200 dark:border-green-700">
+                  <p className="text-xs text-muted-foreground mb-2">Your Login Credentials:</p>
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-muted-foreground">Phone:</span>
+                      <span className="font-mono font-semibold text-sm">{phone}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-muted-foreground">Password:</span>
+                      <span className="font-mono font-bold text-sm text-green-600 dark:text-green-400">
+                        {defaultPassword || phone?.slice(-6)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-blue-50 dark:bg-blue-900/20 rounded p-2">
+                  <p className="text-xs text-blue-700 dark:text-blue-300">
+                    💡 <strong>Tip:</strong> Your password is always the last 6 digits of your phone number. You can login anytime to track your orders!
+                  </p>
+                </div>
               </div>
             )}
 

@@ -107,7 +107,6 @@ export interface IStorage {
   acceptOrder(orderId: string, approvedBy: string): Promise<Order | undefined>;
   rejectOrder(orderId: string, rejectedBy: string, reason: string): Promise<Order | undefined>;
   assignOrderToDeliveryPerson(orderId: string, deliveryPersonId: string): Promise<Order | undefined>;
-  unassignDeliveryPerson(orderId: string, reason?: string): Promise<Order | undefined>;
   updateOrderPickup(orderId: string): Promise<Order | undefined>;
   updateOrderDelivery(orderId: string): Promise<Order | undefined>;
   getOrdersByDeliveryPerson(deliveryPersonId: string): Promise<Order[]>;
@@ -566,12 +565,6 @@ export class MemStorage implements IStorage {
 }
 
 
-  async getCouponByCode(code: string): Promise<any> {
-    return db.query.coupons.findFirst({
-      where: (coupons, { eq }) => eq(coupons.code, code.toUpperCase()),
-    });
-  }
-
   async incrementCouponUsage(code: string): Promise<void> {
     const coupon = await db.query.coupons.findFirst({
       where: (coupons, { eq }) => eq(coupons.code, code.toUpperCase()),
@@ -893,40 +886,6 @@ export class MemStorage implements IStorage {
     }
   }
 
-  async unassignDeliveryPerson(orderId: string, reason?: string): Promise<Order | undefined> {
-    try {
-      const order = await this.getOrderById(orderId);
-      if (!order) return undefined;
-
-      const previousDeliveryPersonId = order.assignedTo;
-
-      // Unassign and move back to prepared status (or assigned if still looking for delivery)
-      const [updatedOrder] = await db
-        .update(orders)
-        .set({ 
-          assignedTo: null,
-          deliveryPersonName: null,
-          deliveryPersonPhone: null,
-          status: order.status === "accepted_by_delivery" || order.status === "assigned" ? "prepared" : order.status,
-          rejectionReason: reason || null
-        })
-        .where(eq(orders.id, orderId))
-        .returning();
-
-      // Set previous delivery person back to available if they were assigned
-      if (previousDeliveryPersonId) {
-        await db.update(deliveryPersonnel)
-          .set({ status: "available" })
-          .where(eq(deliveryPersonnel.id, previousDeliveryPersonId));
-      }
-
-      return updatedOrder || undefined;
-    } catch (error) {
-      console.error("Error unassigning delivery person:", error);
-      throw error;
-    }
-  }
-
   async updateOrderPickup(orderId: string): Promise<Order | undefined> {
     const [order] = await db
       .update(orders)
@@ -1004,18 +963,13 @@ export class MemStorage implements IStorage {
       throw new Error("Referrer does not have a referral code");
     }
 
-    // Get wallet settings for bonus amounts
-    const settings = await db.query.walletSettings.findFirst({
-      where: (walletSettings, { eq }) => eq(walletSettings.isActive, true)
-    });
-
     const referral = {
       referrerId,
       referredId,
-      referralCode: referrer.referralCode as string, // Type assertion since we checked it's not null
-      status: "pending" as const,
-      referrerBonus: settings?.referrerBonus || 100,
-      referredBonus: 0,
+      referralCode: referrer.referralCode,
+      status: "pending",
+      referrerBonus: 100, // ₹100 for referrer
+      referredBonus: 50,  // ₹50 for new user
       referredOrderCompleted: false,
     };
 
@@ -1024,40 +978,57 @@ export class MemStorage implements IStorage {
   }
 
   async applyReferralBonus(referralCode: string, newUserId: string): Promise<void> {
-    const referrer = await db.query.users.findFirst({
-      where: (u, { eq }) => eq(u.referralCode, referralCode),
+    // Execute entire referral bonus application in a database transaction
+    await db.transaction(async (tx) => {
+      const referrer = await tx.query.users.findFirst({
+        where: (u, { eq }) => eq(u.referralCode, referralCode),
+      });
+
+      if (!referrer) {
+        throw new Error("Invalid referral code");
+      }
+
+      const newUser = await tx.query.users.findFirst({
+        where: (u, { eq }) => eq(u.id, newUserId),
+      });
+
+      if (!newUser) {
+        throw new Error("User not found");
+      }
+
+      // Check if user already used a referral
+      const existingReferral = await tx.query.referrals.findFirst({
+        where: (r, { eq }) => eq(r.referredId, newUserId),
+      });
+
+      if (existingReferral) {
+        throw new Error("User already used a referral code");
+      }
+
+      // Create referral record first (creates the pending state)
+      const referralData = {
+        referrerId: referrer.id,
+        referredId: newUserId,
+        referralCode: referrer.referralCode!,
+        status: "pending",
+        referrerBonus: 100,
+        referredBonus: 50,
+        referredOrderCompleted: false,
+      };
+
+      const [referral] = await tx.insert(referrals).values(referralData).returning();
+
+      // Give instant bonus to new user with proper wallet transaction
+      // Include referrer's name for clarity in transaction history
+      await this.createWalletTransaction({
+        userId: newUserId,
+        amount: 50,
+        type: "referral_bonus",
+        description: `Welcome bonus for using ${referrer.name}'s referral code (${referralCode})`,
+        referenceId: referral.id,
+        referenceType: "referral",
+      }, tx);
     });
-
-    if (!referrer) {
-      throw new Error("Invalid referral code");
-    }
-
-    // Check if user already used a referral
-    const existingReferral = await db.query.referrals.findFirst({
-      where: (r, { eq }) => eq(r.referredId, newUserId),
-    });
-
-    if (existingReferral) {
-      throw new Error("User already used a referral code");
-    }
-
-    // Get wallet settings for bonus amounts
-    const settings = await db.query.walletSettings.findFirst({
-      where: (walletSettings, { eq }) => eq(walletSettings.isActive, true)
-    });
-
-    // Create referral record (bonus will be given to referrer after first order)
-    const referral = {
-      referrerId: referrer.id,
-      referredId: newUserId,
-      referralCode: referrer.referralCode,
-      status: "pending",
-      referrerBonus: settings?.referrerBonus || 100,
-      referredBonus: 0, // No bonus for referred user
-      referredOrderCompleted: false,
-    };
-
-    await db.insert(referrals).values(referral);
   }
 
   async getReferralsByUser(userId: string): Promise<any[]> {
@@ -1084,14 +1055,32 @@ export class MemStorage implements IStorage {
     description: string;
     referenceId?: string;
     referenceType?: string;
-  }): Promise<void> {
-    const user = await this.getUser(transaction.userId);
+  }, txClient?: any): Promise<void> {
+    // Validate amount is positive
+    if (transaction.amount <= 0) {
+      throw new Error("Transaction amount must be positive");
+    }
+
+    // Use provided transaction client or default db
+    const dbClient = txClient || db;
+
+    // Fetch user using the same transaction client to ensure atomic reads
+    const user = await dbClient.query.users.findFirst({
+      where: eq(users.id, transaction.userId),
+    });
+
     if (!user) throw new Error("User not found");
 
     const balanceBefore = user.walletBalance;
-    const balanceAfter = balanceBefore + (transaction.type === "debit" ? -transaction.amount : transaction.amount);
+    const amountChange = transaction.type === "debit" ? -transaction.amount : transaction.amount;
+    const balanceAfter = balanceBefore + amountChange;
 
-    await db.insert(walletTransactions).values({
+    if (balanceAfter < 0) {
+      throw new Error("Insufficient wallet balance");
+    }
+
+    // Execute both operations atomically with the same client
+    await dbClient.insert(walletTransactions).values({
       userId: transaction.userId,
       amount: transaction.amount,
       type: transaction.type,
@@ -1102,8 +1091,8 @@ export class MemStorage implements IStorage {
       balanceAfter,
     });
 
-    // Update user's wallet balance
-    await db.update(users)
+    // Update user's wallet balance using the same transaction client
+    await dbClient.update(users)
       .set({ walletBalance: balanceAfter })
       .where(eq(users.id, transaction.userId));
   }

@@ -18,6 +18,7 @@ interface CategoryCart {
   chefId: string;
   chefName: string;
   items: CartItem[];
+  total?: number;
 }
 
 interface CartStore {
