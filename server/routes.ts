@@ -8,6 +8,8 @@ import { registerDeliveryRoutes } from "./deliveryRoutes";
 import { setupWebSocket, broadcastNewOrder } from "./websocket";
 import { hashPassword, verifyPassword, generateAccessToken, generateRefreshToken, requireUser, type AuthenticatedUserRequest } from "./userAuth";
 import { verifyToken as verifyUserToken } from "./userAuth";
+import { db } from "@shared/db";
+
 
 export async function registerRoutes(app: Express): Promise<Server> {
   registerAdminRoutes(app);
@@ -47,7 +49,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/user/check-phone", async (req, res) => {
     try {
       const { phone } = req.body;
-      
+
       if (!phone) {
         res.status(400).json({ message: "Phone number is required" });
         return;
@@ -83,9 +85,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       await storage.updateUser(user.id, { passwordHash });
 
-      res.json({ 
+      res.json({
         message: "Password reset successful",
-        newPassword 
+        newPassword
       });
     } catch (error) {
       console.error("Password reset error:", error);
@@ -278,7 +280,7 @@ app.post("/api/user/logout", async (req, res) => {
     try {
       const userId = req.authenticatedUser!.userId;
       const user = await storage.getUser(userId);
-      
+
       if (!user) {
         res.status(404).json({ message: "User not found" });
         return;
@@ -297,7 +299,7 @@ app.post("/api/user/logout", async (req, res) => {
     }
   });
 
-  // Apply referral code during registration
+  // Apply referral code during registration (only creates referral record, no bonus yet)
   app.post("/api/user/apply-referral", requireUser(), async (req: AuthenticatedUserRequest, res) => {
     try {
       const userId = req.authenticatedUser!.userId;
@@ -309,7 +311,7 @@ app.post("/api/user/logout", async (req, res) => {
       }
 
       await storage.applyReferralBonus(referralCode, userId);
-      res.json({ message: "Referral bonus applied successfully", bonus: 50 });
+      res.json({ message: "Referral code applied. Bonus will be credited after your first order." });
     } catch (error: any) {
       console.error("Error applying referral:", error);
       res.status(400).json({ message: error.message || "Failed to apply referral" });
@@ -333,12 +335,12 @@ app.post("/api/user/logout", async (req, res) => {
     try {
       const userId = req.authenticatedUser!.userId;
       const referralCode = await storage.getUserReferralCode(userId);
-      
+
       if (!referralCode) {
         res.status(404).json({ message: "No referral code found. Generate one first." });
         return;
       }
-      
+
       res.json({ referralCode });
     } catch (error: any) {
       console.error("Error fetching referral code:", error);
@@ -399,7 +401,7 @@ app.post("/api/user/logout", async (req, res) => {
 
       // Get all orders and filter by user's phone number
       const allOrders = await storage.getAllOrders();
-      const userOrders = allOrders.filter(order => 
+      const userOrders = allOrders.filter(order =>
         order.phone === user.phone || order.userId === userId
       );
 
@@ -453,8 +455,7 @@ app.post("/api/user/logout", async (req, res) => {
   });
 
   // Create an order (no authentication required - supports guest checkout)
-  // Create an order (no authentication required - supports guest checkout)
-app.post("/api/orders", async (req: any, res) => {
+app.post("/api/orders", async (req: AuthenticatedUserRequest, res) => {
   try {
     console.log(" Incoming order body:", JSON.stringify(req.body, null, 2));
 
@@ -470,13 +471,13 @@ app.post("/api/orders", async (req: any, res) => {
       email: body.email || "",
       address: body.address?.trim(),
       items: Array.isArray(body.items)
-  ? body.items.map((i: any) => ({
-      id: i.id,
-      name: i.name,
-      price: sanitizeNumber(i.price),
-      quantity: sanitizeNumber(i.quantity),
-    }))
-  : [],
+        ? body.items.map((i: any) => ({
+            id: i.id,
+            name: i.name,
+            price: sanitizeNumber(i.price),
+            quantity: sanitizeNumber(i.quantity),
+          }))
+        : [],
       subtotal: sanitizeNumber(body.subtotal),
       deliveryFee: sanitizeNumber(body.deliveryFee),
       total: sanitizeNumber(body.total),
@@ -485,6 +486,8 @@ app.post("/api/orders", async (req: any, res) => {
       userId: body.userId || undefined,
       couponCode: body.couponCode || undefined, // Added for coupon code
       discount: body.discount || 0, // Added for discount amount
+      referralCode: body.referralCode || undefined, // Added for referral code
+      walletAmountUsed: sanitizeNumber(body.walletAmountUsed) || 0, // Added for wallet amount used
     };
 
     const result = insertOrderSchema.safeParse(sanitized);
@@ -524,40 +527,114 @@ app.post("/api/orders", async (req: any, res) => {
         .json({ message: "Unable to determine chefId for the order" });
     }
 
-    const order = await storage.createOrder(orderPayload);
+    // Apply coupon discount if applicable
+    let discountAmount = 0;
+    let finalTotal = orderPayload.total;
+    let actualWalletUsed = sanitized.walletAmountUsed || 0;
 
-      // Increment coupon usage if coupon was applied
-      if (orderPayload.couponCode) {
+    if (orderPayload.couponCode) {
+      const coupon = await storage.getCouponByCode(orderPayload.couponCode);
+      if (coupon) {
+        discountAmount = coupon.discount || 0;
+        finalTotal = orderPayload.total - discountAmount;
         await storage.incrementCouponUsage(orderPayload.couponCode);
       }
+    }
 
-      // Complete referral bonus if this is user's first order
-      if (userId) {
-        const { db: database } = await import("@shared/db");
-        const { referrals: referralsTable } = await import("@shared/db");
-        const { eq, and } = await import("drizzle-orm");
-        
-        const pendingReferral = await database.query.referrals.findFirst({
-          where: (r, { eq, and }) => and(
-            eq(r.referredId, userId),
-            eq(r.status, "pending")
-          ),
+    // Handle wallet usage for authenticated users
+    if (userId && actualWalletUsed > 0) {
+      const walletBalance = await storage.getUserWalletBalance(userId);
+      const settings = await db.query.walletSettings.findFirst({
+        where: (walletSettings, { eq }) => eq(walletSettings.isActive, true)
+      });
+
+      const maxUsage = Math.min(
+        walletBalance,
+        settings?.maxUsagePerOrder || 10,
+        finalTotal
+      );
+
+      actualWalletUsed = Math.min(actualWalletUsed, maxUsage);
+
+      if (actualWalletUsed > 0) {
+        await storage.createWalletTransaction({
+          userId: userId,
+          amount: actualWalletUsed,
+          type: "order_discount",
+          description: "Wallet balance used for order",
+          referenceType: "order"
+        });
+        finalTotal -= actualWalletUsed;
+      }
+    }
+
+    // Handle referral code for new users
+    if (sanitized.referralCode && !userId) {
+      try {
+        const referrer = await db.query.users.findFirst({
+          where: (u, { eq }) => eq(u.referralCode, sanitized.referralCode)
         });
 
-        if (pendingReferral) {
-          // Mark referral as completed and give bonus to referrer
-          await database.update(referralsTable)
-            .set({ 
-              status: "completed", 
-              referredOrderCompleted: true,
-              completedAt: new Date()
-            })
-            .where(eq(referralsTable.id, pendingReferral.id));
-
-          // Add bonus to referrer's wallet
-          await storage.updateWalletBalance(pendingReferral.referrerId, pendingReferral.referrerBonus);
+        if (referrer) {
+          console.log(`📝 Referral code ${sanitized.referralCode} will be applied after user registration`);
         }
+      } catch (error) {
+        console.error("Error validating referral code:", error);
       }
+    }
+
+    const order = await storage.createOrder({
+      ...orderPayload,
+      total: finalTotal,
+      discount: discountAmount,
+      couponCode: orderPayload.couponCode || null,
+      walletAmountUsed: actualWalletUsed,
+    });
+
+    // Complete referral bonus if this is user's first order
+    if (userId) {
+      const { referrals: referralsTable } = await import("@shared/db");
+      const { eq, and } = await import("drizzle-orm");
+
+      const pendingReferral = await db.query.referrals.findFirst({
+        where: (r, { eq, and }) => and(
+          eq(r.referredId, userId),
+          eq(r.status, "pending")
+        ),
+      });
+
+      if (pendingReferral) {
+        // Get wallet settings for referrer bonus amount
+        const settings = await db.query.walletSettings.findFirst({
+          where: (walletSettings, { eq }) => eq(walletSettings.isActive, true)
+        });
+
+        const referrerBonus = settings?.referrerBonus || 100;
+
+        // Mark referral as completed and give bonus to referrer ONLY
+        await db.update(referralsTable)
+          .set({
+            status: "completed",
+            referredOrderCompleted: true,
+            completedAt: new Date(),
+            referrerBonus: referrerBonus,
+            referredBonus: 0 // No bonus for the referred user
+          })
+          .where(eq(referralsTable.id, pendingReferral.id));
+
+        // Add bonus to referrer's wallet
+        await storage.createWalletTransaction({
+          userId: pendingReferral.referrerId,
+          amount: referrerBonus,
+          type: "referral_bonus",
+          description: `Referral bonus for inviting a new user`,
+          referenceId: pendingReferral.id,
+          referenceType: "referral"
+        });
+
+        console.log(`✅ Referrer ${pendingReferral.referrerId} received ₹${referrerBonus} bonus`);
+      }
+    }
 
     broadcastNewOrder(order);
 
@@ -586,11 +663,11 @@ app.post("/api/orders", async (req: any, res) => {
         }
 
         const allOrders = await storage.getAllOrders();
-        const userOrders = allOrders.filter(order => 
+        const userOrders = allOrders.filter(order =>
           order.email === user.email || order.phone === user.email
         );
         res.json(userOrders);
-      } 
+      }
       // Check if user is authenticated via phone auth (JWT)
       else if (req.headers.authorization?.startsWith("Bearer ")) {
         const token = req.headers.authorization.substring(7);
@@ -676,7 +753,7 @@ app.post("/api/orders", async (req: any, res) => {
 
       if (chefId) {
         const chef = await storage.getChefById(chefId);
-        if (chef && chef.latitude !== null && chef.longitude !== null && 
+        if (chef && chef.latitude !== null && chef.longitude !== null &&
             chef.latitude !== undefined && chef.longitude !== undefined) {
           chefLat = chef.latitude;
           chefLon = chef.longitude;

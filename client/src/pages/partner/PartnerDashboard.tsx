@@ -1,4 +1,3 @@
-
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Package, DollarSign, Clock, CheckCircle, Bell, Wifi, WifiOff, TrendingUp, Calendar, UserCircle, LogOut } from "lucide-react";
@@ -27,6 +26,31 @@ export default function PartnerDashboard() {
     setLocation("/partner/login");
   };
 
+  // Add automatic token refresh for partners
+  useEffect(() => {
+    const refreshToken = async () => {
+      try {
+        const response = await fetch("/api/partner/auth/refresh", {
+          method: "POST",
+          credentials: "include",
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          localStorage.setItem("partnerToken", data.accessToken);
+        }
+      } catch (error) {
+        console.error("Token refresh failed:", error);
+      }
+    };
+
+    // Refresh token every 10 minutes (before 15min expiry)
+    const tokenRefreshInterval = setInterval(refreshToken, 10 * 60 * 1000);
+
+    return () => clearInterval(tokenRefreshInterval);
+  }, []);
+
+
   useEffect(() => {
     requestNotificationPermission();
   }, []);
@@ -51,7 +75,7 @@ export default function PartnerDashboard() {
       if (!response.ok) throw new Error("Failed to fetch orders");
       const allOrders = await response.json();
       // Sort by latest first
-      return allOrders.sort((a: any, b: any) => 
+      return allOrders.sort((a: any, b: any) =>
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
     },
@@ -154,13 +178,24 @@ export default function PartnerDashboard() {
       case "pending":
         return "bg-yellow-100 text-yellow-800";
       case "confirmed":
+        return "bg-orange-100 text-orange-800";
+      case "accepted_by_chef":
+        return "bg-sky-100 text-sky-800";
       case "preparing":
         return "bg-blue-100 text-blue-800";
-      case "out_for_delivery":
+      case "prepared":
+        return "bg-indigo-100 text-indigo-800";
+      case "assigned":
+        return "bg-violet-100 text-violet-800";
+      case "accepted_by_delivery":
         return "bg-purple-100 text-purple-800";
+      case "out_for_delivery":
+        return "bg-fuchsia-100 text-fuchsia-800";
       case "delivered":
       case "completed":
         return "bg-green-100 text-green-800";
+      case "cancelled":
+        return "bg-red-100 text-red-800";
       default:
         return "bg-slate-100 text-slate-800";
     }
@@ -223,48 +258,48 @@ export default function PartnerDashboard() {
 
           <TabsContent value="dashboard" className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Total Orders</CardTitle>
-              <Package className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{metrics?.totalOrders || 0}</div>
-            </CardContent>
-          </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium">Total Orders</CardTitle>
+                  <Package className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{metrics?.totalOrders || 0}</div>
+                </CardContent>
+              </Card>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
-              <DollarSign className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">₹{metrics?.totalRevenue || 0}</div>
-            </CardContent>
-          </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+                  <DollarSign className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">₹{metrics?.totalRevenue || 0}</div>
+                </CardContent>
+              </Card>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Pending Orders</CardTitle>
-              <Clock className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{metrics?.pendingOrders || 0}</div>
-            </CardContent>
-          </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium">Pending Orders</CardTitle>
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{metrics?.pendingOrders || 0}</div>
+                </CardContent>
+              </Card>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Completed</CardTitle>
-              <CheckCircle className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{metrics?.completedOrders || 0}</div>
-            </CardContent>
-          </Card>
-        </div>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium">Completed</CardTitle>
+                  <CheckCircle className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{metrics?.completedOrders || 0}</div>
+                </CardContent>
+              </Card>
+            </div>
 
-        <Card>
+            <Card>
               <CardHeader>
                 <CardTitle>Recent Orders</CardTitle>
               </CardHeader>
@@ -297,10 +332,10 @@ export default function PartnerDashboard() {
                             {order.status.replace("_", " ").toUpperCase()}
                           </Badge>
                           <p className="font-bold">₹{order.total}</p>
-                          
+
                           {/* Action buttons based on status */}
                           <div className="flex gap-2 mt-2 flex-wrap">
-                            {order.paymentStatus === "paid" && order.status === "pending" && (
+                            {order.paymentStatus === "confirmed" && order.status === "confirmed" && (
                               <>
                                 <Button
                                   size="sm"
@@ -327,7 +362,7 @@ export default function PartnerDashboard() {
                                 </Button>
                               </>
                             )}
-                            {order.status === "confirmed" && (
+                            {order.status === "accepted_by_chef" && (
                               <Button
                                 size="sm"
                                 onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: "preparing" })}
@@ -340,13 +375,18 @@ export default function PartnerDashboard() {
                             {order.status === "preparing" && (
                               <Button
                                 size="sm"
-                                onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: "out_for_delivery" })}
+                                onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: "prepared" })}
                                 disabled={updateStatusMutation.isPending}
                                 variant="default"
                                 data-testid={`button-ready-${order.id}`}
                               >
-                                Ready for Delivery
+                                Mark as Prepared
                               </Button>
+                            )}
+                            {(order.status === "prepared" || order.status === "assigned" || order.status === "accepted_by_delivery") && (
+                              <Badge variant="outline" className="bg-green-50">
+                                ✓ Ready - Waiting for Delivery
+                              </Badge>
                             )}
                           </div>
                         </div>
@@ -416,7 +456,7 @@ export default function PartnerDashboard() {
                           </TableCell>
                           <TableCell>
                             <div className="flex gap-2 flex-wrap">
-                              {order.paymentStatus === "paid" && order.status === "pending" && (
+                              {order.paymentStatus === "confirmed" && order.status === "confirmed" && (
                                 <>
                                   <Button
                                     size="sm"
@@ -442,7 +482,7 @@ export default function PartnerDashboard() {
                                   </Button>
                                 </>
                               )}
-                              {order.status === "confirmed" && (
+                              {order.status === "accepted_by_chef" && (
                                 <Button
                                   size="sm"
                                   onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: "preparing" })}
@@ -455,12 +495,17 @@ export default function PartnerDashboard() {
                               {order.status === "preparing" && (
                                 <Button
                                   size="sm"
-                                  onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: "out_for_delivery" })}
+                                  onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: "prepared" })}
                                   disabled={updateStatusMutation.isPending}
                                   data-testid={`button-table-ready-${order.id}`}
                                 >
                                   Ready
                                 </Button>
+                              )}
+                              {(order.status === "prepared" || order.status === "assigned" || order.status === "accepted_by_delivery") && (
+                                <Badge variant="outline" className="bg-green-50">
+                                  ✓ Ready
+                                </Badge>
                               )}
                             </div>
                           </TableCell>

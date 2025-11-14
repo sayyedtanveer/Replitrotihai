@@ -1,4 +1,3 @@
-
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,19 +19,46 @@ export default function DeliveryDashboard() {
   const { wsConnected, newAssignmentsCount, requestNotificationPermission, clearNewAssignmentsCount } = useDeliveryNotifications();
   const [selectedTab, setSelectedTab] = useState("dashboard");
 
+  const fetchOrders = async () => {
+    const response = await fetch("/api/delivery/orders", {
+      headers: { Authorization: `Bearer ${deliveryToken}` },
+    });
+    if (!response.ok) throw new Error("Failed to fetch orders");
+    return response.json();
+  };
+
   useEffect(() => {
     requestNotificationPermission();
   }, []);
 
+  // Auto-refresh access token before expiry
+  useEffect(() => {
+    const refreshToken = async () => {
+      try {
+        const response = await fetch("/api/delivery/auth/refresh", {
+          method: "POST",
+          credentials: "include",
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          localStorage.setItem("deliveryToken", data.accessToken);
+        }
+      } catch (error) {
+        console.error("Token refresh failed:", error);
+      }
+    };
+
+    // Refresh token every 10 minutes (before 15min expiry)
+    const tokenRefreshInterval = setInterval(refreshToken, 10 * 60 * 1000);
+
+    return () => clearInterval(tokenRefreshInterval);
+  }, []);
+
+
   const { data: orders = [] } = useQuery({
     queryKey: ["/api/delivery/orders"],
-    queryFn: async () => {
-      const response = await fetch("/api/delivery/orders", {
-        headers: { Authorization: `Bearer ${deliveryToken}` },
-      });
-      if (!response.ok) throw new Error("Failed to fetch orders");
-      return response.json();
-    },
+    queryFn: fetchOrders,
   });
 
   const { data: earnings } = useQuery({
@@ -119,6 +145,10 @@ export default function DeliveryDashboard() {
     switch (status) {
       case "assigned":
         return "bg-yellow-100 text-yellow-800";
+      case "accepted_by_delivery":
+        return "bg-blue-100 text-blue-800";
+      case "prepared":
+        return "bg-cyan-100 text-cyan-800";
       case "preparing":
         return "bg-blue-100 text-blue-800";
       case "out_for_delivery":
@@ -131,7 +161,7 @@ export default function DeliveryDashboard() {
   };
 
   const pendingOrders = orders.filter((o: any) => o.status === "assigned");
-  const activeOrders = orders.filter((o: any) => ["preparing", "out_for_delivery"].includes(o.status));
+  const activeOrders = orders.filter((o: any) => ["accepted_by_delivery", "prepared", "out_for_delivery"].includes(o.status));
   const completedOrders = orders.filter((o: any) => o.status === "delivered");
 
   return (
@@ -254,7 +284,7 @@ export default function DeliveryDashboard() {
                               Accept Order
                             </Button>
                           )}
-                          {order.status === "preparing" && (
+                          {(order.status === "accepted_by_delivery" || order.status === "prepared") && (
                             <Button
                               onClick={() => pickupOrderMutation.mutate(order.id)}
                               disabled={pickupOrderMutation.isPending}
@@ -333,7 +363,7 @@ export default function DeliveryDashboard() {
                               Accept Order
                             </Button>
                           )}
-                          {order.status === "preparing" && (
+                          {(order.status === "accepted_by_delivery" || order.status === "prepared") && (
                             <Button
                               onClick={() => pickupOrderMutation.mutate(order.id)}
                               disabled={pickupOrderMutation.isPending}

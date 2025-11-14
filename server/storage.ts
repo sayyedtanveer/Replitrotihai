@@ -107,6 +107,7 @@ export interface IStorage {
   acceptOrder(orderId: string, approvedBy: string): Promise<Order | undefined>;
   rejectOrder(orderId: string, rejectedBy: string, reason: string): Promise<Order | undefined>;
   assignOrderToDeliveryPerson(orderId: string, deliveryPersonId: string): Promise<Order | undefined>;
+  unassignDeliveryPerson(orderId: string, reason?: string): Promise<Order | undefined>;
   updateOrderPickup(orderId: string): Promise<Order | undefined>;
   updateOrderDelivery(orderId: string): Promise<Order | undefined>;
   getOrdersByDeliveryPerson(deliveryPersonId: string): Promise<Order[]>;
@@ -565,6 +566,12 @@ export class MemStorage implements IStorage {
 }
 
 
+  async getCouponByCode(code: string): Promise<any> {
+    return db.query.coupons.findFirst({
+      where: (coupons, { eq }) => eq(coupons.code, code.toUpperCase()),
+    });
+  }
+
   async incrementCouponUsage(code: string): Promise<void> {
     const coupon = await db.query.coupons.findFirst({
       where: (coupons, { eq }) => eq(coupons.code, code.toUpperCase()),
@@ -886,6 +893,40 @@ export class MemStorage implements IStorage {
     }
   }
 
+  async unassignDeliveryPerson(orderId: string, reason?: string): Promise<Order | undefined> {
+    try {
+      const order = await this.getOrderById(orderId);
+      if (!order) return undefined;
+
+      const previousDeliveryPersonId = order.assignedTo;
+
+      // Unassign and move back to prepared status (or assigned if still looking for delivery)
+      const [updatedOrder] = await db
+        .update(orders)
+        .set({ 
+          assignedTo: null,
+          deliveryPersonName: null,
+          deliveryPersonPhone: null,
+          status: order.status === "accepted_by_delivery" || order.status === "assigned" ? "prepared" : order.status,
+          rejectionReason: reason || null
+        })
+        .where(eq(orders.id, orderId))
+        .returning();
+
+      // Set previous delivery person back to available if they were assigned
+      if (previousDeliveryPersonId) {
+        await db.update(deliveryPersonnel)
+          .set({ status: "available" })
+          .where(eq(deliveryPersonnel.id, previousDeliveryPersonId));
+      }
+
+      return updatedOrder || undefined;
+    } catch (error) {
+      console.error("Error unassigning delivery person:", error);
+      throw error;
+    }
+  }
+
   async updateOrderPickup(orderId: string): Promise<Order | undefined> {
     const [order] = await db
       .update(orders)
@@ -963,13 +1004,18 @@ export class MemStorage implements IStorage {
       throw new Error("Referrer does not have a referral code");
     }
 
+    // Get wallet settings for bonus amounts
+    const settings = await db.query.walletSettings.findFirst({
+      where: (walletSettings, { eq }) => eq(walletSettings.isActive, true)
+    });
+
     const referral = {
       referrerId,
       referredId,
-      referralCode: referrer.referralCode,
-      status: "pending",
-      referrerBonus: 100, // ₹100 for referrer
-      referredBonus: 50,  // ₹50 for new user
+      referralCode: referrer.referralCode as string, // Type assertion since we checked it's not null
+      status: "pending" as const,
+      referrerBonus: settings?.referrerBonus || 100,
+      referredBonus: 0,
       referredOrderCompleted: false,
     };
 
@@ -995,13 +1041,23 @@ export class MemStorage implements IStorage {
       throw new Error("User already used a referral code");
     }
 
-    // Create referral record
-    await this.createReferral(referrer.id, newUserId);
+    // Get wallet settings for bonus amounts
+    const settings = await db.query.walletSettings.findFirst({
+      where: (walletSettings, { eq }) => eq(walletSettings.isActive, true)
+    });
 
-    // Give instant bonus to new user
-    await db.update(users)
-      .set({ walletBalance: sql`${users.walletBalance} + 50` })
-      .where(eq(users.id, newUserId));
+    // Create referral record (bonus will be given to referrer after first order)
+    const referral = {
+      referrerId: referrer.id,
+      referredId: newUserId,
+      referralCode: referrer.referralCode,
+      status: "pending",
+      referrerBonus: settings?.referrerBonus || 100,
+      referredBonus: 0, // No bonus for referred user
+      referredOrderCompleted: false,
+    };
+
+    await db.insert(referrals).values(referral);
   }
 
   async getReferralsByUser(userId: string): Promise<any[]> {

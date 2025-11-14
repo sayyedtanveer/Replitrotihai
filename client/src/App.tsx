@@ -30,6 +30,8 @@ import PartnerProfile from "@/pages/partner/PartnerProfile";
 import DeliveryLogin from "./pages/delivery/DeliveryLogin";
 import DeliveryDashboard from "./pages/delivery/DeliveryDashboard";
 import OrderTracking from "@/pages/OrderTracking";
+import AdminWalletSettings from "./pages/admin/AdminWalletSettings";
+
 
 // ✅ Simple Auth Guard for customer routes
 function ProtectedRoute({ component: Component }: { component: any }) {
@@ -50,7 +52,7 @@ function Router() {
 
   return (
     <Switch>
-      {/* ---------- ADMIN ROUTES ---------- */}
+      {/* ---------- ADMINROUTES ---------- */}
       <Route path="/admin/login" component={AdminLogin} />
       <Route path="/admin/dashboard" component={AdminDashboard} />
       <Route path="/admin/orders" component={AdminOrders} />
@@ -66,6 +68,8 @@ function Router() {
       <Route path="/admin/users" component={AdminUsers} />
       <Route path="/admin/admins" component={AdminManagement} />
       <Route path="/admin/delivery-settings" component={AdminDeliverySettings} />
+      <Route path="/admin/wallet-settings" component={AdminWalletSettings} />
+
 
       {/* ---------- PARTNER / DELIVERY ROUTES ---------- */}
       <Route path="/partner/login" component={PartnerLogin} />
@@ -74,7 +78,7 @@ function Router() {
       <Route path="/delivery/login" component={DeliveryLogin} />
       <Route path="/delivery/dashboard" component={DeliveryDashboard} />
 
-      {/* ---------- USER ROUTES ---------- */}
+      {/* ---------- USERROUTES ---------- */}
       <Route path="/" component={Home} />
       <Route path="/landing" component={Landing} />
 

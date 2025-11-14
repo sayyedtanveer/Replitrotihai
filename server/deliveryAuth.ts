@@ -4,7 +4,8 @@ import type { Request, Response, NextFunction } from "express";
 import type { DeliveryPersonnel } from "@shared/schema";
 
 const JWT_SECRET = process.env.JWT_SECRET || "delivery-jwt-secret-change-in-production";
-const JWT_EXPIRES_IN = "7d";
+const JWT_EXPIRES_IN = "15m"; // Short-lived access token
+const REFRESH_TOKEN_EXPIRES_IN = "30d"; // Long-lived refresh token
 
 export interface DeliveryTokenPayload {
   deliveryId: string;
@@ -35,6 +36,15 @@ export function generateDeliveryToken(deliveryPerson: DeliveryPersonnel): string
     phone: deliveryPerson.phone,
   };
   return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+}
+
+export function generateRefreshToken(deliveryPerson: DeliveryPersonnel): string {
+  const payload: DeliveryTokenPayload = {
+    deliveryId: deliveryPerson.id,
+    name: deliveryPerson.name,
+    phone: deliveryPerson.phone,
+  };
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: REFRESH_TOKEN_EXPIRES_IN });
 }
 
 export function verifyToken(token: string): DeliveryTokenPayload | null {

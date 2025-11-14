@@ -1,6 +1,5 @@
-
 import type { Express } from "express";
-import { requirePartner, type AuthenticatedPartnerRequest } from "./partnerAuth";
+import { requirePartner, type AuthenticatedPartnerRequest, generateAccessToken, generateRefreshToken, verifyToken } from "./partnerAuth";
 import { storage } from "./storage";
 import { broadcastOrderUpdate } from "./websocket";
 
@@ -68,12 +67,25 @@ export function registerPartnerRoutes(app: Express): void {
         return;
       }
 
-      // Accept order and change status to preparing
+      // Chef accepts and moves to "accepted_by_chef" status
       let updatedOrder = await storage.acceptOrder(orderId, partnerId!);
-      
+
       if (updatedOrder) {
-        // Update status to preparing when chef accepts
-        updatedOrder = await storage.updateOrderStatus(orderId, "preparing") || updatedOrder;
+        // Update status to accepted_by_chef when chef accepts
+        updatedOrder = await storage.updateOrderStatus(orderId, "accepted_by_chef") || updatedOrder;
+
+        console.log(`
+╔════════════════════════════════════════════════════════════════
+║ ✅ ORDER ACCEPTED BY CHEF
+╠════════════════════════════════════════════════════════════════
+║ Order ID: ${updatedOrder.id.slice(0, 8)}
+║ Chef: ${req.partner?.chefId}
+║ Customer: ${updatedOrder.customerName}
+║ Status: ${updatedOrder.status}
+║ Time: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
+╚════════════════════════════════════════════════════════════════
+        `);
+
         broadcastOrderUpdate(updatedOrder);
       }
 
@@ -103,7 +115,7 @@ export function registerPartnerRoutes(app: Express): void {
       }
 
       const updatedOrder = await storage.rejectOrder(orderId, partnerId!, reason || "Order rejected by partner");
-      
+
       if (updatedOrder) {
         broadcastOrderUpdate(updatedOrder);
       }
@@ -133,7 +145,7 @@ export function registerPartnerRoutes(app: Express): void {
       }
 
       const updatedOrder = await storage.updateOrderStatus(orderId, status);
-      
+
       if (updatedOrder) {
         broadcastOrderUpdate(updatedOrder);
       }
@@ -177,7 +189,7 @@ export function registerPartnerRoutes(app: Express): void {
       for (let i = 5; i >= 0; i--) {
         const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
         const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0, 23, 59, 59);
-        
+
         const monthOrders = completedOrders.filter(o => {
           const orderDate = new Date(o.createdAt);
           return orderDate >= monthStart && orderDate <= monthEnd;
@@ -203,6 +215,51 @@ export function registerPartnerRoutes(app: Express): void {
     } catch (error) {
       console.error("Error fetching income report:", error);
       res.status(500).json({ message: "Failed to fetch income report" });
+    }
+  });
+
+  // Logout partner
+  app.post("/api/partner/auth/logout", requirePartner(), (req, res) => {
+    res.clearCookie("partnerRefreshToken");
+    res.json({ message: "Logged out successfully" });
+  });
+
+  // Refresh partner token
+  app.post("/api/partner/auth/refresh", async (req, res) => {
+    try {
+      const refreshToken = req.cookies.partnerRefreshToken;
+
+      if (!refreshToken) {
+        res.status(401).json({ message: "No refresh token provided" });
+        return;
+      }
+
+      const payload = verifyToken(refreshToken);
+      if (!payload) {
+        res.status(401).json({ message: "Invalid refresh token" });
+        return;
+      }
+
+      const partner = await storage.getPartner(payload.partnerId);
+      if (!partner) {
+        res.status(404).json({ message: "Partner not found" });
+        return;
+      }
+
+      const newAccessToken = generateAccessToken(partner);
+      const newRefreshToken = generateRefreshToken(partner);
+
+      res.cookie("partnerRefreshToken", newRefreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        maxAge: 30 * 24 * 60 * 60 * 1000,
+      });
+
+      res.json({ accessToken: newAccessToken });
+    } catch (error) {
+      console.error("Partner token refresh error:", error);
+      res.status(401).json({ message: "Token refresh failed" });
     }
   });
 }

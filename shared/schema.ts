@@ -120,6 +120,7 @@ export const orders = pgTable("orders", {
   deliveryFee: integer("delivery_fee").notNull(),
   discount: integer("discount").notNull().default(0),
   couponCode: varchar("coupon_code", { length: 50 }),
+  walletAmountUsed: integer("wallet_amount_used").notNull().default(0),
   total: integer("total").notNull(),
   status: text("status").notNull().default("pending"),
   paymentStatus: paymentStatusEnum("payment_status").notNull().default("pending"),
@@ -201,6 +202,19 @@ export const walletTransactions = pgTable("wallet_transactions", {
   index("IDX_wallet_user_created").on(table.userId, table.createdAt),
 ]);
 
+export const walletSettings = pgTable("wallet_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  maxUsagePerOrder: integer("max_usage_per_order").notNull().default(10),
+  referrerBonus: integer("referrer_bonus").notNull().default(100),
+  referredBonus: integer("referred_bonus").notNull().default(50),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type WalletSettings = typeof walletSettings.$inferSelect;
+export type InsertWalletSettings = typeof walletSettings.$inferInsert;
+
 export const referralRewards = pgTable("referral_rewards", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
@@ -276,7 +290,19 @@ export const insertOrderSchema = createInsertSchema(orders, {
     price: z.number(),
     quantity: z.number(),
   })),
-  status: z.enum(['pending', 'confirmed', 'assigned', 'preparing', 'out_for_delivery', 'delivered', 'cancelled', 'completed']).default('pending'),
+  status: z.enum([
+    'pending',              // Order placed, waiting for payment confirmation
+    'confirmed',            // Payment confirmed, sent to chef
+    'accepted_by_chef',     // Chef accepted the order
+    'preparing',            // Chef is preparing the food
+    'prepared',             // Food ready, waiting for pickup
+    'assigned',             // Delivery person assigned
+    'accepted_by_delivery', // Delivery person accepted
+    'out_for_delivery',     // Delivery person picked up, on the way
+    'delivered',            // Order delivered to customer
+    'completed',            // Order completed
+    'cancelled'             // Order cancelled
+  ]).default('pending'),
   paymentStatus: z.enum(['pending', 'paid', 'confirmed']).default('pending'),
 }).omit({
   id: true,

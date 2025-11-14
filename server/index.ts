@@ -114,7 +114,7 @@ app.use((req, res, next) => {
 
       const isValid = await verifyPassword(password, partner.passwordHash);
       console.log("🔑 Password verification:", isValid);
-      
+
       if (!isValid) {
         console.log("❌ Invalid password for:", trimmedUsername);
         res.status(401).json({ message: "Invalid credentials" });
@@ -138,17 +138,16 @@ app.use((req, res, next) => {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         sameSite: "strict",
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
       });
 
+      console.log("✅ Partner login successful:", partner.username);
       res.json({
         accessToken,
         partner: {
           id: partner.id,
           username: partner.username,
-          email: partner.email,
           chefId: partner.chefId,
-          chefName: chef.name,
         },
       });
     } catch (error) {
@@ -162,14 +161,14 @@ app.use((req, res, next) => {
     try {
       const partnerReq = req as AuthenticatedPartnerRequest;
       const partner = await storage.getPartnerById(partnerReq.partner!.partnerId);
-      
+
       if (!partner) {
         res.status(404).json({ message: "Partner not found" });
         return;
       }
 
       const chef = await storage.getChefById(partner.chefId);
-      
+
       res.json({
         id: partner.id,
         username: partner.username,

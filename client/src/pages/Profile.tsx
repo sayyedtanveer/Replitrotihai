@@ -325,9 +325,10 @@ export default function Profile() {
                       <div className="bg-muted/50 p-4 rounded-lg">
                         <h4 className="font-semibold mb-2 text-sm">How Referrals Work</h4>
                         <ul className="text-xs space-y-1 text-muted-foreground">
-                          <li>• Share your code with friends</li>
-                          <li>• They get ₹50 bonus on signup</li>
-                          <li>• You get ₹100 when they complete their first order</li>
+                          <li>• Share your referral code with friends</li>
+                          <li>• They sign up using your code</li>
+                          <li>• You get bonus when they complete their first order</li>
+                          <li>• Bonus amount is set by admin</li>
                         </ul>
                       </div>
                     </CardContent>

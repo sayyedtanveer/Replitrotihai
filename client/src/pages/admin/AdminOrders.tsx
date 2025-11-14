@@ -140,6 +140,12 @@ export default function AdminOrders() {
         return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200";
       case "preparing":
         return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200";
+      case "prepared":
+        return "bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200";
+      case "assigned":
+        return "bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200";
+      case "accepted_by_delivery":
+        return "bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-200";
       case "out_for_delivery":
         return "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200";
       case "delivered":
@@ -257,6 +263,9 @@ export default function AdminOrders() {
                   <SelectItem value="pending">Pending</SelectItem>
                   <SelectItem value="confirmed">Confirmed</SelectItem>
                   <SelectItem value="preparing">Preparing</SelectItem>
+                  <SelectItem value="prepared">Prepared</SelectItem>
+                  <SelectItem value="assigned">Assigned</SelectItem>
+                  <SelectItem value="accepted_by_delivery">Accepted by Delivery</SelectItem>
                   <SelectItem value="out_for_delivery">Out for Delivery</SelectItem>
                   <SelectItem value="delivered">Delivered</SelectItem>
                   <SelectItem value="completed">Completed</SelectItem>
@@ -373,6 +382,9 @@ export default function AdminOrders() {
                               <SelectItem value="pending">Pending</SelectItem>
                               <SelectItem value="confirmed">Confirmed</SelectItem>
                               <SelectItem value="preparing">Preparing</SelectItem>
+                              <SelectItem value="prepared">Prepared</SelectItem>
+                              <SelectItem value="assigned">Assigned</SelectItem>
+                              <SelectItem value="accepted_by_delivery">Accepted by Delivery</SelectItem>
                               <SelectItem value="out_for_delivery">Out for Delivery</SelectItem>
                               <SelectItem value="delivered">Delivered</SelectItem>
                               <SelectItem value="completed">Completed</SelectItem>

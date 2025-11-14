@@ -21,6 +21,7 @@ export const db = drizzle(pool, { schema });
 export { sql };
 export const {
   users,
+  sessions,
   categories,
   products,
   orders,
@@ -34,5 +35,6 @@ export const {
   coupons,
   referrals,
   walletTransactions,
+  walletSettings,
   referralRewards
 } = schema;

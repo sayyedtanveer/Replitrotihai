@@ -14,6 +14,27 @@ export function useAdminAuth() {
     };
 
     checkAuth();
+
+    // Auto-refresh admin token every 10 minutes (before 15min expiry)
+    const refreshToken = async () => {
+      try {
+        const response = await fetch("/api/admin/auth/refresh", {
+          method: "POST",
+          credentials: "include",
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          localStorage.setItem("adminToken", data.accessToken);
+        }
+      } catch (error) {
+        console.error("Admin token refresh failed:", error);
+      }
+    };
+
+    const tokenRefreshInterval = setInterval(refreshToken, 10 * 60 * 1000);
+
+    return () => clearInterval(tokenRefreshInterval);
   }, []);
 
   const logout = () => {

@@ -11,6 +11,7 @@ import {
   verifyToken,
   type AuthenticatedAdminRequest,
 } from "./adminAuth";
+import { db, walletSettings } from "@shared/db";
 import { adminLoginSchema, insertAdminUserSchema, insertCategorySchema, insertProductSchema, insertDeliveryPersonnelSchema } from "@shared/schema";
 import { fromZodError } from "zod-validation-error";
 import { broadcastOrderUpdate, broadcastNewOrder, notifyDeliveryAssignment } from "./websocket";
@@ -111,17 +112,18 @@ export function registerAdminRoutes(app: Express) {
     }
   });
 
-  app.post("/api/admin/auth/logout", (req, res) => {
+  app.post("/api/admin/auth/logout", requireAdmin(), (req, res) => {
     res.clearCookie("refreshToken");
     res.json({ message: "Logged out successfully" });
   });
 
+  // Admin token refresh
   app.post("/api/admin/auth/refresh", async (req, res) => {
     try {
       const refreshToken = req.cookies.refreshToken;
 
       if (!refreshToken) {
-        res.status(401).json({ message: "No refresh token" });
+        res.status(401).json({ message: "No refresh token provided" });
         return;
       }
 
@@ -133,7 +135,7 @@ export function registerAdminRoutes(app: Express) {
 
       const admin = await storage.getAdminById(payload.adminId);
       if (!admin) {
-        res.status(401).json({ message: "Admin not found" });
+        res.status(404).json({ message: "Admin not found" });
         return;
       }
 
@@ -144,21 +146,13 @@ export function registerAdminRoutes(app: Express) {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         sameSite: "strict",
-        maxAge: 7 * 24 * 60 * 60 * 1000,
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       });
 
-      res.json({
-        accessToken: newAccessToken,
-        admin: {
-          id: admin.id,
-          username: admin.username,
-          email: admin.email,
-          role: admin.role,
-        },
-      });
+      res.json({ accessToken: newAccessToken });
     } catch (error) {
-      console.error("Token refresh error:", error);
-      res.status(401).json({ message: "Token refresh failed" });
+      console.error("Admin token refresh error:", error);
+      res.status(500).json({ message: "Failed to refresh token" });
     }
   });
 
@@ -996,6 +990,41 @@ export function registerAdminRoutes(app: Express) {
     } catch (error) {
       console.error("Delete delivery setting error:", error);
       res.status(500).json({ message: "Failed to delete delivery setting" });
+    }
+  });
+
+  // Wallet Settings
+  app.get("/api/admin/wallet-settings", requireAdmin(), async (req, res) => {
+    try {
+      const settings = await db.query.walletSettings.findFirst({
+        where: (ws, { eq }) => eq(ws.isActive, true)
+      });
+      res.json(settings || { maxUsagePerOrder: 10, referrerBonus: 100, referredBonus: 50 });
+    } catch (error) {
+      console.error("Get wallet settings error:", error);
+      res.status(500).json({ message: "Failed to fetch wallet settings" });
+    }
+  });
+
+  app.post("/api/admin/wallet-settings", requireAdminOrManager(), async (req, res) => {
+    try {
+      const { maxUsagePerOrder, referrerBonus, referredBonus } = req.body;
+      
+      // Deactivate old settings
+      await db.update(walletSettings).set({ isActive: false });
+      
+      // Create new settings
+      const [newSettings] = await db.insert(walletSettings).values({
+        maxUsagePerOrder,
+        referrerBonus,
+        referredBonus,
+        isActive: true,
+      }).returning();
+      
+      res.json(newSettings);
+    } catch (error) {
+      console.error("Update wallet settings error:", error);
+      res.status(500).json({ message: "Failed to update wallet settings" });
     }
   });
 }
