@@ -153,14 +153,22 @@ export default function MyOrders() {
     };
   }, [orders, userToken]);
 
-  // Redirect if not authenticated - check this FIRST before rendering anything
-  if (!authLoading && !userToken && !user) {
-    return <Redirect to="/" />;
+  // Show loading state while checking auth
+  if (authLoading || (userToken && isLoading)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Card className="text-center py-12">
+          <CardContent>
+            <p className="text-muted-foreground">Loading your orders...</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
-  // Show nothing while checking auth to prevent flicker
-  if (authLoading && !userToken) {
-    return null;
+  // Redirect if not authenticated after loading is complete
+  if (!userToken && !user) {
+    return <Redirect to="/" />;
   }
 
   // 🧩 Helpers
@@ -578,7 +586,8 @@ export default function MyOrders() {
         isOpen={isLoginOpen}
         onClose={() => setIsLoginOpen(false)}
         onLoginSuccess={() => {
-          window.location.reload();
+          setIsLoginOpen(false);
+          queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
         }}
       />
     </div>

@@ -126,19 +126,7 @@ export default function Profile() {
     enabled: !!userToken,
   });
 
-  const user: ProfileUser | null = replitUser || phoneUser || null;
-  const isLoading = phoneUserLoading;
-
-  // Redirect if not authenticated - check this FIRST before rendering anything
-  if (!authLoading && !userToken && !replitUser && !isLoading) {
-    return <Redirect to="/" />;
-  }
-
-  // Show nothing while checking auth to prevent flicker
-  if (authLoading && !userToken && !isLoading) {
-    return null;
-  }
-
+  // ALL useState hooks must be called before any conditional returns
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isChefListOpen, setIsChefListOpen] = useState(false);
@@ -147,7 +135,7 @@ export default function Profile() {
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
   const [referralCodeInput, setReferralCodeInput] = useState("");
 
-  // 🎁 Check referral eligibility
+  // 🎁 Check referral eligibility - MUST be before conditional returns
   const { data: referralEligibility } = useQuery<{ eligible: boolean; reason?: string }>({
     queryKey: ["/api/user/referral-eligibility", userToken],
     queryFn: async () => {
@@ -162,6 +150,27 @@ export default function Profile() {
 
   // 🎁 Apply referral mutation
   const applyReferralMutation = useApplyReferral();
+
+  const user: ProfileUser | null = replitUser || phoneUser || null;
+  const isLoading = phoneUserLoading || authLoading;
+
+  // Show loading state while checking auth
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Card className="text-center py-12">
+          <CardContent>
+            <p className="text-muted-foreground">Loading your profile...</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Redirect if not authenticated after loading is complete
+  if (!userToken && !replitUser) {
+    return <Redirect to="/" />;
+  }
 
   const handleLogout = () => {
     if (userToken) {
@@ -506,7 +515,11 @@ export default function Profile() {
         isOpen={isLoginOpen}
         onClose={() => setIsLoginOpen(false)}
         onLoginSuccess={() => {
-          window.location.reload();
+          setIsLoginOpen(false);
+          queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/user/referral-code"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/user/referrals"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/user/wallet"] });
         }}
       />
     </div>

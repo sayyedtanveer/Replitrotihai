@@ -624,6 +624,15 @@ app.post("/api/orders", async (req: any, res) => {
       let user = await storage.getUserByPhone(sanitized.phone);
 
       if (!user) {
+        // Double-check phone doesn't exist (security measure)
+        const existingUser = await storage.getUserByPhone(sanitized.phone);
+        if (existingUser) {
+          return res.status(400).json({ 
+            message: "Phone number already registered. Please login to continue.",
+            requiresLogin: true 
+          });
+        }
+
         accountCreated = true;
         // Default password: last 6 digits of phone number
         const tempPassword = sanitized.phone.slice(-6);

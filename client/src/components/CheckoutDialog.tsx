@@ -8,6 +8,7 @@ import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { useApplyReferral } from "@/hooks/useApplyReferral";
+import { Loader2 } from "lucide-react";
 
 interface CartItem {
   id: string;
@@ -86,7 +87,7 @@ export default function CheckoutDialog({
   const { toast } = useToast();
   const { user, isAuthenticated } = useAuth();
   const applyReferralMutation = useApplyReferral();
-  
+
   // Get token from localStorage (for authenticated users)
   const userToken = localStorage.getItem("userToken");
 
@@ -263,6 +264,18 @@ export default function CheckoutDialog({
       return;
     }
 
+    // Prevent checkout if phone exists but user is not logged in
+    if (phoneExists && !userToken) {
+      toast({
+        title: "Login Required",
+        description: "This phone number is already registered. Please switch to the Login tab to continue.",
+        variant: "destructive",
+      });
+      // Switch to login tab to make it easier for user
+      setActiveTab("login");
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -307,8 +320,17 @@ export default function CheckoutDialog({
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || "Failed to create order");
+        const error = await response.json();
+        if (error.requiresLogin) {
+          toast({
+            title: "Login Required",
+            description: error.message || "This phone number is already registered. Please login.",
+            variant: "destructive",
+          });
+          setIsLoading(false); // Changed from setIsSubmitting to setIsLoading
+          return;
+        }
+        throw new Error(error.message || "Failed to create order");
       }
 
       const result = await response.json();
@@ -375,6 +397,7 @@ export default function CheckoutDialog({
       setCouponCode("");
       setReferralCode("");
       setAppliedCoupon(null);
+      setPhoneExists(null); // Reset phoneExists state
 
       // Close the checkout dialog
       onClose();
@@ -390,13 +413,13 @@ export default function CheckoutDialog({
         variant: "destructive",
       });
     } finally {
-      setIsLoading(false);
+      setIsLoading(false); // Changed from setIsSubmitting to setIsLoading
     }
   };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
+    setIsLoading(true); // Changed from setIsSubmitting to setIsLoading
 
     try {
       const response = await fetch("/api/user/login", {
@@ -445,7 +468,7 @@ export default function CheckoutDialog({
         variant: "destructive",
       });
     } finally {
-      setIsLoading(false);
+      setIsLoading(false); // Changed from setIsSubmitting to setIsLoading
     }
   };
 
@@ -492,6 +515,9 @@ export default function CheckoutDialog({
   // Dummy password state for login form
   const [password, setPassword] = useState("");
 
+  // Determine if the form is valid for submission
+  const isFormValid = customerName && phone && address; // Add other required fields as needed
+
 
   return (
     <>
@@ -509,7 +535,12 @@ export default function CheckoutDialog({
               <TabsTrigger value="checkout" onClick={() => setActiveTab("checkout")}>
                 Checkout
               </TabsTrigger>
-              <TabsTrigger value="login" onClick={() => setActiveTab("login")}>
+              <TabsTrigger 
+                value="login" 
+                onClick={() => setActiveTab("login")}
+                disabled={!!userToken}
+                className={userToken ? "cursor-not-allowed opacity-50" : ""}
+              >
                 Login
               </TabsTrigger>
             </TabsList>
@@ -552,9 +583,14 @@ export default function CheckoutDialog({
                       )}
                     </div>
                     {phoneExists && !userToken && (
-                      <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">
-                        ⚠️ This number is registered. Please login to continue.
-                      </p>
+                      <div className="bg-orange-50 dark:bg-orange-950 border border-orange-200 dark:border-orange-800 rounded-md p-2 mt-1">
+                        <p className="text-xs text-orange-800 dark:text-orange-200 font-medium">
+                          ⚠️ This phone number is already registered.
+                        </p>
+                        <p className="text-xs text-orange-700 dark:text-orange-300 mt-1">
+                          Please switch to the <strong>Login</strong> tab to continue with this number, or use a different phone number.
+                        </p>
+                      </div>
                     )}
                   </div>
 
@@ -686,8 +722,21 @@ export default function CheckoutDialog({
                   <Button type="button" variant="outline" onClick={onClose}>
                     Cancel
                   </Button>
-                  <Button type="submit" disabled={isLoading}>
-                    {isLoading ? "Placing Order..." : "Place Order"}
+                  <Button
+                    type="submit"
+                    disabled={isLoading || !isFormValid || (phoneExists === true && !userToken)}
+                    variant={phoneExists && !userToken ? "destructive" : "default"}
+                  >
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Processing...
+                      </>
+                    ) : phoneExists && !userToken ? (
+                      "Login Required - Switch to Login Tab"
+                    ) : (
+                      "Place Order"
+                    )}
                   </Button>
                 </DialogFooter>
               </form>

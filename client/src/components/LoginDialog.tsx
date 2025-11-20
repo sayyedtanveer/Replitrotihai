@@ -59,13 +59,14 @@ export default function LoginDialog({
       setPassword("");
       onClose();
       
+      // Call success callback without page reload
       if (onLoginSuccess) {
         onLoginSuccess();
       }
     } catch (error) {
       toast({
         title: "Login failed",
-        description: "Invalid phone number or password. Please try again.",
+        description: error instanceof Error ? error.message : "Invalid phone number or password. Please try again.",
         variant: "destructive",
       });
     } finally {

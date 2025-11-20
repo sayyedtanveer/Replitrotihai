@@ -56,9 +56,18 @@ export function registerAdminRoutes(app: Express) {
   });
 
   app.post("/api/admin/auth/login", async (req, res) => {
+    const loginAttempt = {
+      timestamp: new Date().toISOString(),
+      username: req.body.username,
+      ip: req.ip || req.connection.remoteAddress,
+      userAgent: req.headers['user-agent'],
+      success: false,
+    };
+
     try {
       const validation = adminLoginSchema.safeParse(req.body);
       if (!validation.success) {
+        console.log('[Admin Login Failed]', { ...loginAttempt, reason: 'Invalid credentials format' });
         res.status(400).json({ message: fromZodError(validation.error).toString() });
         return;
       }
@@ -75,12 +84,14 @@ export function registerAdminRoutes(app: Express) {
       }
 
       if (!admin) {
+        console.log('[Admin Login Failed]', { ...loginAttempt, reason: 'User not found' });
         res.status(401).json({ message: "Invalid credentials" });
         return;
       }
 
       const isPasswordValid = await verifyPassword(password, admin.passwordHash);
       if (!isPasswordValid) {
+        console.log('[Admin Login Failed]', { ...loginAttempt, reason: 'Invalid password' });
         res.status(401).json({ message: "Invalid credentials" });
         return;
       }
@@ -89,6 +100,13 @@ export function registerAdminRoutes(app: Express) {
 
       const accessToken = generateAccessToken(admin);
       const refreshToken = generateRefreshToken(admin);
+
+      console.log('[Admin Login Success]', { 
+        ...loginAttempt, 
+        success: true, 
+        adminId: admin.id,
+        role: admin.role 
+      });
 
       res.cookie("refreshToken", refreshToken, {
         httpOnly: true,
@@ -107,7 +125,7 @@ export function registerAdminRoutes(app: Express) {
         },
       });
     } catch (error) {
-      console.error("Admin login error:", error);
+      console.error('[Admin Login Error]', { ...loginAttempt, error: error instanceof Error ? error.message : 'Unknown error' });
       res.status(500).json({ message: "Login failed" });
     }
   });
@@ -1009,10 +1027,10 @@ export function registerAdminRoutes(app: Express) {
   app.post("/api/admin/wallet-settings", requireAdminOrManager(), async (req, res) => {
     try {
       const { maxUsagePerOrder, referrerBonus, referredBonus } = req.body;
-      
+
       // Deactivate old settings
       await db.update(walletSettings).set({ isActive: false });
-      
+
       // Create new settings
       const [newSettings] = await db.insert(walletSettings).values({
         maxUsagePerOrder,
@@ -1020,7 +1038,7 @@ export function registerAdminRoutes(app: Express) {
         referredBonus,
         isActive: true,
       }).returning();
-      
+
       res.json(newSettings);
     } catch (error) {
       console.error("Update wallet settings error:", error);

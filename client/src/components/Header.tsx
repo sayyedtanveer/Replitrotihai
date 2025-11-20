@@ -95,13 +95,13 @@ export default function Header({ cartItemCount = 0, onCartClick, onMenuClick, se
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="gap-2 hidden lg:flex h-9 text-sm" data-testid="button-user-menu">
                     <Avatar className="h-7 w-7">
-                      <AvatarImage src={user.profileImageUrl ?? undefined} alt={user.firstName ?? "User"} />
+                      <AvatarImage src={(user as any).profileImageUrl ?? undefined} alt={(user as any).firstName ?? (user as any).name ?? "User"} />
                       <AvatarFallback className="text-xs">
-                        {user.firstName?.[0]?.toUpperCase() ?? user.email?.[0]?.toUpperCase() ?? "U"}
+                        {((user as any).firstName?.[0] ?? (user as any).name?.[0] ?? (user as any).email?.[0] ?? "U").toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
                     <span className="text-sm">
-                      {user.firstName ?? user.email}
+                      {(user as any).firstName ?? (user as any).name ?? (user as any).email}
                     </span>
                   </Button>
                 </DropdownMenuTrigger>
