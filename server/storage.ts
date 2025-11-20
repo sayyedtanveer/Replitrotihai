@@ -119,6 +119,7 @@ export interface IStorage {
   createReferral(referrerId: string, referredId: string): Promise<any>;
   applyReferralBonus(referralCode: string, newUserId: string): Promise<void>;
   getReferralsByUser(userId: string): Promise<any[]>;
+  getReferralByReferredId(referredId: string): Promise<any | null>;
   getUserWalletBalance(userId: string): Promise<number>;
   updateWalletBalance(userId: string, amount: number): Promise<void>;
 
@@ -1035,6 +1036,13 @@ export class MemStorage implements IStorage {
     return db.query.referrals.findMany({
       where: (r, { eq }) => eq(r.referrerId, userId),
     });
+  }
+
+  async getReferralByReferredId(referredId: string): Promise<any | null> {
+    const referral = await db.query.referrals.findFirst({
+      where: (r, { eq }) => eq(r.referredId, referredId),
+    });
+    return referral || null;
   }
 
   async getUserWalletBalance(userId: string): Promise<number> {

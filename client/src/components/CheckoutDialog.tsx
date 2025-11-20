@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { useApplyReferral } from "@/hooks/useApplyReferral";
 
 interface CartItem {
   id: string;
@@ -64,6 +65,7 @@ export default function CheckoutDialog({
   const [email, setEmail] = useState("");
   const [address, setAddress] = useState("");
   const [couponCode, setCouponCode] = useState("");
+  const [referralCode, setReferralCode] = useState("");
   const [subtotal, setSubtotal] = useState(0);
   const [deliveryFee, setDeliveryFee] = useState(0);
   const [deliveryDistance, setDeliveryDistance] = useState<number | null>(null);
@@ -80,7 +82,11 @@ export default function CheckoutDialog({
   const [couponError, setCouponError] = useState("");
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const { toast } = useToast();
-  const { user: userToken } = useAuth();
+  const { user, isAuthenticated } = useAuth();
+  const applyReferralMutation = useApplyReferral();
+  
+  // Get token from localStorage (for authenticated users)
+  const userToken = localStorage.getItem("userToken");
 
   useEffect(() => {
     if (cart) {
@@ -143,7 +149,11 @@ export default function CheckoutDialog({
       setIsCheckingPhone(true);
       setPhoneExists(null); // Reset previous state
       try {
-        const response = await fetch(`/api/auth/check-phone?phone=${value}`);
+        const response = await fetch("/api/user/check-phone", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phone: value }),
+        });
         const data = await response.json();
         setPhoneExists(data.exists);
         if (data.exists && !userToken) {
@@ -303,6 +313,27 @@ export default function CheckoutDialog({
           description: `Order #${result.id.slice(0, 8)} created. Your login password is the last 6 digits of your phone: ${phone.slice(-6)}`,
           duration: 10000, // Show for 10 seconds
         });
+
+        // Store the new user token for future requests
+        if (result.accessToken) {
+          localStorage.setItem("userToken", result.accessToken);
+          // Store user data for immediate use
+          localStorage.setItem("userData", JSON.stringify({
+            id: result.userId || result.user?.id,
+            name: customerName,
+            phone: phone,
+            email: email || "",
+            address: address || "",
+          }));
+        }
+
+        // Apply referral code if provided by new user
+        if (referralCode.trim() && result.accessToken) {
+          applyReferralMutation.mutate({
+            referralCode: referralCode.trim(),
+            userToken: result.accessToken,
+          });
+        }
       } else {
         toast({
           title: "✓ Order placed successfully!",
@@ -328,7 +359,15 @@ export default function CheckoutDialog({
       setEmail("");
       setAddress("");
       setCouponCode("");
+      setReferralCode("");
       setAppliedCoupon(null);
+
+      // Reload page to refresh auth state
+      if (result.accountCreated) {
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000);
+      }
 
     } catch (error) {
       console.error("Order creation error:", error);
@@ -347,7 +386,7 @@ export default function CheckoutDialog({
     setIsLoading(true);
 
     try {
-      const response = await fetch("/api/auth/login", {
+      const response = await fetch("/api/user/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone, password }),
@@ -524,6 +563,28 @@ export default function CheckoutDialog({
                       Please include street, area, and any landmarks in Kurla West, Mumbai
                     </p>
                   </div>
+
+                  {/* Referral Code Input - for new users only (not logged in) */}
+                  {!isAuthenticated && (
+                    <div>
+                      <Label htmlFor="referralCode" className="text-sm flex items-center gap-1">
+                        Referral Code <span className="text-muted-foreground font-normal">(Optional)</span>
+                      </Label>
+                      <Input
+                        id="referralCode"
+                        type="text"
+                        placeholder="Enter friend's referral code"
+                        value={referralCode}
+                        onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
+                        className="font-mono uppercase"
+                        maxLength={20}
+                        data-testid="input-checkout-referral-code"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Have a referral code? Enter it to earn bonus rewards!
+                      </p>
+                    </div>
+                  )}
 
                   {/* Coupon Code */}
                   <div>

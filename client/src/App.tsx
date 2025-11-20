@@ -1,4 +1,4 @@
-import { Route, Switch, Redirect } from "wouter";
+import { Route, Switch, Redirect, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -36,14 +36,17 @@ import AdminWalletSettings from "./pages/admin/AdminWalletSettings";
 // ✅ Simple Auth Guard for customer routes
 function ProtectedRoute({ component: Component }: { component: any }) {
   const { user } = useAuth();
+  const [, setLocation] = useLocation();
   const hasJwtToken = !!localStorage.getItem("userToken");
 
-  if (user || hasJwtToken) {
-    return <Component />;
-  } else {
-    // Redirect unauthenticated users to home for now
-    return <Redirect to="/" />;
+  // Check authentication
+  if (!user && !hasJwtToken) {
+    // Use setLocation for immediate redirect without render
+    setLocation("/");
+    return null;
   }
+
+  return <Component />;
 }
 
 function Router() {

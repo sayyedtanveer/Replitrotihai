@@ -49,12 +49,31 @@ export default function MenuDrawer({ isOpen, onClose, categories = [], onCategor
     console.log('Settings clicked');
     onClose();
   };
-  
-  
+
+
   const handleLogoutClick = async () => {
-  await logout(); // clears tokens and redirects home
-  onClose();      // closes the drawer
-};
+    await logout(); // clears tokens and redirects home
+    onClose();      // closes the drawer
+  };
+
+
+  // NOTE: The following is a temporary fix for the flickering issue.
+  // A more robust solution would involve state management to properly
+  // handle authentication state changes before navigation.
+  const handleLogout = () => {
+    const userToken = localStorage.getItem("userToken");
+    if (userToken) {
+      localStorage.removeItem("userToken");
+      localStorage.removeItem("userRefreshToken");
+      localStorage.removeItem("userData");
+      // Force full page reload to clear all state
+      window.location.href = "/";
+    } else {
+      window.location.href = "/api/logout";
+    }
+    onClose();
+  };
+
 
   return (
     <>
@@ -182,7 +201,7 @@ export default function MenuDrawer({ isOpen, onClose, categories = [], onCategor
                   <Button
                     variant="ghost"
                     className="w-full justify-start text-destructive hover:text-destructive"
-                    onClick={handleLogoutClick}
+                    onClick={handleLogout}
                     data-testid="button-logout"
                   >
                     <LogOut className="h-4 w-4 mr-3" />

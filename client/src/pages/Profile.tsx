@@ -9,6 +9,8 @@ import MenuDrawer from "@/components/MenuDrawer";
 import CartSidebar from "@/components/CartSidebar";
 import ChefListDrawer from "@/components/ChefListDrawer";
 import SubscriptionDrawer from "@/components/SubscriptionDrawer";
+import { ChangePasswordDialog } from "@/components/ChangePasswordDialog";
+import { useApplyReferral } from "@/hooks/useApplyReferral";
 import {
   Card,
   CardContent,
@@ -21,7 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { User, Mail, MapPin, Phone, LogOut } from "lucide-react";
+import { User, Mail, MapPin, Phone, LogOut, Lock, Gift } from "lucide-react";
 import type { Category, Chef as BaseChef } from "@shared/schema";
 
 // ✅ Frontend-safe version of Chef (adds optional lat/long if Drizzle didn’t generate them yet)
@@ -130,17 +132,42 @@ export default function Profile() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isChefListOpen, setIsChefListOpen] = useState(false);
   const [isSubscriptionOpen, setIsSubscriptionOpen] = useState(false);
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
+  const [referralCodeInput, setReferralCodeInput] = useState("");
+
+  // 🎁 Check referral eligibility
+  const { data: referralEligibility } = useQuery<{ eligible: boolean; reason?: string }>({
+    queryKey: ["/api/user/referral-eligibility", userToken],
+    queryFn: async () => {
+      const res = await fetch("/api/user/referral-eligibility", {
+        headers: { Authorization: `Bearer ${userToken}` },
+      });
+      if (!res.ok) throw new Error("Failed to check eligibility");
+      return res.json();
+    },
+    enabled: !!userToken,
+  });
+
+  // 🎁 Apply referral mutation
+  const applyReferralMutation = useApplyReferral();
 
   const handleLogout = () => {
     if (userToken) {
       localStorage.removeItem("userToken");
       localStorage.removeItem("userRefreshToken");
       localStorage.removeItem("userData");
-      setLocation("/");
+      // Force immediate redirect
+      window.location.href = "/";
     } else {
       window.location.href = "/api/logout";
     }
   };
+
+  // Redirect if not authenticated
+  if (!userToken && !replitUser && !isLoading) {
+    setLocation("/");
+    return null;
+  }
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -297,6 +324,59 @@ export default function Profile() {
                         )}
                       </div>
 
+                      {/* Apply Referral Code - Show only if eligible */}
+                      {referralEligibility?.eligible && (
+                        <>
+                          <Separator />
+                          <div>
+                            <h3 className="font-semibold mb-3 flex items-center gap-2">
+                              <Gift className="h-4 w-4" />
+                              Have a Referral Code?
+                            </h3>
+                            <div className="bg-blue-50 dark:bg-blue-950 p-4 rounded-lg space-y-3">
+                              <p className="text-sm text-muted-foreground">
+                                Enter a friend's referral code to earn bonus rewards!
+                              </p>
+                              <div className="flex gap-2">
+                                <Input
+                                  type="text"
+                                  placeholder="Enter referral code"
+                                  value={referralCodeInput}
+                                  onChange={(e) => setReferralCodeInput(e.target.value.toUpperCase())}
+                                  className="font-mono uppercase"
+                                  maxLength={20}
+                                  data-testid="input-referral-code"
+                                />
+                                <Button
+                                  onClick={() => {
+                                    if (!referralCodeInput.trim()) {
+                                      toast({
+                                        title: "Error",
+                                        description: "Please enter a referral code",
+                                        variant: "destructive",
+                                      });
+                                      return;
+                                    }
+                                    applyReferralMutation.mutate({
+                                      referralCode: referralCodeInput.trim(),
+                                      userToken: userToken!,
+                                    }, {
+                                      onSuccess: () => {
+                                        setReferralCodeInput("");
+                                      },
+                                    });
+                                  }}
+                                  disabled={applyReferralMutation.isPending || !referralCodeInput.trim()}
+                                  data-testid="button-apply-referral"
+                                >
+                                  {applyReferralMutation.isPending ? "Applying..." : "Apply"}
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        </>
+                      )}
+
                       {/* Referral Stats */}
                       {referrals.length > 0 && (
                         <>
@@ -336,12 +416,31 @@ export default function Profile() {
 
                   <Card>
                     <CardHeader>
+                      <CardTitle>Security</CardTitle>
+                      <CardDescription>Manage your password and security settings</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <Button
+                        onClick={() => setIsChangePasswordOpen(true)}
+                        variant="outline"
+                        className="w-full sm:w-auto"
+                        data-testid="button-change-password"
+                      >
+                        <Lock className="h-4 w-4 mr-2" />
+                        Change Password
+                      </Button>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
                       <CardTitle>Account Actions</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <Button
                         onClick={() => setLocation("/my-orders")}
                         className="w-full sm:w-auto"
+                        data-testid="button-view-orders"
                       >
                         View My Orders
                       </Button>
@@ -349,6 +448,7 @@ export default function Profile() {
                         variant="destructive"
                         onClick={handleLogout}
                         className="w-full sm:w-auto ml-0 sm:ml-2"
+                        data-testid="button-logout"
                       >
                         <LogOut className="h-4 w-4 mr-2" />
                         Logout
@@ -387,6 +487,11 @@ export default function Profile() {
       <SubscriptionDrawer
         isOpen={isSubscriptionOpen}
         onClose={() => setIsSubscriptionOpen(false)}
+      />
+
+      <ChangePasswordDialog
+        open={isChangePasswordOpen}
+        onOpenChange={setIsChangePasswordOpen}
       />
     </div>
   );

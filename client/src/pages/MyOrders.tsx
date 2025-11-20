@@ -152,6 +152,12 @@ export default function MyOrders() {
     };
   }, [orders, userToken]);
 
+  // Redirect if not authenticated
+  if (!userToken && !user) {
+    setLocation("/");
+    return null;
+  }
+
   // 🧩 Helpers
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -277,7 +283,7 @@ export default function MyOrders() {
             </p>
           </div>
 
-          {!user ? (
+          {!userToken ? (
             <Card className="text-center py-12">
               <CardContent className="flex flex-col items-center gap-4">
                 <ShoppingBag className="h-16 w-16 text-muted-foreground" />

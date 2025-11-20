@@ -8,6 +8,7 @@ import { registerDeliveryRoutes } from "./deliveryRoutes";
 import { setupWebSocket, broadcastNewOrder } from "./websocket";
 import { hashPassword, verifyPassword, generateAccessToken, generateRefreshToken, requireUser, type AuthenticatedUserRequest } from "./userAuth";
 import { verifyToken as verifyUserToken } from "./userAuth";
+import { sendEmail, createWelcomeEmail, createPasswordResetEmail, createPasswordChangeConfirmationEmail } from "./emailService";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   registerAdminRoutes(app);
@@ -47,7 +48,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/user/check-phone", async (req, res) => {
     try {
       const { phone } = req.body;
-      
+
       if (!phone) {
         res.status(400).json({ message: "Phone number is required" });
         return;
@@ -61,7 +62,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Reset password endpoint
+  // Reset password endpoint (Forgot Password)
   app.post("/api/user/reset-password", async (req, res) => {
     try {
       const { phone } = req.body;
@@ -83,15 +84,82 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       await storage.updateUser(user.id, { passwordHash });
 
-      // Note: In production, send this via SMS/Email instead of returning it
+      // Send password reset email if user has email
+      let emailSent = false;
+      if (user.email) {
+        const emailHtml = createPasswordResetEmail(user.name, user.phone, newPassword);
+        emailSent = await sendEmail({
+          to: user.email,
+          subject: '🔐 Password Reset - RotiHai',
+          html: emailHtml,
+        });
+      }
+
       res.json({ 
-        message: "Password reset successful. Your new password is the last 6 digits of your phone number.",
-        newPassword,
+        message: emailSent 
+          ? "Password reset successful! Check your email for the new password." 
+          : "Password reset successful. Your new password is the last 6 digits of your phone number.",
+        newPassword: !emailSent ? newPassword : undefined,
+        emailSent,
         hint: "Use the last 6 digits of your phone number to login"
       });
     } catch (error) {
       console.error("Password reset error:", error);
       res.status(500).json({ message: "Failed to reset password" });
+    }
+  });
+
+  // Change password endpoint (for logged-in users)
+  app.post("/api/user/change-password", requireUser(), async (req: AuthenticatedUserRequest, res) => {
+    try {
+      const { currentPassword, newPassword } = req.body;
+
+      if (!currentPassword || !newPassword) {
+        res.status(400).json({ message: "Current password and new password are required" });
+        return;
+      }
+
+      if (newPassword.length < 6) {
+        res.status(400).json({ message: "New password must be at least 6 characters long" });
+        return;
+      }
+
+      const userId = req.authenticatedUser!.userId;
+      const user = await storage.getUser(userId);
+
+      if (!user) {
+        res.status(404).json({ message: "User not found" });
+        return;
+      }
+
+      // Verify current password
+      const isValid = await verifyPassword(currentPassword, user.passwordHash);
+      if (!isValid) {
+        res.status(401).json({ message: "Current password is incorrect" });
+        return;
+      }
+
+      // Update to new password
+      const newPasswordHash = await hashPassword(newPassword);
+      await storage.updateUser(user.id, { passwordHash: newPasswordHash });
+
+      // Send confirmation email if user has email
+      if (user.email) {
+        const emailHtml = createPasswordChangeConfirmationEmail(user.name, user.phone);
+        await sendEmail({
+          to: user.email,
+          subject: '✅ Password Changed Successfully - RotiHai',
+          html: emailHtml,
+        });
+      }
+
+      res.json({ 
+        message: "Password changed successfully",
+        success: true
+      });
+    } catch (error) {
+      console.error("Change password error:", error);
+      res.status(500).json({ message: "Failed to change password" });
     }
   });
 
@@ -211,11 +279,17 @@ app.post("/api/user/logout", async (req, res) => {
       let user = await storage.getUserByPhone(phone);
       let isNewUser = false;
       let generatedPassword;
+      let emailSent = false;
 
       if (!user) {
         isNewUser = true;
         // Default password: last 6 digits of phone number
         generatedPassword = phone.slice(-6);
+
+        if (!generatedPassword || generatedPassword.length < 6) {
+          return res.status(400).json({ message: "Invalid phone number: must be at least 6 digits" });
+        }
+
         const passwordHash = await hashPassword(generatedPassword);
         user = await storage.createUser({
           name: customerName,
@@ -227,6 +301,20 @@ app.post("/api/user/logout", async (req, res) => {
           walletBalance: 0,
         });
         console.log("New user created:", user.id, "- Default password:", generatedPassword);
+
+        // Send welcome email with password if email is provided
+        if (email) {
+          const emailHtml = createWelcomeEmail(customerName, phone, generatedPassword);
+          emailSent = await sendEmail({
+            to: email,
+            subject: '🍽️ Welcome to RotiHai - Your Account Details',
+            html: emailHtml,
+          });
+
+          if (emailSent) {
+            console.log(`✅ Welcome email sent to ${email}`);
+          }
+        }
       } else {
         await storage.updateUserLastLogin(user.id);
         console.log("Existing user logged in:", user.id);
@@ -246,6 +334,7 @@ app.post("/api/user/logout", async (req, res) => {
         accessToken,
         refreshToken,
         defaultPassword: isNewUser ? generatedPassword : undefined,
+        emailSent: isNewUser ? emailSent : undefined,
       });
     } catch (error) {
       console.error("Auto-register error:", error);
@@ -281,7 +370,7 @@ app.post("/api/user/logout", async (req, res) => {
     try {
       const userId = req.authenticatedUser!.userId;
       const user = await storage.getUser(userId);
-      
+
       if (!user) {
         res.status(404).json({ message: "User not found" });
         return;
@@ -336,16 +425,36 @@ app.post("/api/user/logout", async (req, res) => {
     try {
       const userId = req.authenticatedUser!.userId;
       const referralCode = await storage.getUserReferralCode(userId);
-      
+
       if (!referralCode) {
         res.status(404).json({ message: "No referral code found. Generate one first." });
         return;
       }
-      
+
       res.json({ referralCode });
     } catch (error: any) {
       console.error("Error fetching referral code:", error);
       res.status(500).json({ message: error.message || "Failed to fetch referral code" });
+    }
+  });
+
+  // Check if user is eligible to apply a referral code
+  app.get("/api/user/referral-eligibility", requireUser(), async (req: AuthenticatedUserRequest, res) => {
+    try {
+      const userId = req.authenticatedUser!.userId;
+
+      // Check if user has already applied a referral code
+      const referral = await storage.getReferralByReferredId(userId);
+
+      if (referral) {
+        res.json({ eligible: false, reason: "You have already used a referral code" });
+        return;
+      }
+
+      res.json({ eligible: true });
+    } catch (error: any) {
+      console.error("Error checking referral eligibility:", error);
+      res.status(500).json({ message: error.message || "Failed to check eligibility" });
     }
   });
 
@@ -500,12 +609,55 @@ app.post("/api/orders", async (req: any, res) => {
       });
     }
 
-    // Extract authenticated userId (JWT)
+    // Extract authenticated userId (JWT) or auto-register new user
     let userId: string | undefined;
+    let accountCreated = false;
+    let generatedPassword: string | undefined;
+    let emailSent = false;
+
     if (req.headers.authorization?.startsWith("Bearer ")) {
       const token = req.headers.authorization.substring(7);
       const payload = verifyUserToken(token);
       if (payload?.userId) userId = payload.userId;
+    } else if (sanitized.phone) {
+      // Auto-register user if phone is provided and user doesn't exist
+      let user = await storage.getUserByPhone(sanitized.phone);
+
+      if (!user) {
+        accountCreated = true;
+        // Default password: last 6 digits of phone number
+        const tempPassword = sanitized.phone.slice(-6);
+        generatedPassword = tempPassword;
+        const passwordHash = await hashPassword(tempPassword);
+        user = await storage.createUser({
+          name: sanitized.customerName,
+          phone: sanitized.phone,
+          email: sanitized.email || null,
+          address: sanitized.address || null,
+          passwordHash,
+          referralCode: null,
+          walletBalance: 0,
+        });
+        console.log("New user auto-created during checkout:", user.id, "- Default password:", generatedPassword);
+
+        // Send welcome email with password if email is provided
+        if (sanitized.email && generatedPassword) {
+          const emailHtml = createWelcomeEmail(sanitized.customerName, sanitized.phone, generatedPassword);
+          emailSent = await sendEmail({
+            to: sanitized.email,
+            subject: '🍽️ Welcome to RotiHai - Your Account Details',
+            html: emailHtml,
+          });
+
+          if (emailSent) {
+            console.log(`✅ Welcome email sent to ${sanitized.email}`);
+          }
+        }
+      } else {
+        await storage.updateUserLastLogin(user.id);
+      }
+
+      userId = user.id;
     }
 
     // Build payload to create order
@@ -539,7 +691,7 @@ app.post("/api/orders", async (req: any, res) => {
         const { db: database } = await import("@shared/db");
         const { referrals: referralsTable } = await import("@shared/db");
         const { eq, and } = await import("drizzle-orm");
-        
+
         const pendingReferral = await database.query.referrals.findFirst({
           where: (r, { eq, and }) => and(
             eq(r.referredId, userId),
@@ -554,7 +706,7 @@ app.post("/api/orders", async (req: any, res) => {
             const referredUser = await tx.query.users.findFirst({
               where: (u, { eq }) => eq(u.id, userId),
             });
-            
+
             // Mark referral as completed
             await tx.update(referralsTable)
               .set({ 
@@ -580,7 +732,23 @@ app.post("/api/orders", async (req: any, res) => {
     broadcastNewOrder(order);
 
     console.log("✅ Order created successfully:", order.id);
-    res.status(201).json(order);
+
+    // Generate access token for newly created users
+    let accessToken: string | undefined;
+    if (accountCreated && userId) {
+      const user = await storage.getUser(userId);
+      if (user) {
+        accessToken = generateAccessToken(user);
+      }
+    }
+
+    res.status(201).json({
+      ...order,
+      accountCreated,
+      defaultPassword: accountCreated ? generatedPassword : undefined,
+      emailSent: accountCreated ? emailSent : undefined,
+      accessToken: accountCreated ? accessToken : undefined,
+    });
   } catch (error: any) {
     console.error("❌ Create order error:", error);
     res.status(500).json({ message: error.message || "Failed to create order" });

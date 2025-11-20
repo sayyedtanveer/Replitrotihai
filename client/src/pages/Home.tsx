@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { UtensilsCrossed, ChefHat, Hotel } from "lucide-react";
 import type { Category, Chef, Product } from "@shared/schema";
 import { useCart } from "@/hooks/use-cart";
+import { toast } from "@/hooks/use-toast";
 
 const iconMap: Record<string, React.ReactNode> = {
   UtensilsCrossed: <UtensilsCrossed className="h-6 w-6 text-primary" />,
@@ -107,7 +108,7 @@ export default function Home() {
 
   const totalItems = getTotalItems();
 
-  // ✅ FIX: Wait until cart closes, then open checkout
+  // ✅ Called when checkout creates order successfully
   const handleCheckout = (categoryId: string) => {
     setCheckoutCategoryId(categoryId);
     setIsCartOpen(false);
@@ -136,14 +137,21 @@ export default function Home() {
   };
 
   // ✅ Called after QR payment flow completes
-  const handleOrderSuccess = (categoryId: string) => {
-    console.log("Order successful for category:", categoryId);
+  const handleOrderSuccess = (categoryId: string | null) => {
     setIsPaymentQROpen(false);
     setPaymentOrderDetails(null);
-    setCheckoutCategoryId("");
+
+    // Clear the cart for the completed order
+    if (categoryId) {
+      clearCart(categoryId);
+      toast({
+        title: "Cart cleared",
+        description: "Your order has been placed successfully",
+      });
+    }
   };
 
-  // ✅ FIX: Clear state when checkout dialog closes
+  // ✅ Called when checkout dialog closes
   const handleCheckoutClose = () => {
     setIsCheckoutOpen(false);
     setCheckoutCategoryId("");
