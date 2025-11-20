@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useLocation } from "wouter";
+import { Redirect, useLocation } from "wouter";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import MenuDrawer from "@/components/MenuDrawer";
@@ -51,7 +50,7 @@ export default function MyOrders() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isChefListOpen, setIsChefListOpen] = useState(false);
   const [isSubscriptionOpen, setIsSubscriptionOpen] = useState(false);
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const userToken = localStorage.getItem("userToken");
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
@@ -152,9 +151,13 @@ export default function MyOrders() {
     };
   }, [orders, userToken]);
 
-  // Redirect if not authenticated
-  if (!userToken && !user) {
-    setLocation("/");
+  // Redirect if not authenticated - check this FIRST before rendering anything
+  if (!authLoading && !userToken && !user) {
+    return <Redirect to="/" />;
+  }
+
+  // Show nothing while checking auth to prevent flicker
+  if (authLoading && !userToken) {
     return null;
   }
 

@@ -497,6 +497,7 @@ export default function Home() {
   isOpen={isCheckoutOpen}
   onClose={handleCheckoutClose}
   cart={carts.find(cart => cart.categoryId === checkoutCategoryId) || null}
+  onClearCart={() => clearCart(checkoutCategoryId)}
   onShowPaymentQR={handleShowPaymentQR}
 />
 

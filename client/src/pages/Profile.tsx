@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
-import { useLocation } from "wouter";
+import { Redirect, useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
@@ -33,7 +33,7 @@ type FrontendChef = BaseChef & {
 };
 
 export default function Profile() {
-  const { user: replitUser } = useAuth();
+  const { user: replitUser, isLoading: authLoading } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -128,6 +128,16 @@ export default function Profile() {
   const user: ProfileUser | null = replitUser || phoneUser || null;
   const isLoading = phoneUserLoading;
 
+  // Redirect if not authenticated - check this FIRST before rendering anything
+  if (!authLoading && !userToken && !replitUser && !isLoading) {
+    return <Redirect to="/" />;
+  }
+
+  // Show nothing while checking auth to prevent flicker
+  if (authLoading && !userToken && !isLoading) {
+    return null;
+  }
+
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isChefListOpen, setIsChefListOpen] = useState(false);
@@ -162,12 +172,6 @@ export default function Profile() {
       window.location.href = "/api/logout";
     }
   };
-
-  // Redirect if not authenticated
-  if (!userToken && !replitUser && !isLoading) {
-    setLocation("/");
-    return null;
-  }
 
   return (
     <div className="min-h-screen flex flex-col">

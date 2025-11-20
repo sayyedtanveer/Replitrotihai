@@ -32,6 +32,7 @@ interface CheckoutDialogProps {
   isOpen: boolean;
   onClose: () => void;
   cart: CategoryCart | null;
+  onClearCart?: () => void;
   onShowPaymentQR: ({
     orderId,
     amount,
@@ -57,6 +58,7 @@ export default function CheckoutDialog({
   isOpen,
   onClose,
   cart,
+  onClearCart,
   onShowPaymentQR,
 }: CheckoutDialogProps) {
   const [activeTab, setActiveTab] = useState("checkout");
@@ -132,12 +134,18 @@ export default function CheckoutDialog({
   useEffect(() => {
     // Auto-fill details if user is logged in
     if (userToken && cart) {
-      // Assuming user details are available from useAuth hook
-      // For now, we'll just simulate pre-filling if userToken exists
-      // In a real app, you'd fetch user details here or have them in useAuth
-      setCustomerName("Logged In User"); // Placeholder
-      // setEmail(userToken.email); // Example
-      // setAddress(userToken.address); // Example
+      const savedUserData = localStorage.getItem("userData");
+      if (savedUserData) {
+        try {
+          const userData = JSON.parse(savedUserData);
+          setCustomerName(userData.name || "");
+          setPhone(userData.phone || "");
+          setEmail(userData.email || "");
+          setAddress(userData.address || "");
+        } catch (error) {
+          console.error("Failed to parse user data:", error);
+        }
+      }
       setActiveTab("checkout"); // Automatically go to checkout
     }
   }, [userToken, cart]);
@@ -276,6 +284,7 @@ export default function CheckoutDialog({
         discount,
         couponCode: appliedCoupon?.code,
         total,
+        chefId: cart.chefId || cart.items[0]?.chefId, // Include chefId from cart
         status: "pending" as const,
         paymentStatus: "pending" as const,
       };
@@ -341,6 +350,11 @@ export default function CheckoutDialog({
         });
       }
 
+      // Clear the cart for this category after successful order
+      if (onClearCart && cart?.categoryId) {
+        onClearCart();
+      }
+
       // Call the payment QR callback
       onShowPaymentQR({
         orderId: result.id,
@@ -362,12 +376,11 @@ export default function CheckoutDialog({
       setReferralCode("");
       setAppliedCoupon(null);
 
-      // Reload page to refresh auth state
-      if (result.accountCreated) {
-        setTimeout(() => {
-          window.location.reload();
-        }, 1000);
-      }
+      // Close the checkout dialog
+      onClose();
+
+      // Don't reload page - let PaymentQRDialog handle the flow
+      // The user will be redirected to tracking page when they close the QR dialog
 
     } catch (error) {
       console.error("Order creation error:", error);
@@ -399,11 +412,20 @@ export default function CheckoutDialog({
 
       const data = await response.json();
 
-      // Store token
-      localStorage.setItem("userToken", data.token);
+      // Store token and user data
+      localStorage.setItem("userToken", data.accessToken);
+      localStorage.setItem("refreshToken", data.refreshToken);
+      localStorage.setItem("userData", JSON.stringify({
+        id: data.user.id,
+        name: data.user.name,
+        phone: data.user.phone,
+        email: data.user.email || "",
+        address: data.user.address || "",
+      }));
 
       // Auto-fill user details
       setCustomerName(data.user.name || "");
+      setPhone(data.user.phone || "");
       setEmail(data.user.email || "");
       setAddress(data.user.address || "");
 

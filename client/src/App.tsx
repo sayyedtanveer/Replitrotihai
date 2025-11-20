@@ -35,15 +35,17 @@ import AdminWalletSettings from "./pages/admin/AdminWalletSettings";
 
 // ✅ Simple Auth Guard for customer routes
 function ProtectedRoute({ component: Component }: { component: any }) {
-  const { user } = useAuth();
-  const [, setLocation] = useLocation();
+  const { user, isLoading } = useAuth();
   const hasJwtToken = !!localStorage.getItem("userToken");
 
-  // Check authentication
+  // Wait for auth state to load before redirecting
+  if (isLoading) {
+    return null; // or return a loading spinner
+  }
+
+  // Check authentication - use Redirect component instead of setLocation
   if (!user && !hasJwtToken) {
-    // Use setLocation for immediate redirect without render
-    setLocation("/");
-    return null;
+    return <Redirect to="/" />;
   }
 
   return <Component />;

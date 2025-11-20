@@ -77,13 +77,21 @@ export default function PaymentQRDialog({
   };
 
   const handleUserClose = () => {
-    onClose();
+    // Navigate to tracking page first, then close dialog
     setLocation(`/track/${orderId}`);
+    // Small delay to ensure navigation completes
+    setTimeout(() => {
+      onClose();
+    }, 100);
   };
 
   const handleDialogChange = (open: boolean) => {
     if (!open) {
-      onClose();
+      // If user closes dialog without clicking button, still navigate to tracking
+      setLocation(`/track/${orderId}`);
+      setTimeout(() => {
+        onClose();
+      }, 100);
     }
   };
 

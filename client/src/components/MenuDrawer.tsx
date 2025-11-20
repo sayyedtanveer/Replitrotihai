@@ -1,4 +1,4 @@
-import { X, Home, UtensilsCrossed, ShoppingBag, User, LogOut, ChevronRight, Settings, Calendar } from "lucide-react";
+import { X, Home, UtensilsCrossed, ShoppingBag, User, LogOut, LogIn, ChevronRight, Settings, Calendar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -19,29 +19,35 @@ interface MenuDrawerProps {
 
 export default function MenuDrawer({ isOpen, onClose, categories = [], onCategoryClick, selectedCategoryTab = "all", onCategoryTabChange, onSubscriptionClick }: MenuDrawerProps) {
   const [, setLocation] = useLocation();
+  const { user } = useAuth();
+  const userToken = localStorage.getItem("userToken");
+  const isAuthenticated = !!(user || userToken);
 
-  const { logout } = useAuth();
   if (!isOpen) return null;
 
   const handleCategoryClick = (categoryId: string) => {
-    onCategoryTabChange?.(categoryId);
-    onCategoryClick?.(categoryId);
+    if (onCategoryTabChange) {
+      onCategoryTabChange(categoryId);
+    }
+    if (onCategoryClick) {
+      onCategoryClick(categoryId);
+    }
     onClose();
   };
 
   const handleHomeClick = () => {
+    setLocation("/");
     onClose();
-    setTimeout(() => setLocation("/"), 100);
   };
 
   const handleMyOrdersClick = () => {
+    setLocation("/orders");
     onClose();
-    setTimeout(() => setLocation("/orders"), 100);
   };
 
   const handleProfileClick = () => {
+    setLocation("/profile");
     onClose();
-    setTimeout(() => setLocation("/profile"), 100);
   };
 
   const handleSettingsClick = () => {
@@ -51,10 +57,7 @@ export default function MenuDrawer({ isOpen, onClose, categories = [], onCategor
   };
 
 
-  const handleLogoutClick = async () => {
-    await logout(); // clears tokens and redirects home
-    onClose();      // closes the drawer
-  };
+  
 
 
   // NOTE: The following is a temporary fix for the flickering issue.
@@ -177,36 +180,54 @@ export default function MenuDrawer({ isOpen, onClose, categories = [], onCategor
 
               <div>
                 <h3 className="text-sm font-semibold text-muted-foreground mb-3" data-testid="text-settings-heading">
-                  Settings
+                  {isAuthenticated ? "Settings" : "Account"}
                 </h3>
                 <div className="space-y-1">
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-start"
-                    onClick={handleSettingsClick}
-                    data-testid="button-settings"
-                  >
-                    <Settings className="h-4 w-4 mr-3" />
-                    Settings
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-start"
-                    onClick={onSubscriptionClick}
-                    data-testid="button-subscription"
-                  >
-                    <Calendar className="h-4 w-4 mr-3" />
-                    Subscription
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-start text-destructive hover:text-destructive"
-                    onClick={handleLogout}
-                    data-testid="button-logout"
-                  >
-                    <LogOut className="h-4 w-4 mr-3" />
-                    Logout
-                  </Button>
+                  {isAuthenticated && (
+                    <>
+                      <Button
+                        variant="ghost"
+                        className="w-full justify-start"
+                        onClick={handleSettingsClick}
+                        data-testid="button-settings"
+                      >
+                        <Settings className="h-4 w-4 mr-3" />
+                        Settings
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        className="w-full justify-start"
+                        onClick={onSubscriptionClick}
+                        data-testid="button-subscription"
+                      >
+                        <Calendar className="h-4 w-4 mr-3" />
+                        Subscription
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        className="w-full justify-start text-destructive hover:text-destructive"
+                        onClick={handleLogout}
+                        data-testid="button-logout"
+                      >
+                        <LogOut className="h-4 w-4 mr-3" />
+                        Logout
+                      </Button>
+                    </>
+                  )}
+                  {!isAuthenticated && (
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start text-primary hover:text-primary"
+                      onClick={() => {
+                        setLocation("/");
+                        onClose();
+                      }}
+                      data-testid="button-login"
+                    >
+                      <LogIn className="h-4 w-4 mr-3" />
+                      Login / Sign Up
+                    </Button>
+                  )}
                 </div>
               </div>
             </div>

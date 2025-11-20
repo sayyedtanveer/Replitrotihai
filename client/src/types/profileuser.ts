@@ -1,4 +1,4 @@
-interface ProfileUser {
+ interface ProfileUser {
   id: string;
   name?: string;
   firstName?: string;
