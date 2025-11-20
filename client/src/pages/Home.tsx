@@ -11,6 +11,7 @@ import MenuDrawer from "@/components/MenuDrawer";
 import CategoryMenuDrawer from "@/components/CategoryMenuDrawer";
 import ChefListDrawer from "@/components/ChefListDrawer";
 import SubscriptionDrawer from "@/components/SubscriptionDrawer";
+import LoginDialog from "@/components/LoginDialog";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { UtensilsCrossed, ChefHat, Hotel } from "lucide-react";
@@ -43,6 +44,7 @@ export default function Home() {
   const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false);
   const [isChefListOpen, setIsChefListOpen] = useState(false);
   const [isSubscriptionOpen, setIsSubscriptionOpen] = useState(false);
+  const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [selectedCategoryForChefList, setSelectedCategoryForChefList] = useState<Category | null>(null);
   const [selectedCategoryForMenu, setSelectedCategoryForMenu] = useState<Category | null>(null);
   const [selectedChefForMenu, setSelectedChefForMenu] = useState<Chef | null>(null);
@@ -217,6 +219,7 @@ export default function Home() {
         onMenuClick={() => setIsMenuOpen(true)}
         onChefListClick={() => setIsChefListOpen(true)}
         onSubscriptionClick={() => setIsSubscriptionOpen(true)}
+        onLoginClick={() => setIsLoginOpen(true)}
         searchQuery={searchQuery}
         onSearchChange={(query) => {
           setSearchQuery(query);
@@ -451,6 +454,7 @@ export default function Home() {
         selectedCategoryTab={selectedCategoryTab}
         onCategoryTabChange={handleCategoryTabChange}
         onSubscriptionClick={() => setIsSubscriptionOpen(true)}
+        onLoginClick={() => setIsLoginOpen(true)}
       />
 
       <ChefListDrawer
@@ -517,6 +521,14 @@ export default function Home() {
       )}
 
       <SubscriptionDrawer isOpen={isSubscriptionOpen} onClose={() => setIsSubscriptionOpen(false)} />
+
+      <LoginDialog
+        isOpen={isLoginOpen}
+        onClose={() => setIsLoginOpen(false)}
+        onLoginSuccess={() => {
+          window.location.reload();
+        }}
+      />
     </div>
   );
 }

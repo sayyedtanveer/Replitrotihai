@@ -1,4 +1,4 @@
-import { ShoppingCart, MapPin, Search, Menu, LogOut, User as UserIcon, ChefHat, Calendar } from "lucide-react";
+import { ShoppingCart, MapPin, Search, Menu, LogOut, User as UserIcon, ChefHat, Calendar, LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -22,9 +22,10 @@ interface HeaderProps {
   onSearchChange?: (query: string) => void;
   onChefListClick: () => void;
   onSubscriptionClick: () => void;
+  onLoginClick?: () => void;
 }
 
-export default function Header({ cartItemCount = 0, onCartClick, onMenuClick, searchQuery = "", onSearchChange, onChefListClick, onSubscriptionClick }: HeaderProps) {
+export default function Header({ cartItemCount = 0, onCartClick, onMenuClick, searchQuery = "", onSearchChange, onChefListClick, onSubscriptionClick, onLoginClick }: HeaderProps) {
   const { user } = useAuth();
   const isAuthenticated = !!user;
 
@@ -78,6 +79,17 @@ export default function Header({ cartItemCount = 0, onCartClick, onMenuClick, se
           </div>
 
           <div className="flex items-center gap-1 sm:gap-2">
+            {!isAuthenticated && (
+              <Button
+                variant="ghost"
+                className="gap-2 hidden lg:flex h-9 text-sm"
+                onClick={onLoginClick}
+                data-testid="button-signin"
+              >
+                <LogIn className="h-4 w-4" />
+                Sign In
+              </Button>
+            )}
             {user && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>

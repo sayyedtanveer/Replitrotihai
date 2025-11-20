@@ -7,6 +7,7 @@ import MenuDrawer from "@/components/MenuDrawer";
 import CartSidebar from "@/components/CartSidebar";
 import ChefListDrawer from "@/components/ChefListDrawer";
 import SubscriptionDrawer from "@/components/SubscriptionDrawer";
+import LoginDialog from "@/components/LoginDialog";
 import {
   Card,
   CardContent,
@@ -50,6 +51,7 @@ export default function MyOrders() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isChefListOpen, setIsChefListOpen] = useState(false);
   const [isSubscriptionOpen, setIsSubscriptionOpen] = useState(false);
+  const [isLoginOpen, setIsLoginOpen] = useState(false);
   const { user, isLoading: authLoading } = useAuth();
   const userToken = localStorage.getItem("userToken");
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
@@ -275,6 +277,7 @@ export default function MyOrders() {
         onCartClick={() => setIsCartOpen(true)}
         onChefListClick={() => setIsChefListOpen(true)}
         onSubscriptionClick={() => setIsSubscriptionOpen(true)}
+        onLoginClick={() => setIsLoginOpen(true)}
       />
 
       <main className="flex-1 bg-muted/30">
@@ -553,6 +556,7 @@ export default function MyOrders() {
           setIsMenuOpen(false);
           setIsSubscriptionOpen(true);
         }}
+        onLoginClick={() => setIsLoginOpen(true)}
       />
 
       <CartSidebar isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
@@ -568,6 +572,14 @@ export default function MyOrders() {
       <SubscriptionDrawer
         isOpen={isSubscriptionOpen}
         onClose={() => setIsSubscriptionOpen(false)}
+      />
+
+      <LoginDialog
+        isOpen={isLoginOpen}
+        onClose={() => setIsLoginOpen(false)}
+        onLoginSuccess={() => {
+          window.location.reload();
+        }}
       />
     </div>
   );

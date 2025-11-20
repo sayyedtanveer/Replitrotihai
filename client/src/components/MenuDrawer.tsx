@@ -15,9 +15,10 @@ interface MenuDrawerProps {
   selectedCategoryTab?: string;
   onCategoryTabChange?: (value: string) => void;
   onSubscriptionClick?: () => void;
+  onLoginClick?: () => void;
 }
 
-export default function MenuDrawer({ isOpen, onClose, categories = [], onCategoryClick, selectedCategoryTab = "all", onCategoryTabChange, onSubscriptionClick }: MenuDrawerProps) {
+export default function MenuDrawer({ isOpen, onClose, categories = [], onCategoryClick, selectedCategoryTab = "all", onCategoryTabChange, onSubscriptionClick, onLoginClick }: MenuDrawerProps) {
   const [, setLocation] = useLocation();
   const { user } = useAuth();
   const userToken = localStorage.getItem("userToken");
@@ -41,13 +42,27 @@ export default function MenuDrawer({ isOpen, onClose, categories = [], onCategor
   };
 
   const handleMyOrdersClick = () => {
-    setLocation("/orders");
-    onClose();
+    if (isAuthenticated) {
+      setLocation("/orders");
+      onClose();
+    } else {
+      onClose();
+      if (onLoginClick) {
+        onLoginClick();
+      }
+    }
   };
 
   const handleProfileClick = () => {
-    setLocation("/profile");
-    onClose();
+    if (isAuthenticated) {
+      setLocation("/profile");
+      onClose();
+    } else {
+      onClose();
+      if (onLoginClick) {
+        onLoginClick();
+      }
+    }
   };
 
   const handleSettingsClick = () => {
@@ -219,8 +234,10 @@ export default function MenuDrawer({ isOpen, onClose, categories = [], onCategor
                       variant="ghost"
                       className="w-full justify-start text-primary hover:text-primary"
                       onClick={() => {
-                        setLocation("/");
                         onClose();
+                        if (onLoginClick) {
+                          onLoginClick();
+                        }
                       }}
                       data-testid="button-login"
                     >
