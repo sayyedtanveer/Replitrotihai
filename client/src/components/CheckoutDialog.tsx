@@ -26,7 +26,14 @@ interface CategoryCart {
   categoryName: string;
   chefId: string;
   chefName: string;
+  chefLatitude?: number;
+  chefLongitude?: number;
   items: CartItem[];
+  total?: number;
+  deliveryFee?: number;
+  distance?: number;
+  freeDeliveryEligible?: boolean;
+  amountForFreeDelivery?: number;
 }
 
 interface CheckoutDialogProps {
@@ -99,26 +106,9 @@ export default function CheckoutDialog({
       );
       setSubtotal(calculatedSubtotal);
 
-      // Calculate delivery fee based on distance (simplified for now)
-      // In a real app, you'd use a geocoding API and potentially charge more for longer distances
-      const baseDeliveryFee = 20; // Base fee
-      const distanceFeeMultiplier = 5; // Fee per km over 5 km
-      const maxDeliveryFee = 100; // Cap the delivery fee
-
-      let calculatedDeliveryFee = baseDeliveryFee;
-      let calculatedDeliveryDistance: number | null = null;
-
-      if (address) {
-        // Simple heuristic: Assume distance based on address complexity or length
-        // A real implementation would involve a proper address lookup or API call
-        const approxDistance = Math.max(0, address.length - 50); // Arbitrary calculation
-        calculatedDeliveryDistance = approxDistance;
-
-        if (approxDistance > 5) {
-          calculatedDeliveryFee = baseDeliveryFee + (approxDistance - 5) * distanceFeeMultiplier;
-        }
-        calculatedDeliveryFee = Math.min(calculatedDeliveryFee, maxDeliveryFee); // Apply max fee
-      }
+      // Use precomputed delivery values from cart if available
+      const calculatedDeliveryFee = cart.deliveryFee !== undefined ? cart.deliveryFee : 20;
+      const calculatedDeliveryDistance = cart.distance !== undefined ? cart.distance : null;
 
       setDeliveryFee(calculatedDeliveryFee);
       setDeliveryDistance(calculatedDeliveryDistance);

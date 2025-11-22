@@ -85,14 +85,13 @@ export function registerDeliveryRoutes(app: Express) {
         return;
       }
 
-      if (order.status !== "assigned") {
+      if (order.status !== "assigned" && order.status !== "prepared") {
         res.status(400).json({ message: "Order cannot be accepted in current status" });
         return;
       }
 
-      // Just acknowledge acceptance - don't change status yet
-      // Status will be changed to 'preparing' when chef starts preparing
-      const updatedOrder = await storage.getOrderById(orderId);
+      // Change status to accepted_by_delivery when delivery person accepts
+      const updatedOrder = await storage.updateOrderStatus(orderId, "accepted_by_delivery");
       
       if (updatedOrder) {
         broadcastOrderUpdate(updatedOrder);
@@ -121,6 +120,12 @@ export function registerDeliveryRoutes(app: Express) {
         return;
       }
 
+      if (order.status !== "accepted_by_delivery" && order.status !== "prepared") {
+        res.status(400).json({ message: "Order must be accepted before pickup" });
+        return;
+      }
+
+      // Change status to out_for_delivery and record pickup time
       const updatedOrder = await storage.updateOrderPickup(orderId);
       
       if (updatedOrder) {

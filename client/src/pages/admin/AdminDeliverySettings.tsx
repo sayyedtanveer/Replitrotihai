@@ -482,7 +482,13 @@ export default function AdminDeliverySettings() {
                     <Plus className="w-5 h-5" />
                     Add New Delivery Range
                   </CardTitle>
-                  <CardDescription>Define a new distance range and its delivery fee</CardDescription>
+                  <CardDescription>
+                    Define a new distance range and its delivery fee. 
+                    <span className="block mt-2 text-sm bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded p-2">
+                      💡 <strong>How it works:</strong> When customers checkout, their distance from the restaurant is calculated. 
+                      The delivery fee is determined by which range their distance falls into. Set fee to ₹0 for free delivery zones.
+                    </span>
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">

@@ -52,7 +52,7 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCart, setSelectedCart] = useState<any>(null); // State to hold the cart for checkout
 
-  const { carts, addToCart: cartAddToCart, canAddItem, clearCart, getTotalItems, getAllCarts, updateQuantity } = useCart();
+  const { carts, addToCart: cartAddToCart, canAddItem, clearCart, getTotalItems, setUserLocation, getAllCartsWithDelivery } = useCart();
 
   const handleCategoryTabChange = (value: string) => {
     setSelectedCategoryTab(value);
@@ -79,6 +79,9 @@ export default function Home() {
   const handleAddToCart = (product: Product) => {
     const category = categories.find(c => c.id === product.categoryId);
     const categoryName = category?.name || "Unknown";
+    
+    // Get chef location if available
+    const chef = product.chefId ? chefs.find(c => c.id === product.chefId) : null;
 
     const cartItem = {
       id: product.id,
@@ -86,7 +89,7 @@ export default function Home() {
       price: product.price,
       image: product.image,
       chefId: product.chefId || undefined,
-      chefName: selectedChefForMenu?.name || undefined,
+      chefName: selectedChefForMenu?.name || chef?.name || undefined,
       categoryId: product.categoryId,
     };
 
@@ -97,76 +100,33 @@ export default function Home() {
       );
       if (confirmed) {
         clearCart(cartItem.categoryId || "");
-        cartAddToCart(cartItem, categoryName);
+        cartAddToCart(cartItem, categoryName, chef?.latitude, chef?.longitude);
       }
       return;
     }
 
-    cartAddToCart(cartItem, categoryName);
+    cartAddToCart(cartItem, categoryName, chef?.latitude, chef?.longitude);
   };
 
   const totalItems = getTotalItems();
 
   // ✅ Called when checkout creates order successfully
   const handleCheckout = (categoryId: string) => {
-    setCheckoutCategoryId(categoryId);
-    setIsCartOpen(false);
-    // Wait for sidebar animation before showing checkout
-    setTimeout(() => {
-      setIsCheckoutOpen(true);
-    }, 250);
-  };
-
-  // Function to get all carts with validation (including minOrderAmount)
-  const getAllCartsWithValidation = () => {
-    return carts.map(cart => {
-      const category = categories.find(c => c.id === cart.categoryId);
-      const minOrderAmount = category?.minOrderAmount || 100; // Default to 100 if not found
-      const total = cart.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-      const meetsMinimum = total >= minOrderAmount;
-      return {
-        ...cart,
-        categoryName: category?.name || "Unknown Category",
-        minOrderAmount,
-        total,
-        meetsMinimum,
-      };
-    });
-  };
-
-  // Handle checkout for all carts
-  const handleCheckoutAll = () => {
-    const allCarts = getAllCartsWithValidation();
-
-    // Validate all carts meet minimum order
-    const cartsNotMeetingMinimum = allCarts.filter(cart => !cart.meetsMinimum);
-
-    if (cartsNotMeetingMinimum.length > 0) {
-      const details = cartsNotMeetingMinimum.map(cart =>
-        `${cart.categoryName}: ₹${cart.total || 0} of ₹${cart.minOrderAmount || 100} minimum`
-      ).join(', ');
-
-      toast({
-        title: "Cannot Checkout All",
-        description: `${cartsNotMeetingMinimum.length} cart(s) don't meet minimum order: ${details}`,
-        variant: "destructive",
-        duration: 7000,
-      });
-      return;
-    }
-
-    // For now, open checkout for the first cart (multi-cart checkout needs backend support)
-    if (allCarts.length > 0) {
-      setSelectedCart(allCarts[0]);
-      setIsCheckoutOpen(true);
-
-      toast({
-        title: "Multi-Cart Checkout",
-        description: `Processing ${allCarts.length} cart(s). You'll need to complete checkout for each category separately.`,
-        duration: 5000,
-      });
+    // Get the cart with precomputed delivery values
+    const cartsWithDelivery = getAllCartsWithDelivery();
+    const cart = cartsWithDelivery.find(c => c.categoryId === categoryId);
+    
+    if (cart) {
+      setSelectedCart(cart);
+      setCheckoutCategoryId(categoryId);
+      setIsCartOpen(false);
+      // Wait for sidebar animation before showing checkout
+      setTimeout(() => {
+        setIsCheckoutOpen(true);
+      }, 250);
     }
   };
+
 
   // ✅ Called when checkout creates order successfully
   const handleShowPaymentQR = (orderDetails: {
@@ -541,10 +501,7 @@ export default function Home() {
       <CartSidebar
         isOpen={isCartOpen}
         onClose={() => setIsCartOpen(false)}
-        carts={getAllCartsWithValidation()}
-        onUpdateQuantity={updateQuantity}
         onCheckout={handleCheckout}
-        onCheckoutAll={handleCheckoutAll}
       />
 
      <CheckoutDialog

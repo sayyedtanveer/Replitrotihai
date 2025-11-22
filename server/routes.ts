@@ -880,10 +880,10 @@ app.post("/api/orders", async (req: any, res) => {
     res.json(chefs);
   });
 
-  // Calculate delivery fee based on distance
+  // Calculate delivery fee based on distance (using admin settings)
   app.post("/api/calculate-delivery", async (req, res) => {
     try {
-      const { latitude, longitude, chefId } = req.body;
+      const { latitude, longitude, chefId, subtotal = 0 } = req.body;
 
       if (!latitude || !longitude) {
         res.status(400).json({ message: "Latitude and longitude are required" });
@@ -903,32 +903,24 @@ app.post("/api/orders", async (req: any, res) => {
         }
       }
 
-      // Calculate distance using Haversine formula
-      const R = 6371; // Earth's radius in km
-      const dLat = toRad(latitude - chefLat);
-      const dLon = toRad(longitude - chefLon);
+      // Import delivery utilities
+      const { calculateDistance, calculateDelivery } = await import("@shared/deliveryUtils");
+      
+      // Calculate distance
+      const distance = calculateDistance(latitude, longitude, chefLat, chefLon);
 
-      const a =
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos(toRad(chefLat)) *
-        Math.cos(toRad(latitude)) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
+      // Get admin delivery settings
+      const deliverySettings = await storage.getDeliverySettings();
 
-      const c = 2 * Math.asin(Math.sqrt(a));
-      const distance = parseFloat((R * c).toFixed(2));
-
-      // Calculate delivery fee - ₹20 base + ₹10 per km after 2km
-      const baseFee = 20;
-      let deliveryFee = baseFee;
-
-      if (distance > 2) {
-        deliveryFee = baseFee + Math.ceil(distance - 2) * 10;
-      }
+      // Calculate delivery fee using admin settings
+      const deliveryCalc = calculateDelivery(distance, subtotal, deliverySettings);
 
       res.json({
         distance,
-        deliveryFee,
+        deliveryFee: deliveryCalc.deliveryFee,
+        deliveryRangeName: deliveryCalc.deliveryRangeName,
+        freeDeliveryEligible: deliveryCalc.freeDeliveryEligible,
+        amountForFreeDelivery: deliveryCalc.amountForFreeDelivery,
         estimatedTime: Math.ceil(distance * 2 + 15)
       });
     } catch (error) {
@@ -936,10 +928,6 @@ app.post("/api/orders", async (req: any, res) => {
       res.status(500).json({ message: "Failed to calculate delivery" });
     }
   });
-
-  function toRad(degrees: number): number {
-    return degrees * (Math.PI / 180);
-  }
 
   // Get all subscription plans (public access)
   app.get("/api/subscription-plans", async (_req, res) => {
@@ -1082,6 +1070,17 @@ app.post("/api/orders", async (req: any, res) => {
     } catch (error: any) {
       console.error("Error cancelling subscription:", error);
       res.status(500).json({ message: error.message || "Failed to cancel subscription" });
+    }
+  });
+
+  // Public delivery settings endpoint (no auth required for cart calculations)
+  app.get("/api/delivery-settings", async (req, res) => {
+    try {
+      const settings = await storage.getDeliverySettings();
+      res.json(settings);
+    } catch (error: any) {
+      console.error("Error fetching delivery settings:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch delivery settings" });
     }
   });
 

@@ -782,7 +782,7 @@ export class MemStorage implements IStorage {
 
   async createCartSetting(data: Omit<CartSetting, "id" | "createdAt" | "updatedAt">): Promise<CartSetting> {
     const id = randomUUID();
-    
+
     // Fetch category name if not provided
     let categoryName = data.categoryName;
     if (!categoryName) {
@@ -792,7 +792,7 @@ export class MemStorage implements IStorage {
       }
       categoryName = category.name;
     }
-    
+
     const setting: CartSetting = {
       ...data,
       categoryName,
@@ -813,7 +813,7 @@ export class MemStorage implements IStorage {
         updateData.categoryName = category.name;
       }
     }
-    
+
     await db.update(cartSettings).set({ ...updateData, updatedAt: new Date() }).where(eq(cartSettings.id, id));
     return db.query.cartSettings.findFirst({ where: (cs, { eq }) => eq(cs.id, id) });
   }
@@ -948,8 +948,8 @@ export class MemStorage implements IStorage {
     const [order] = await db
       .update(orders)
       .set({
-        status: "picked_up",
-        pickedUpAt: new Date()
+        status: "out_for_delivery",
+        pickedUpAt: new Date(),
       })
       .where(eq(orders.id, orderId))
       .returning();

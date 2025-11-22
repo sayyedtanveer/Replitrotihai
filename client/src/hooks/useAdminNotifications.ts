@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { queryClient } from "@/lib/queryClient";
 import type { Order } from "@shared/schema";
 
 export function useAdminNotifications() {
@@ -44,6 +45,12 @@ export function useAdminNotifications() {
       const data = JSON.parse(event.data);
       if (data.type === "new_order" || data.type === "order_update") {
         const order = data.data as Order;
+        
+        // Invalidate all order queries for real-time updates
+        queryClient.invalidateQueries({ queryKey: ["/api/admin", "orders"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/admin/dashboard/metrics"] });
+        
+        // Show notification only for payment-related updates
         if (order.paymentStatus === "pending" || order.paymentStatus === "paid") {
           setUnreadCount((prev) => prev + 1);
           

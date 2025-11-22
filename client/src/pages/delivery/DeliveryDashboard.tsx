@@ -274,7 +274,7 @@ export default function DeliveryDashboard() {
                         </div>
 
                         <div className="flex gap-2">
-                          {order.status === "assigned" && (
+                          {(order.status === "assigned" || order.status === "prepared") && (
                             <Button
                               onClick={() => acceptOrderMutation.mutate(order.id)}
                               disabled={acceptOrderMutation.isPending}
@@ -284,14 +284,14 @@ export default function DeliveryDashboard() {
                               Accept Order
                             </Button>
                           )}
-                          {(order.status === "accepted_by_delivery" || order.status === "prepared") && (
+                          {order.status === "accepted_by_delivery" && (
                             <Button
                               onClick={() => pickupOrderMutation.mutate(order.id)}
                               disabled={pickupOrderMutation.isPending}
                               size="sm"
                               data-testid={`button-pickup-${order.id}`}
                             >
-                              Mark as Picked Up
+                              Pickup & Start Delivery
                             </Button>
                           )}
                           {order.status === "out_for_delivery" && (
@@ -354,7 +354,7 @@ export default function DeliveryDashboard() {
                         </div>
 
                         <div className="flex gap-2">
-                          {order.status === "assigned" && (
+                          {(order.status === "assigned" || order.status === "prepared") && (
                             <Button
                               onClick={() => acceptOrderMutation.mutate(order.id)}
                               disabled={acceptOrderMutation.isPending}
@@ -363,13 +363,13 @@ export default function DeliveryDashboard() {
                               Accept Order
                             </Button>
                           )}
-                          {(order.status === "accepted_by_delivery" || order.status === "prepared") && (
+                          {order.status === "accepted_by_delivery" && (
                             <Button
                               onClick={() => pickupOrderMutation.mutate(order.id)}
                               disabled={pickupOrderMutation.isPending}
                               size="sm"
                             >
-                              Mark as Picked Up
+                              Pickup & Start Delivery
                             </Button>
                           )}
                           {order.status === "out_for_delivery" && (

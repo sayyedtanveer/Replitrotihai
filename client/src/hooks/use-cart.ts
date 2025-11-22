@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { calculateDistance, calculateDelivery, type DeliverySetting } from "@shared/deliveryUtils";
 
 interface CartItem {
   id: string;
@@ -17,17 +18,31 @@ interface CategoryCart {
   categoryName: string;
   chefId: string;
   chefName: string;
+  chefLatitude?: number;
+  chefLongitude?: number;
   items: CartItem[];
   total?: number;
-  minOrderAmount?: number;
-  meetsMinimum?: boolean;
+  deliveryFee?: number;
+  distance?: number;
+  freeDeliveryEligible?: boolean;
+  amountForFreeDelivery?: number;
+  deliveryRangeName?: string;
 }
 
 interface CartStore {
   carts: CategoryCart[];
-  cartMinSettings: Record<string, number>;
-  setCartMinSettings: (settings: Record<string, number>) => void;
-  addToCart: (item: Omit<CartItem, "quantity">, categoryName: string) => boolean;
+  userLatitude: number | null;
+  userLongitude: number | null;
+  deliverySettings: DeliverySetting[];
+  setUserLocation: (lat: number, lon: number) => void;
+  setDeliverySettings: (settings: DeliverySetting[]) => void;
+  fetchDeliverySettings: () => Promise<void>;
+  addToCart: (
+    item: Omit<CartItem, "quantity">, 
+    categoryName: string,
+    chefLatitude?: number,
+    chefLongitude?: number
+  ) => boolean;
   removeFromCart: (categoryId: string, itemId: string) => void;
   updateQuantity: (categoryId: string, itemId: string, quantity: number) => void;
   clearCart: (categoryId: string) => void;
@@ -36,22 +51,39 @@ interface CartStore {
   getTotalPrice: (categoryId: string) => number;
   getCart: (categoryId: string) => CategoryCart | undefined;
   getAllCarts: () => CategoryCart[];
+  getAllCartsWithDelivery: () => CategoryCart[];
   canAddItem: (
     chefId?: string,
     categoryId?: string
   ) => { canAdd: boolean; conflictChef?: string };
-  getCartWithValidation: (categoryId: string) => CategoryCart | undefined;
-  getAllCartsWithValidation: () => CategoryCart[];
 }
 
 export const useCart = create<CartStore>()(
   persist(
     (set, get) => ({
       carts: [],
-      cartMinSettings: {},
+      userLatitude: null,
+      userLongitude: null,
+      deliverySettings: [],
 
-      setCartMinSettings: (settings: Record<string, number>) => {
-        set({ cartMinSettings: settings });
+      setUserLocation: (lat: number, lon: number) => {
+        set({ userLatitude: lat, userLongitude: lon });
+      },
+
+      setDeliverySettings: (settings: DeliverySetting[]) => {
+        set({ deliverySettings: settings });
+      },
+
+      fetchDeliverySettings: async () => {
+        try {
+          const response = await fetch("/api/delivery-settings");
+          if (response.ok) {
+            const settings = await response.json();
+            set({ deliverySettings: settings });
+          }
+        } catch (error) {
+          console.error("Failed to fetch delivery settings:", error);
+        }
       },
 
       // ✅ Check if item can be added (per category/chef rule)
@@ -74,7 +106,7 @@ export const useCart = create<CartStore>()(
       },
 
       // ✅ Add item to specific category cart
-      addToCart: (item, categoryName) => {
+      addToCart: (item, categoryName, chefLatitude, chefLongitude) => {
         const { carts, canAddItem } = get();
 
         // Safety check
@@ -102,6 +134,8 @@ export const useCart = create<CartStore>()(
             categoryName,
             chefId: item.chefId || "",
             chefName: item.chefName || "",
+            chefLatitude,
+            chefLongitude,
             items: [{ ...item, quantity: 1 }],
           };
           set({ carts: [...carts, newCart] });
@@ -228,43 +262,54 @@ export const useCart = create<CartStore>()(
         return get().carts;
       },
 
-      // ✅ Get cart with minimum order validation
-      getCartWithValidation: (categoryId: string) => {
-        const { carts, cartMinSettings } = get();
-        const cart = carts.find((c) => c.categoryId === categoryId);
-        if (!cart) return undefined;
-
-        const subtotal = cart.items.reduce((total, item) => total + item.price * item.quantity, 0);
-        const minOrderAmount = cartMinSettings[categoryId] || 100; // Default ₹100
-        const meetsMinimum = subtotal >= minOrderAmount;
-
-        return {
-          ...cart,
-          total: subtotal,
-          minOrderAmount,
-          meetsMinimum,
-        };
-      },
-
-      // ✅ Get all carts with minimum order validation
-      getAllCartsWithValidation: () => {
-        const { carts, cartMinSettings } = get();
+      // ✅ Get all carts with delivery fee calculation
+      getAllCartsWithDelivery: () => {
+        const { carts, userLatitude, userLongitude, deliverySettings } = get();
+        
         return carts.map((cart) => {
           const subtotal = cart.items.reduce((total, item) => total + item.price * item.quantity, 0);
-          const minOrderAmount = cartMinSettings[cart.categoryId] || 100; // Default ₹100
-          const meetsMinimum = subtotal >= minOrderAmount;
+          
+          // Calculate distance and delivery fee (all dynamic from admin settings)
+          let distance: number | undefined;
+          let deliveryFee = 0; // Will be calculated from admin settings
+          let freeDeliveryEligible = false;
+          let amountForFreeDelivery: number | undefined;
+          let deliveryRangeName: string | undefined;
+
+          if (userLatitude && userLongitude && cart.chefLatitude && cart.chefLongitude) {
+            // Calculate distance using shared utility
+            distance = calculateDistance(
+              userLatitude,
+              userLongitude,
+              cart.chefLatitude,
+              cart.chefLongitude
+            );
+
+            // Calculate delivery fee using shared utility with admin settings
+            const deliveryCalc = calculateDelivery(distance, subtotal, deliverySettings);
+            deliveryFee = deliveryCalc.deliveryFee;
+            freeDeliveryEligible = deliveryCalc.freeDeliveryEligible;
+            amountForFreeDelivery = deliveryCalc.amountForFreeDelivery;
+            deliveryRangeName = deliveryCalc.deliveryRangeName;
+          } else {
+            // No location data available
+            deliveryRangeName = "Location required for delivery fee";
+          }
 
           return {
             ...cart,
             total: subtotal,
-            minOrderAmount,
-            meetsMinimum,
+            deliveryFee,
+            distance,
+            freeDeliveryEligible,
+            amountForFreeDelivery,
+            deliveryRangeName,
           };
         });
       },
     }),
     {
-      name: "cart-storage", // persisted key in localStorage
+      name: "cart-storage", // persistent cart in localStorage
     }
   )
 );
