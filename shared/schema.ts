@@ -56,8 +56,7 @@ export const categories = pgTable("categories", {
   description: text("description").notNull(),
   image: text("image").notNull(),
   iconName: text("icon_name").notNull(),
-  itemCount: text("item_count").notNull(),
-  minOrderAmount: integer("min_order_amount").notNull().default(100),
+  itemCount: text("item_count").notNull() 
 });
 
 export const chefs = pgTable("chefs", {

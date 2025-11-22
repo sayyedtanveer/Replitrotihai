@@ -6,5 +6,5 @@ export interface Category {
   image: string;
   iconName: string;
   itemCount: string;
-  minOrderAmount?: number;
+   
 }
