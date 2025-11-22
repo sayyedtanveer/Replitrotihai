@@ -1,10 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Check, Loader2, Copy, User } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Separator } from "@/components/ui/separator";
+import { Loader2, Copy, Smartphone, AlertCircle, CheckCircle2 } from "lucide-react";
+import { SiGooglepay, SiPhonepe, SiPaytm } from "react-icons/si";
 import { useToast } from "@/hooks/use-toast";
 import QRCode from "qrcode";
 import { useLocation } from "wouter";
+import { generateUPIIntent, getPaymentAppDeepLink, isMobileDevice } from "@/lib/upi-payment";
 
 interface PaymentQRDialogProps {
   isOpen: boolean;
@@ -32,20 +37,30 @@ export default function PaymentQRDialog({
   defaultPassword = ""
 }: PaymentQRDialogProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [upiId] = useState("rotihai@upi");
+  const [upiId] = useState("rotihai@paytm");
+  const [hasPaid, setHasPaid] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
+  const [upiIntent, setUpiIntent] = useState("");
   const { toast } = useToast();
   const [, setLocation] = useLocation();
+  const isMobile = isMobileDevice();
 
   useEffect(() => {
     if (isOpen && canvasRef.current) {
-      const upiUrl = `upi://pay?pa=${upiId}&pn=RotiHai&am=${amount}&cu=INR&tn=Order%20${orderId}`;
+      const intent = generateUPIIntent({
+        upiId: upiId,
+        name: "RotiHai",
+        amount: amount,
+        transactionNote: `Order #${orderId.slice(0, 8)}`,
+      });
 
-      const isMobile = window.innerWidth < 768;
-      const qrSize = isMobile ? 200 : 256;
+      setUpiIntent(intent);
+
+      const qrSize = window.innerWidth < 768 ? 200 : 256;
 
       QRCode.toCanvas(
         canvasRef.current,
-        upiUrl,
+        intent,
         {
           width: qrSize,
           margin: 2,
@@ -76,22 +91,73 @@ export default function PaymentQRDialog({
     });
   };
 
-  const handleUserClose = () => {
-    // Navigate to tracking page first, then close dialog
-    setLocation(`/track/${orderId}`);
-    // Small delay to ensure navigation completes
-    setTimeout(() => {
-      onClose();
-    }, 100);
+  const handlePayWithApp = (app: "gpay" | "phonepe" | "paytm") => {
+    try {
+      const deepLink = getPaymentAppDeepLink(app, upiIntent);
+      window.location.href = deepLink;
+      
+      toast({
+        title: "Opening Payment App",
+        description: `Redirecting to ${app === "gpay" ? "Google Pay" : app === "phonepe" ? "PhonePe" : "Paytm"}...`,
+      });
+    } catch (error) {
+      console.error("Error opening payment app:", error);
+      toast({
+        title: "Error",
+        description: "Failed to open payment app. Please scan QR code instead.",
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleDialogChange = (open: boolean) => {
-    if (!open) {
-      // If user closes dialog without clicking button, still navigate to tracking
+  const handleConfirmPayment = async () => {
+    if (!hasPaid) {
+      toast({
+        title: "Confirmation Required",
+        description: "Please confirm that you have completed the payment.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsConfirming(true);
+    try {
+      const response = await fetch(`/api/orders/${orderId}/payment-confirmed`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to confirm payment");
+      }
+
+      toast({
+        title: "✓ Payment Confirmed!",
+        description: "Your order has been submitted. We'll verify the payment shortly.",
+      });
+
+      // Navigate to tracking page
       setLocation(`/track/${orderId}`);
       setTimeout(() => {
         onClose();
       }, 100);
+    } catch (error) {
+      console.error("Error confirming payment:", error);
+      toast({
+        title: "Confirmation Failed",
+        description: "Failed to confirm payment. Please contact support.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsConfirming(false);
+    }
+  };
+
+  const handleDialogChange = (open: boolean) => {
+    if (!open) {
+      onClose();
     }
   };
 
@@ -163,14 +229,70 @@ export default function PaymentQRDialog({
               </div>
             )}
 
-            <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-4 space-y-2">
-              <div className="flex items-center gap-2 text-blue-900 dark:text-blue-100">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <p className="text-sm font-medium">Waiting for payment confirmation</p>
-              </div>
-              <p className="text-xs text-blue-700 dark:text-blue-300">
-                After completing the payment, our team will confirm your order manually. You'll receive a confirmation shortly.
-              </p>
+            {/* Payment App Buttons (Mobile) */}
+            {isMobile && upiIntent && (
+              <>
+                <Separator />
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Smartphone className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">Quick Pay with App</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <Button
+                      variant="outline"
+                      className="flex flex-col items-center gap-1 h-auto py-3"
+                      onClick={() => handlePayWithApp("gpay")}
+                      data-testid="button-pay-gpay"
+                    >
+                      <SiGooglepay className="h-6 w-6" />
+                      <span className="text-xs">GPay</span>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="flex flex-col items-center gap-1 h-auto py-3"
+                      onClick={() => handlePayWithApp("phonepe")}
+                      data-testid="button-pay-phonepe"
+                    >
+                      <SiPhonepe className="h-6 w-6" />
+                      <span className="text-xs">PhonePe</span>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="flex flex-col items-center gap-1 h-auto py-3"
+                      onClick={() => handlePayWithApp("paytm")}
+                      data-testid="button-pay-paytm"
+                    >
+                      <SiPaytm className="h-6 w-6" />
+                      <span className="text-xs">Paytm</span>
+                    </Button>
+                  </div>
+                </div>
+                <Separator />
+              </>
+            )}
+
+            {/* Manual Payment Confirmation */}
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription className="text-xs">
+                <strong>Important:</strong> After completing payment, check the box below and click "Confirm Payment".
+              </AlertDescription>
+            </Alert>
+
+            <div className="flex items-start gap-3 p-4 bg-muted/30 rounded-lg">
+              <Checkbox
+                id="payment-confirm"
+                checked={hasPaid}
+                onCheckedChange={(checked) => setHasPaid(checked as boolean)}
+                data-testid="checkbox-payment-confirmed"
+              />
+              <label
+                htmlFor="payment-confirm"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+              >
+                I have completed the payment of ₹{amount}
+              </label>
             </div>
 
             <div className="space-y-2 text-sm text-muted-foreground">
@@ -184,18 +306,38 @@ export default function PaymentQRDialog({
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Button 
-              onClick={handleUserClose} 
-              className="w-full"
-              data-testid="button-close-payment"
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => onClose()}
+              className="flex-1"
+              data-testid="button-cancel-payment"
             >
-              ✓ I've Completed the Payment - Track Order
+              Cancel
             </Button>
-            <p className="text-xs text-center text-muted-foreground">
-              You'll be redirected to track your order. Our team will verify and confirm your payment within 5 minutes
-            </p>
+            <Button
+              onClick={handleConfirmPayment}
+              disabled={!hasPaid || isConfirming}
+              className="flex-1"
+              data-testid="button-confirm-payment"
+            >
+              {isConfirming ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Confirming...
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="h-4 w-4 mr-2" />
+                  Confirm Payment
+                </>
+              )}
+            </Button>
           </div>
+          
+          <p className="text-xs text-center text-muted-foreground">
+            After confirmation, you'll be redirected to track your order. Our team will verify your payment within 5 minutes.
+          </p>
         </div>
       </DialogContent>
     </Dialog>

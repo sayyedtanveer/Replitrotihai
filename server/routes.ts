@@ -837,6 +837,31 @@ app.post("/api/orders", async (req: any, res) => {
     }
   });
 
+  // Confirm payment manually by user
+  app.post("/api/orders/:id/payment-confirmed", async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const order = await storage.getOrderById(id);
+      if (!order) {
+        res.status(404).json({ message: "Order not found" });
+        return;
+      }
+
+      // Update order payment status to indicate user confirmed payment
+      const updatedOrder = await storage.updateOrderPaymentStatus(id, "paid");
+
+      console.log(`✅ Payment confirmed for order ${id} - Status: ${updatedOrder?.paymentStatus}`);
+
+      res.json({ 
+        message: "Payment confirmation received", 
+        order: updatedOrder 
+      });
+    } catch (error: any) {
+      console.error("Error confirming payment:", error);
+      res.status(500).json({ message: error.message || "Failed to confirm payment" });
+    }
+  });
 
   // Get all chefs
   app.get("/api/chefs", async (_req, res) => {
@@ -1057,6 +1082,31 @@ app.post("/api/orders", async (req: any, res) => {
     } catch (error: any) {
       console.error("Error cancelling subscription:", error);
       res.status(500).json({ message: error.message || "Failed to cancel subscription" });
+    }
+  });
+
+  // Cart Settings APIs - Public endpoint to get cart minimum order settings
+  app.get("/api/cart-settings", async (req, res) => {
+    try {
+      const settings = await storage.getCartSettings();
+      res.json(settings);
+    } catch (error: any) {
+      console.error("Error fetching cart settings:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch cart settings" });
+    }
+  });
+
+  app.get("/api/cart-settings/category/:categoryId", async (req, res) => {
+    try {
+      const setting = await storage.getCartSettingByCategoryId(req.params.categoryId);
+      if (!setting) {
+        res.status(404).json({ message: "Cart setting not found for this category" });
+        return;
+      }
+      res.json(setting);
+    } catch (error: any) {
+      console.error("Error fetching cart setting:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch cart setting" });
     }
   });
 

@@ -1,8 +1,9 @@
-import { Route, Switch, Redirect, useLocation } from "wouter";
+import { lazy, Suspense } from "react";
+import { Route, Switch, Redirect } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { TooltipProvider } from "@radix-ui/react-tooltip";
 import { useAuth } from "@/hooks/useAuth";
 import Home from "@/pages/Home";
 import MyOrders from "@/pages/MyOrders";
@@ -31,6 +32,8 @@ import DeliveryLogin from "./pages/delivery/DeliveryLogin";
 import DeliveryDashboard from "./pages/delivery/DeliveryDashboard";
 import OrderTracking from "@/pages/OrderTracking";
 import AdminWalletSettings from "./pages/admin/AdminWalletSettings";
+// Add AdminCartSettings import here
+const AdminCartSettings = lazy(() => import("@/pages/admin/AdminCartSettings"));
 
 
 // ✅ Simple Auth Guard for customer routes
@@ -74,6 +77,8 @@ function Router() {
       <Route path="/admin/admins" component={AdminManagement} />
       <Route path="/admin/delivery-settings" component={AdminDeliverySettings} />
       <Route path="/admin/wallet-settings" component={AdminWalletSettings} />
+      {/* Add cart settings admin route */}
+      <Route path="/admin/cart-settings" component={AdminCartSettings} />
 
 
       {/* ---------- PARTNER / DELIVERY ROUTES ---------- */}

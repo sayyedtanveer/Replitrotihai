@@ -20,6 +20,7 @@ import {
   CreditCard,
   Truck,
   Wallet, // Import Wallet icon
+  ShoppingCart, // Import ShoppingCart icon
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -159,6 +160,13 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               <div className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors cursor-pointer ${location === "/admin/wallet-settings" ? "bg-primary text-primary-foreground" : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"}`}>
                 <Wallet className="w-5 h-5" />
                 <span>Wallet Settings</span>
+              </div>
+            </Link>
+            {/* Cart Settings Link */}
+            <Link href="/admin/cart-settings">
+              <div className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors cursor-pointer ${location === "/admin/cart-settings" ? "bg-primary text-primary-foreground" : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"}`}>
+                <ShoppingCart className="w-5 h-5" />
+                <span>Cart Settings</span>
               </div>
             </Link>
           </nav>

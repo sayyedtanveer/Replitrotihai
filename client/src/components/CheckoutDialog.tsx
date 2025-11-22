@@ -360,10 +360,14 @@ export default function CheckoutDialog({
 
         // Apply referral code if provided by new user
         if (referralCode.trim() && result.accessToken) {
-          applyReferralMutation.mutate({
-            referralCode: referralCode.trim(),
-            userToken: result.accessToken,
-          });
+          try {
+            applyReferralMutation.mutate({
+              referralCode: referralCode.trim(),
+              userToken: result.accessToken,
+            });
+          } catch (err) {
+            console.error("Failed to apply referral code:", err);
+          }
         }
       } else {
         toast({

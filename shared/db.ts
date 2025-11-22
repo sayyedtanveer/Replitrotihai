@@ -31,6 +31,7 @@ export const {
   subscriptions,
   subscriptionPlans,
   deliverySettings,
+  cartSettings,
   deliveryPersonnel,
   coupons,
   referrals,

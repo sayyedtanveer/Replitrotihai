@@ -3,8 +3,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { X, Plus, Minus, ShoppingBag } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { X, Plus, Minus, ShoppingBag, AlertTriangle, ShoppingCart } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { useQuery } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
 
 interface CartItem {
   id: string;
@@ -30,7 +33,8 @@ interface CartSidebarProps {
   onClose: () => void;
   carts?: CategoryCart[];
   onUpdateQuantity?: (categoryId: string, id: string, quantity: number) => void;
-  onCheckout?: (categoryId: string) => void; 
+  onCheckout?: (categoryId: string) => void;
+  onCheckoutAll?: () => void;
 }
 
 export default function CartSidebar({
@@ -39,15 +43,35 @@ export default function CartSidebar({
   carts = [],
   onUpdateQuantity,
   onCheckout,
+  onCheckoutAll,
 }: CartSidebarProps) {
   const [expandedIds, setExpandedIds] = useState<string[]>([]);
   const prevCategoryIdsRef = useRef<string[]>([]);
+  const { toast } = useToast();
+
+  // Fetch cart settings for minimum order amounts
+  const { data: cartSettings } = useQuery<any[]>({
+    queryKey: ["/api/cart-settings"],
+    queryFn: async () => {
+      const response = await fetch("/api/cart-settings");
+      if (!response.ok) throw new Error("Failed to fetch cart settings");
+      return response.json();
+    },
+  });
 
   const totalItems = carts.reduce(
     (total, cart) =>
       total + cart.items.reduce((sum, item) => sum + item.quantity, 0),
     0
   );
+
+  const totalAmount = carts.reduce((total, cart) => {
+    const subtotal = cart.items.reduce(
+      (sum, item) => sum + item.price * item.quantity,
+      0
+    );
+    return total + subtotal + 40; // Include delivery fee
+  }, 0);
 
   // Sync expanded accordion with available carts
   useEffect(() => {
@@ -69,10 +93,69 @@ export default function CartSidebar({
     setExpandedIds(newValue);
   };
 
+  // Get minimum order amount for a category
+  const getMinimumOrderAmount = (categoryId: string) => {
+    const setting = cartSettings?.find(s => s.categoryId === categoryId);
+    return setting?.minOrderAmount || 100; // Default ₹100 if not set
+  };
+
+  // Check if cart meets minimum order requirement
+  const meetsMinimumOrder = (cart: CategoryCart) => {
+    const subtotal = cart.items.reduce(
+      (sum, item) => sum + item.price * item.quantity,
+      0
+    );
+    const minimum = getMinimumOrderAmount(cart.categoryId);
+    return subtotal >= minimum;
+  };
+
+  // Get all carts that don't meet minimum
+  const cartsNotMeetingMinimum = carts.filter(cart => !meetsMinimumOrder(cart));
+
   // ✅ Handle per-category checkout - delegate to parent
   const handleCheckout = (categoryId: string) => {
+    const cart = carts.find(c => c.categoryId === categoryId);
+    if (!cart) return;
+
+    if (!meetsMinimumOrder(cart)) {
+      const minimum = getMinimumOrderAmount(cart.categoryId);
+      toast({
+        title: "Minimum Order Not Met",
+        description: `Minimum order for ${cart.categoryName} is ₹${minimum}`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (onCheckout) {
       onCheckout(categoryId);
+    }
+  };
+
+  // Handle checkout all
+  const handleCheckoutAll = () => {
+    console.log("Checkout All clicked - Total carts:", carts.length);
+    console.log("Carts not meeting minimum:", cartsNotMeetingMinimum);
+    
+    if (cartsNotMeetingMinimum.length > 0) {
+      const details = cartsNotMeetingMinimum.map(cart => {
+        const subtotal = cart.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+        const minimum = getMinimumOrderAmount(cart.categoryId);
+        return `${cart.categoryName}: ₹${subtotal} / ₹${minimum} required`;
+      }).join(', ');
+      
+      toast({
+        title: "Cannot Checkout All",
+        description: `${cartsNotMeetingMinimum.length} cart(s) don't meet minimum order requirements. ${details}`,
+        variant: "destructive",
+        duration: 5000,
+      });
+      return;
+    }
+
+    console.log("All carts meet minimum - proceeding to checkout");
+    if (onCheckoutAll) {
+      onCheckoutAll();
     }
   };
 
@@ -129,7 +212,30 @@ export default function CartSidebar({
           </div>
         ) : (
           <>
-            <ScrollArea className="flex-1 p-4">
+            {/* Checkout All Button */}
+            {carts.length > 1 && (
+              <div className="p-4 border-b bg-muted/30">
+                <Button
+                  onClick={handleCheckoutAll}
+                  disabled={cartsNotMeetingMinimum.length > 0}
+                  className="w-full"
+                  size="lg"
+                  data-testid="button-checkout-all"
+                >
+                  <ShoppingCart className="h-5 w-5 mr-2" />
+                  Checkout All ({carts.length} Carts) - ₹{totalAmount}
+                </Button>
+                {cartsNotMeetingMinimum.length > 0 && (
+                  <Alert className="mt-3" variant="destructive">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertDescription className="text-xs">
+                      {cartsNotMeetingMinimum.length} cart(s) don't meet minimum order requirements
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </div>
+            )}
+          <ScrollArea className="flex-1 p-4">
               <Accordion
                 type="multiple"
                 className="space-y-4"
@@ -168,6 +274,17 @@ export default function CartSidebar({
                         </div>
                       </AccordionTrigger>
                       <AccordionContent className="px-4 pb-4">
+                        {/* Minimum Order Warning */}
+                        {!meetsMinimumOrder(cart) && (
+                          <Alert className="mb-3" variant="destructive">
+                            <AlertTriangle className="h-4 w-4" />
+                            <AlertDescription className="text-xs">
+                              Minimum order: ₹{getMinimumOrderAmount(cart.categoryId)} 
+                              (Add ₹{getMinimumOrderAmount(cart.categoryId) - cart.items.reduce((sum, item) => sum + item.price * item.quantity, 0)} more)
+                            </AlertDescription>
+                          </Alert>
+                        )}
+
                         <div className="space-y-3">
                           {cart.items.map((item) => (
                             <div
@@ -259,9 +376,12 @@ export default function CartSidebar({
                           size="sm"
                           className="w-full mt-3"
                           onClick={() => handleCheckout(cart.categoryId)}
+                          disabled={!meetsMinimumOrder(cart)}
                           data-testid={`button-checkout-${cart.categoryId}`}
                         >
-                          Checkout {cart.categoryName}
+                          {meetsMinimumOrder(cart) 
+                            ? `Checkout ${cart.categoryName}` 
+                            : `Minimum ₹${getMinimumOrderAmount(cart.categoryId)} Required`}
                         </Button>
                       </AccordionContent>
                     </AccordionItem>

@@ -57,6 +57,7 @@ export const categories = pgTable("categories", {
   image: text("image").notNull(),
   iconName: text("icon_name").notNull(),
   itemCount: text("item_count").notNull(),
+  minOrderAmount: integer("min_order_amount").notNull().default(100),
 });
 
 export const chefs = pgTable("chefs", {
@@ -146,6 +147,16 @@ export const deliverySettings = pgTable("delivery_settings", {
   minDistance: decimal("min_distance", { precision: 5, scale: 2 }).notNull(),
   maxDistance: decimal("max_distance", { precision: 5, scale: 2 }).notNull(),
   price: integer("price").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const cartSettings = pgTable("cart_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  categoryId: varchar("category_id").notNull().unique(),
+  categoryName: text("category_name").notNull(),
+  minOrderAmount: integer("min_order_amount").notNull().default(100),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -411,6 +422,15 @@ export type Subscription = typeof subscriptions.$inferSelect;
 
 export type InsertDeliverySetting = z.infer<typeof insertDeliverySettingSchema>;
 export type DeliverySetting = typeof deliverySettings.$inferSelect;
+
+export const insertCartSettingSchema = createInsertSchema(cartSettings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertCartSetting = z.infer<typeof insertCartSettingSchema>;
+export type CartSetting = typeof cartSettings.$inferSelect;
 
 export const insertDeliveryPersonnelSchema = createInsertSchema(deliveryPersonnel).omit({
   id: true,

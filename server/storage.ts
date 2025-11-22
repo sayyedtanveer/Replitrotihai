@@ -1,9 +1,9 @@
-import { type Category, type InsertCategory, type Product, type InsertProduct, type Order, type InsertOrder, type User, type UpsertUser, type Chef, type AdminUser, type InsertAdminUser, type PartnerUser, type Subscription, type SubscriptionPlan, type DeliverySetting, type InsertDeliverySetting, type DeliveryPersonnel, type InsertDeliveryPersonnel, type WalletTransaction, type ReferralReward } from "@shared/schema";
+import { type Category, type InsertCategory, type Product, type InsertProduct, type Order, type InsertOrder, type User, type UpsertUser, type Chef, type AdminUser, type InsertAdminUser, type PartnerUser, type Subscription, type SubscriptionPlan, type DeliverySetting, type InsertDeliverySetting, type CartSetting, type InsertCartSetting, type DeliveryPersonnel, type InsertDeliveryPersonnel, type WalletTransaction, type ReferralReward } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { nanoid } from "nanoid";
 import { eq, and, gte, lte, desc, or, isNull, sql } from "drizzle-orm";
 import { db, users, categories, products, orders, chefs, adminUsers, partnerUsers, subscriptions, 
-  subscriptionPlans, deliverySettings, deliveryPersonnel, coupons, referrals, walletTransactions, referralRewards } from "@shared/db";
+  subscriptionPlans, deliverySettings, cartSettings, deliveryPersonnel, coupons, referrals, walletTransactions, referralRewards } from "@shared/db";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -85,6 +85,13 @@ export interface IStorage {
   createDeliverySetting(data: Omit<DeliverySetting, "id" | "createdAt" | "updatedAt">): Promise<DeliverySetting>;
   updateDeliverySetting(id: string, data: Partial<DeliverySetting>): Promise<DeliverySetting | undefined>;
   deleteDeliverySetting(id: string): Promise<void>;
+
+  // Cart settings methods
+  getCartSettings(): Promise<CartSetting[]>;
+  getCartSettingByCategoryId(categoryId: string): Promise<CartSetting | undefined>;
+  createCartSetting(data: Omit<CartSetting, "id" | "createdAt" | "updatedAt">): Promise<CartSetting>;
+  updateCartSetting(id: string, data: Partial<CartSetting>): Promise<CartSetting | undefined>;
+  deleteCartSetting(id: string): Promise<void>;
 
   // Report methods
   getSalesReport(from: Date, to: Date): Promise<any>;
@@ -763,6 +770,56 @@ export class MemStorage implements IStorage {
 
   async deleteDeliverySetting(id: string): Promise<void> {
     await db.delete(deliverySettings).where(eq(deliverySettings.id, id));
+  }
+
+  async getCartSettings(): Promise<CartSetting[]> {
+    return db.query.cartSettings.findMany({ where: (cs, { eq }) => eq(cs.isActive, true) });
+  }
+
+  async getCartSettingByCategoryId(categoryId: string): Promise<CartSetting | undefined> {
+    return db.query.cartSettings.findFirst({ where: (cs, { eq }) => eq(cs.categoryId, categoryId) });
+  }
+
+  async createCartSetting(data: Omit<CartSetting, "id" | "createdAt" | "updatedAt">): Promise<CartSetting> {
+    const id = randomUUID();
+    
+    // Fetch category name if not provided
+    let categoryName = data.categoryName;
+    if (!categoryName) {
+      const category = await this.getCategoryById(data.categoryId);
+      if (!category) {
+        throw new Error("Category not found");
+      }
+      categoryName = category.name;
+    }
+    
+    const setting: CartSetting = {
+      ...data,
+      categoryName,
+      id,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    await db.insert(cartSettings).values(setting);
+    return setting;
+  }
+
+  async updateCartSetting(id: string, data: Partial<CartSetting>): Promise<CartSetting | undefined> {
+    // If categoryId is being updated, fetch and update categoryName too
+    let updateData = { ...data };
+    if (data.categoryId && !data.categoryName) {
+      const category = await this.getCategoryById(data.categoryId);
+      if (category) {
+        updateData.categoryName = category.name;
+      }
+    }
+    
+    await db.update(cartSettings).set({ ...updateData, updatedAt: new Date() }).where(eq(cartSettings.id, id));
+    return db.query.cartSettings.findFirst({ where: (cs, { eq }) => eq(cs.id, id) });
+  }
+
+  async deleteCartSetting(id: string): Promise<void> {
+    await db.delete(cartSettings).where(eq(cartSettings.id, id));
   }
 
   async getDeliveryPersonnelByPhone(phone: string): Promise<DeliveryPersonnel | undefined> {

@@ -1045,4 +1045,65 @@ export function registerAdminRoutes(app: Express) {
       res.status(500).json({ message: "Failed to update wallet settings" });
     }
   });
+
+  // Admin Cart Settings Management
+  app.get("/api/admin/cart-settings", requireAdmin(), async (req, res) => {
+    try {
+      const settings = await storage.getCartSettings();
+      res.json(settings);
+    } catch (error: any) {
+      console.error("Error fetching cart settings:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch cart settings" });
+    }
+  });
+
+  app.post("/api/admin/cart-settings", requireAdminOrManager(), async (req, res) => {
+    try {
+      const { categoryId, minOrderAmount } = req.body;
+
+      if (!categoryId || minOrderAmount === undefined) {
+        res.status(400).json({ message: "Category ID and minimum order amount are required" });
+        return;
+      }
+
+      const setting = await storage.createCartSetting({ 
+        categoryId, 
+        minOrderAmount,
+        categoryName: '', // Will be fetched in storage.createCartSetting
+        isActive: true 
+      });
+      res.status(201).json(setting);
+    } catch (error: any) {
+      console.error("Error creating cart setting:", error);
+      res.status(500).json({ message: error.message || "Failed to create cart setting" });
+    }
+  });
+
+  app.patch("/api/admin/cart-settings/:id", requireAdminOrManager(), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const setting = await storage.updateCartSetting(id, req.body);
+
+      if (!setting) {
+        res.status(404).json({ message: "Cart setting not found" });
+        return;
+      }
+
+      res.json(setting);
+    } catch (error: any) {
+      console.error("Error updating cart setting:", error);
+      res.status(500).json({ message: error.message || "Failed to update cart setting" });
+    }
+  });
+
+  app.delete("/api/admin/cart-settings/:id", requireAdminOrManager(), async (req, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteCartSetting(id);
+      res.json({ message: "Cart setting deleted successfully" });
+    } catch (error: any) {
+      console.error("Error deleting cart setting:", error);
+      res.status(500).json({ message: error.message || "Failed to delete cart setting" });
+    }
+  });
 }

@@ -19,10 +19,14 @@ interface CategoryCart {
   chefName: string;
   items: CartItem[];
   total?: number;
+  minOrderAmount?: number;
+  meetsMinimum?: boolean;
 }
 
 interface CartStore {
   carts: CategoryCart[];
+  cartMinSettings: Record<string, number>;
+  setCartMinSettings: (settings: Record<string, number>) => void;
   addToCart: (item: Omit<CartItem, "quantity">, categoryName: string) => boolean;
   removeFromCart: (categoryId: string, itemId: string) => void;
   updateQuantity: (categoryId: string, itemId: string, quantity: number) => void;
@@ -36,12 +40,19 @@ interface CartStore {
     chefId?: string,
     categoryId?: string
   ) => { canAdd: boolean; conflictChef?: string };
+  getCartWithValidation: (categoryId: string) => CategoryCart | undefined;
+  getAllCartsWithValidation: () => CategoryCart[];
 }
 
 export const useCart = create<CartStore>()(
   persist(
     (set, get) => ({
       carts: [],
+      cartMinSettings: {},
+
+      setCartMinSettings: (settings: Record<string, number>) => {
+        set({ cartMinSettings: settings });
+      },
 
       // ✅ Check if item can be added (per category/chef rule)
       canAddItem: (chefId?: string, categoryId?: string) => {
@@ -215,6 +226,41 @@ export const useCart = create<CartStore>()(
       // ✅ Helper to get all carts (useful for debugging or analytics)
       getAllCarts: () => {
         return get().carts;
+      },
+
+      // ✅ Get cart with minimum order validation
+      getCartWithValidation: (categoryId: string) => {
+        const { carts, cartMinSettings } = get();
+        const cart = carts.find((c) => c.categoryId === categoryId);
+        if (!cart) return undefined;
+
+        const subtotal = cart.items.reduce((total, item) => total + item.price * item.quantity, 0);
+        const minOrderAmount = cartMinSettings[categoryId] || 100; // Default ₹100
+        const meetsMinimum = subtotal >= minOrderAmount;
+
+        return {
+          ...cart,
+          total: subtotal,
+          minOrderAmount,
+          meetsMinimum,
+        };
+      },
+
+      // ✅ Get all carts with minimum order validation
+      getAllCartsWithValidation: () => {
+        const { carts, cartMinSettings } = get();
+        return carts.map((cart) => {
+          const subtotal = cart.items.reduce((total, item) => total + item.price * item.quantity, 0);
+          const minOrderAmount = cartMinSettings[cart.categoryId] || 100; // Default ₹100
+          const meetsMinimum = subtotal >= minOrderAmount;
+
+          return {
+            ...cart,
+            total: subtotal,
+            minOrderAmount,
+            meetsMinimum,
+          };
+        });
       },
     }),
     {

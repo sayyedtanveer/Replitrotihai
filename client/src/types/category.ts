@@ -1,3 +1,4 @@
+
 export interface Category {
   id: string;
   name: string;
@@ -5,4 +6,5 @@ export interface Category {
   image: string;
   iconName: string;
   itemCount: string;
+  minOrderAmount?: number;
 }

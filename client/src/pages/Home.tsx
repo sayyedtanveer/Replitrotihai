@@ -50,8 +50,9 @@ export default function Home() {
   const [selectedChefForMenu, setSelectedChefForMenu] = useState<Chef | null>(null);
   const [selectedCategoryTab, setSelectedCategoryTab] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCart, setSelectedCart] = useState<any>(null); // State to hold the cart for checkout
 
-  const { carts, addToCart: cartAddToCart, canAddItem, clearCart, getTotalItems } = useCart();
+  const { carts, addToCart: cartAddToCart, canAddItem, clearCart, getTotalItems, getAllCarts, updateQuantity } = useCart();
 
   const handleCategoryTabChange = (value: string) => {
     setSelectedCategoryTab(value);
@@ -104,10 +105,6 @@ export default function Home() {
     cartAddToCart(cartItem, categoryName);
   };
 
-  const handleUpdateQuantity = (categoryId: string, id: string, quantity: number) => {
-    useCart.getState().updateQuantity(categoryId, id, quantity);
-  };
-
   const totalItems = getTotalItems();
 
   // ✅ Called when checkout creates order successfully
@@ -118,6 +115,57 @@ export default function Home() {
     setTimeout(() => {
       setIsCheckoutOpen(true);
     }, 250);
+  };
+
+  // Function to get all carts with validation (including minOrderAmount)
+  const getAllCartsWithValidation = () => {
+    return carts.map(cart => {
+      const category = categories.find(c => c.id === cart.categoryId);
+      const minOrderAmount = category?.minOrderAmount || 100; // Default to 100 if not found
+      const total = cart.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+      const meetsMinimum = total >= minOrderAmount;
+      return {
+        ...cart,
+        categoryName: category?.name || "Unknown Category",
+        minOrderAmount,
+        total,
+        meetsMinimum,
+      };
+    });
+  };
+
+  // Handle checkout for all carts
+  const handleCheckoutAll = () => {
+    const allCarts = getAllCartsWithValidation();
+
+    // Validate all carts meet minimum order
+    const cartsNotMeetingMinimum = allCarts.filter(cart => !cart.meetsMinimum);
+
+    if (cartsNotMeetingMinimum.length > 0) {
+      const details = cartsNotMeetingMinimum.map(cart =>
+        `${cart.categoryName}: ₹${cart.total || 0} of ₹${cart.minOrderAmount || 100} minimum`
+      ).join(', ');
+
+      toast({
+        title: "Cannot Checkout All",
+        description: `${cartsNotMeetingMinimum.length} cart(s) don't meet minimum order: ${details}`,
+        variant: "destructive",
+        duration: 7000,
+      });
+      return;
+    }
+
+    // For now, open checkout for the first cart (multi-cart checkout needs backend support)
+    if (allCarts.length > 0) {
+      setSelectedCart(allCarts[0]);
+      setIsCheckoutOpen(true);
+
+      toast({
+        title: "Multi-Cart Checkout",
+        description: `Processing ${allCarts.length} cart(s). You'll need to complete checkout for each category separately.`,
+        duration: 5000,
+      });
+    }
   };
 
   // ✅ Called when checkout creates order successfully
@@ -157,6 +205,7 @@ export default function Home() {
   const handleCheckoutClose = () => {
     setIsCheckoutOpen(false);
     setCheckoutCategoryId("");
+    setSelectedCart(null); // Reset selected cart
   };
 
   const handleCategoryClick = (categoryId: string) => {
@@ -492,16 +541,21 @@ export default function Home() {
       <CartSidebar
         isOpen={isCartOpen}
         onClose={() => setIsCartOpen(false)}
-        carts={carts}
-        onUpdateQuantity={handleUpdateQuantity}
+        carts={getAllCartsWithValidation()}
+        onUpdateQuantity={updateQuantity}
         onCheckout={handleCheckout}
+        onCheckoutAll={handleCheckoutAll}
       />
 
      <CheckoutDialog
   isOpen={isCheckoutOpen}
   onClose={handleCheckoutClose}
-  cart={carts.find(cart => cart.categoryId === checkoutCategoryId) || null}
-  onClearCart={() => clearCart(checkoutCategoryId)}
+  cart={selectedCart} // Use selectedCart for the checkout dialog
+  onClearCart={() => {
+    if (selectedCart) {
+      clearCart(selectedCart.categoryId);
+    }
+  }}
   onShowPaymentQR={handleShowPaymentQR}
 />
 
