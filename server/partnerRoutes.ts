@@ -81,11 +81,11 @@ export function registerPartnerRoutes(app: Express): void {
 
       console.log(`🔄 Chef ${req.partner?.chefId} accepting order ${orderId}`);
 
-      // Accept order - change status to accepted_by_chef
+      // Accept order and automatically start preparing
       const [updatedOrder] = await db
         .update(orders)
         .set({
-          status: "accepted_by_chef",
+          status: "preparing",
           approvedBy: partnerId!,
           approvedAt: new Date()
         })
@@ -93,14 +93,14 @@ export function registerPartnerRoutes(app: Express): void {
         .returning();
 
       if (updatedOrder) {
-        console.log(`✅ Chef accepted order ${orderId}, status: ${updatedOrder.status}`);
+        console.log(`✅ Chef accepted order ${orderId}, status: ${updatedOrder.status} (auto-preparing)`);
 
         // Broadcast order update to customer and admin
         broadcastOrderUpdate(updatedOrder);
         console.log(`📡 Broadcasted chef acceptance to customer and admin`);
 
-        // STAGE 1: Notify delivery personnel that chef has accepted - they can start preparing to head out
-        console.log(`📢 STAGE 1: Broadcasting to delivery personnel - Chef accepted order ${orderId}`);
+        // STAGE 1: Notify delivery personnel that chef is preparing - they can start preparing to head out
+        console.log(`📢 STAGE 1: Broadcasting to delivery personnel - Chef is preparing order ${orderId}`);
         await broadcastPreparedOrderToAvailableDelivery(updatedOrder);
       }
 

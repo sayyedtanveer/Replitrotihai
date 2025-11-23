@@ -336,9 +336,8 @@ export default function PartnerDashboard() {
 
                           {/* Action buttons based on status */}
                           <div className="flex gap-2 mt-2 flex-wrap">
-                            {
-                            
-                            order.paymentStatus === "confirmed" && order.status === "confirmed" && (
+                            {console.log(`Order ${order.id.slice(0, 8)} - Status: ${order.status}, PaymentStatus: ${order.paymentStatus}`)}
+                            {order.paymentStatus === "confirmed" && order.status === "confirmed" && (
                               <>
                                 <Button
                                   size="sm"
@@ -365,17 +364,17 @@ export default function PartnerDashboard() {
                                 </Button>
                               </>
                             )}
-                            {(order.status === "accepted_by_chef" || order.status === "accepted_by_delivery") && (
-                              <Button
-                                size="sm"
-                                onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: "preparing" })}
-                                disabled={updateStatusMutation.isPending}
-                                data-testid={`button-prepare-${order.id}`}
-                              >
-                                Start Preparing
-                              </Button>
+                            {order.status === "preparing" && !order.assignedTo && (
+                              <Badge variant="outline" className="bg-blue-50">
+                                🍳 Preparing - Waiting for Delivery Person
+                              </Badge>
                             )}
-                            {order.status === "preparing" && (
+                            {order.status === "preparing" && order.assignedTo && (
+                              <Badge variant="outline" className="bg-purple-50">
+                                🍳 Preparing - {order.deliveryPersonName} is on the way
+                              </Badge>
+                            )}
+                            {order.status === "accepted_by_delivery" && (
                               <Button
                                 size="sm"
                                 onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: "prepared" })}
@@ -489,16 +488,6 @@ export default function PartnerDashboard() {
                                     Reject
                                   </Button>
                                 </>
-                              )}
-                              {(order.status === "accepted_by_chef" || order.status === "accepted_by_delivery") && (
-                                <Button
-                                  size="sm"
-                                  onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: "preparing" })}
-                                  disabled={updateStatusMutation.isPending}
-                                  data-testid={`button-table-prepare-${order.id}`}
-                                >
-                                  Prepare
-                                </Button>
                               )}
                               {order.status === "preparing" && (
                                 <Button

@@ -143,13 +143,20 @@ export function registerDeliveryRoutes(app: Express) {
         return;
       }
 
-      // Claiming automatically means accepting - update status to accepted_by_delivery
-      const acceptedOrder = await storage.updateOrderStatus(orderId, "accepted_by_delivery");
+      // Claiming automatically means accepting
+      // If chef is already preparing, keep the status as "preparing"
+      // Otherwise update to accepted_by_delivery
+      const newStatus = order.status === "preparing" ? "preparing" : "accepted_by_delivery";
+      console.log(`🔄 Updating order ${orderId} status to ${newStatus}`);
+      const acceptedOrder = await storage.updateOrderStatus(orderId, newStatus);
       
       if (!acceptedOrder) {
+        console.error(`❌ Failed to update order ${orderId} to ${newStatus}`);
         res.status(500).json({ message: "Failed to accept order" });
         return;
       }
+      
+      console.log(`✅ Order ${orderId} status updated to: ${acceptedOrder.status}`);
 
       // Cancel the timeout since delivery person accepted the order
       cancelPreparedOrderTimeout(orderId);
