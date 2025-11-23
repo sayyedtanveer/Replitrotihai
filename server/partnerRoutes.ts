@@ -1,8 +1,9 @@
-
 import type { Express } from "express";
 import { requirePartner, type AuthenticatedPartnerRequest } from "./partnerAuth";
 import { storage } from "./storage";
 import { broadcastOrderUpdate, broadcastPreparedOrderToAvailableDelivery } from "./websocket";
+import { db, orders } from "@shared/db";
+import { eq } from "drizzle-orm";
 
 export function registerPartnerRoutes(app: Express): void {
   // Get all orders for this partner
@@ -68,13 +69,25 @@ export function registerPartnerRoutes(app: Express): void {
         return;
       }
 
-      // Accept order - set status to accepted_by_chef
-      let updatedOrder = await storage.acceptOrder(orderId, partnerId!);
-      
+      // Accept order - change status to accepted_by_chef (not confirmed)
+      const [updatedOrder] = await db
+        .update(orders)
+        .set({
+          status: "accepted_by_chef",
+          approvedBy: partnerId!,
+          approvedAt: new Date()
+        })
+        .where(eq(orders.id, orderId))
+        .returning();
+
       if (updatedOrder) {
-        // Chef acceptance sets status to 'accepted_by_chef', not 'preparing'
-        // Partner must explicitly click "Start Preparing" to change to 'preparing'
+        // Broadcast order update to customer and admin
         broadcastOrderUpdate(updatedOrder);
+        console.log(`✅ Chef accepted order ${orderId}, status: ${updatedOrder.status}`);
+        
+        // STAGE 1: Notify delivery personnel that chef has accepted - they can start preparing to head out
+        console.log(`📢 STAGE 1: Broadcasting to delivery personnel - Chef accepted order ${orderId}`);
+        await broadcastPreparedOrderToAvailableDelivery(updatedOrder);
       }
 
       res.json(updatedOrder);
@@ -103,7 +116,7 @@ export function registerPartnerRoutes(app: Express): void {
       }
 
       const updatedOrder = await storage.rejectOrder(orderId, partnerId!, reason || "Order rejected by partner");
-      
+
       if (updatedOrder) {
         broadcastOrderUpdate(updatedOrder);
       }
@@ -115,7 +128,7 @@ export function registerPartnerRoutes(app: Express): void {
     }
   });
 
-  // Update order status
+  // Update order status (preparing, prepared, out_for_delivery, delivered)
   app.patch("/api/partner/orders/:orderId/status", requirePartner(), async (req: AuthenticatedPartnerRequest, res) => {
     try {
       const { orderId } = req.params;
@@ -133,13 +146,14 @@ export function registerPartnerRoutes(app: Express): void {
       }
 
       const updatedOrder = await storage.updateOrderStatus(orderId, status);
-      
+
       if (updatedOrder) {
         broadcastOrderUpdate(updatedOrder);
-        
-        // Broadcast to all available delivery personnel when order is prepared
-        if (status === "prepared" && !updatedOrder.assignedTo) {
-          broadcastPreparedOrderToAvailableDelivery(updatedOrder);
+
+        // STAGE 2: Broadcast to delivery personnel when order is prepared and ready for pickup
+        if (status === "prepared") {
+          console.log(`🍽️ STAGE 2: Order ${orderId} is PREPARED and ready for pickup - broadcasting to delivery personnel`);
+          await broadcastPreparedOrderToAvailableDelivery(updatedOrder);
         }
       }
 
@@ -236,7 +250,7 @@ export function registerPartnerRoutes(app: Express): void {
       for (let i = 5; i >= 0; i--) {
         const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
         const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0, 23, 59, 59);
-        
+
         const monthOrders = completedOrders.filter(o => {
           const orderDate = new Date(o.createdAt);
           return orderDate >= monthStart && orderDate <= monthEnd;

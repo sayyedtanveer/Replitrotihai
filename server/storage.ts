@@ -449,7 +449,7 @@ export class MemStorage implements IStorage {
     return newPartner;
   }
 
-  async updatePartner(id: string, data: Partial<Pick<PartnerUser, "email" | "passwordHash">>): Promise<void> {
+  async updatePartner(id: string, data: Partial<Pick<PartnerUser, "email" | "passwordHash" | "profilePictureUrl">>): Promise<void> {
     await db.update(partnerUsers).set(data).where(eq(partnerUsers.id, id));
   }
 
@@ -840,8 +840,11 @@ export class MemStorage implements IStorage {
   }
 
   async getAvailableDeliveryPersonnel(): Promise<DeliveryPersonnel[]> {
+    // Return all active delivery personnel regardless of status
+    // Admin can assign to any active personnel
     return db.query.deliveryPersonnel.findMany({
-      where: (dp, { eq, and }) => and(eq(dp.status, "available"), eq(dp.isActive, true))
+      where: (dp, { eq }) => eq(dp.isActive, true),
+      orderBy: (dp, { asc }) => [asc(dp.status)] // Show "available" first
     });
   }
 
@@ -936,6 +939,8 @@ export class MemStorage implements IStorage {
         throw new Error("Delivery person not found");
       }
 
+      console.log(`📦 Assigning order ${orderId} to delivery person ${deliveryPerson.name} (${deliveryPerson.phone})`);
+
       const [updatedOrder] = await db
         .update(orders)
         .set({ 
@@ -948,9 +953,18 @@ export class MemStorage implements IStorage {
         .where(eq(orders.id, orderId))
         .returning();
 
+      if (!updatedOrder) {
+        throw new Error("Failed to update order");
+      }
+
+      // Update delivery person status to busy
       await db.update(deliveryPersonnel).set({ status: "busy" }).where(eq(deliveryPersonnel.id, deliveryPersonId));
 
-      return updatedOrder || undefined;
+      console.log(`✅ Order ${orderId} assigned successfully. Delivery person: ${deliveryPerson.name} (${deliveryPerson.phone})`);
+      console.log(`✅ Updated order fields - deliveryPersonName: ${updatedOrder.deliveryPersonName}, deliveryPersonPhone: ${updatedOrder.deliveryPersonPhone}`);
+      
+      // Return the mapped order to ensure all fields are properly formatted
+      return this.mapOrder(updatedOrder);
     } catch (error) {
       console.error("Error assigning order to delivery person:", error);
       throw error;

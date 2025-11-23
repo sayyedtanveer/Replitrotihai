@@ -18,4 +18,5 @@ export interface Order {
   phone: string;
   paymentStatus: string;  
   rejectionReason?: string;
+  deliveryPersonName?: string;
 }

@@ -14,7 +14,7 @@ import {
 import { db, walletSettings } from "@shared/db";
 import { adminLoginSchema, insertAdminUserSchema, insertCategorySchema, insertProductSchema, insertDeliveryPersonnelSchema } from "@shared/schema";
 import { fromZodError } from "zod-validation-error";
-import { broadcastOrderUpdate, broadcastNewOrder, notifyDeliveryAssignment } from "./websocket";
+import { broadcastOrderUpdate, broadcastNewOrder, notifyDeliveryAssignment, cancelPreparedOrderTimeout } from "./websocket";
 import { hashPassword as hashDeliveryPassword } from "./deliveryAuth";
 
 export function registerAdminRoutes(app: Express) {
@@ -318,6 +318,8 @@ export function registerAdminRoutes(app: Express) {
       const { id } = req.params;
       const { deliveryPersonId } = req.body;
 
+      console.log(`👨‍💼 Admin assigning order ${id} to delivery person ${deliveryPersonId}`);
+
       if (!deliveryPersonId) {
         res.status(400).json({ message: "Delivery person ID is required" });
         return;
@@ -329,18 +331,29 @@ export function registerAdminRoutes(app: Express) {
         return;
       }
 
-      // First assign the delivery person
+      if (!deliveryPerson.isActive) {
+        res.status(400).json({ message: "Delivery person is not active" });
+        return;
+      }
+
+      // First assign the delivery person (this will populate name and phone)
       let order = await storage.assignOrderToDeliveryPerson(id, deliveryPersonId);
       if (!order) {
         res.status(404).json({ message: "Order not found" });
         return;
       }
 
-      // Update status to 'assigned' if order is confirmed
-      if (order.status === "confirmed") {
+      // Update status to 'assigned' for any valid pre-delivery status
+      const preDeliveryStatuses = ["confirmed", "accepted_by_chef", "preparing", "prepared"];
+      if (preDeliveryStatuses.includes(order.status)) {
         order = await storage.updateOrderStatus(id, "assigned") || order;
       }
 
+      // Cancel the timeout since admin manually assigned the order
+      cancelPreparedOrderTimeout(id);
+      
+      console.log(`✅ Admin assigned order ${id} to ${deliveryPerson.name} (${deliveryPerson.phone})`);
+      
       broadcastOrderUpdate(order);
       notifyDeliveryAssignment(order, deliveryPersonId);
       res.json(order);

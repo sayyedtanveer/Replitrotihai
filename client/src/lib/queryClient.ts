@@ -34,9 +34,22 @@ async function throwIfResNotOk(res: Response) {
 
 function getAuthHeaders(): Record<string, string> {
   const headers: Record<string, string> = {};
-  const userToken = localStorage.getItem("userToken");
-  if (userToken) {
-    headers["Authorization"] = `Bearer ${userToken}`;
+  const path = window.location.pathname;
+  
+  // Get appropriate token based on current path
+  let token: string | null = null;
+  if (path.startsWith('/admin')) {
+    token = localStorage.getItem("adminToken");
+  } else if (path.startsWith('/partner')) {
+    token = localStorage.getItem("partnerToken");
+  } else if (path.startsWith('/delivery')) {
+    token = localStorage.getItem("deliveryToken");
+  } else {
+    token = localStorage.getItem("userToken");
+  }
+  
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
   }
   return headers;
 }

@@ -142,9 +142,6 @@ app.use((req, res, next) => {
         maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
       });
 
-      // Update last login
-      await storage.updatePartner(partner.id, { lastLoginAt: new Date() });
-
       // Get chef name (chef variable already declared above)
       const chefName = chef ? chef.name : "Unknown Chef";
 

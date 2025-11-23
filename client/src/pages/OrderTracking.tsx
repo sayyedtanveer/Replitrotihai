@@ -18,6 +18,7 @@ import {
   ShoppingBag,
   CreditCard,
   ArrowLeft,
+  User, // Import User icon
 } from "lucide-react";
 import { queryClient } from "@/lib/queryClient";
 import { Link } from "wouter";
@@ -126,7 +127,11 @@ export default function OrderTracking() {
         completed:
           order.paymentStatus === "confirmed" ||
           order.status === "confirmed" ||
+          order.status === "accepted_by_chef" ||
           order.status === "preparing" ||
+          order.status === "prepared" ||
+          order.status === "assigned" ||
+          order.status === "accepted_by_delivery" ||
           order.status === "out_for_delivery" ||
           order.status === "delivered",
         description:
@@ -141,39 +146,51 @@ export default function OrderTracking() {
         label: "Preparing",
         icon: <ChefHat className="h-5 w-5" />,
         completed:
+          order.status === "accepted_by_chef" ||
           order.status === "preparing" ||
+          order.status === "prepared" ||
+          order.status === "assigned" ||
+          order.status === "accepted_by_delivery" ||
           order.status === "out_for_delivery" ||
           order.status === "delivered",
         description:
-          order.status === "preparing"
+          order.status === "accepted_by_chef"
+            ? "Chef accepted - preparing your food"
+            : order.status === "preparing"
             ? "Chef is preparing your food"
+            : order.status === "prepared"
+            ? "Food is ready"
             : order.status === "confirmed"
-            ? "Waiting for chef"
+            ? "Waiting for chef to accept"
             : order.status === "out_for_delivery" || order.status === "delivered"
             ? "Preparation complete"
             : "Pending",
       },
       {
         key: "delivery",
-        label: order.status === "accepted_by_delivery" || order.status === "assigned" 
-          ? "Accepted by Delivery" 
+        label: order.status === "accepted_by_delivery" || order.status === "assigned"
+          ? "Delivery Person Assigned"
           : "Out for Delivery",
         icon: <Truck className="h-5 w-5" />,
         completed: order.status === "accepted_by_delivery" || order.status === "assigned" || order.status === "out_for_delivery" || order.status === "delivered",
         description:
-          order.status === "accepted_by_delivery" || order.status === "assigned"
-            ? order.deliveryPersonName && order.deliveryPersonPhone
-              ? `${order.deliveryPersonName} - ${order.deliveryPersonPhone}`
+          order.status === "accepted_by_delivery"
+            ? order.deliveryPersonName
+              ? `Accepted by ${order.deliveryPersonName}${order.deliveryPersonPhone ? ` (${order.deliveryPersonPhone})` : ""}`
+              : "Delivery person accepted"
+            : order.status === "assigned"
+            ? order.deliveryPersonName
+              ? `Assigned to ${order.deliveryPersonName}${order.deliveryPersonPhone ? ` (${order.deliveryPersonPhone})` : ""}`
               : "Delivery person assigned"
             : order.status === "out_for_delivery"
-            ? order.pickedUpAt
-              ? `Picked up at ${format(new Date(order.pickedUpAt), "h:mm a")}${order.deliveryPersonName ? ` - ${order.deliveryPersonName}` : ""}`
-              : order.deliveryPersonName
-              ? `On the way - ${order.deliveryPersonName}`
+            ? order.deliveryPersonName
+              ? `${order.deliveryPersonName} is on the way${order.pickedUpAt ? ` (picked up at ${format(new Date(order.pickedUpAt), "h:mm a")})` : ""}`
+              : order.pickedUpAt
+              ? `On the way (picked up at ${format(new Date(order.pickedUpAt), "h:mm a")})`
               : "On the way"
             : order.status === "delivered"
-            ? "Delivered"
-            : "Pending pickup",
+            ? order.deliveryPersonName ? `Delivered by ${order.deliveryPersonName}` : "Delivered"
+            : "Waiting for delivery assignment",
       },
       {
         key: "delivered",
@@ -389,7 +406,7 @@ export default function OrderTracking() {
             </CardContent>
           </Card>
 
-          {order.assignedTo && order.deliveryPersonName && (
+          {(order.assignedTo && order.deliveryPersonName) && (
             <Card className="col-span-2">
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
@@ -412,6 +429,21 @@ export default function OrderTracking() {
                     )}
                   </div>
                 </div>
+                {order.status === "accepted_by_chef" && (
+                  <p className="text-xs text-blue-600 mt-2">
+                    🕐 Delivery person is preparing to pick up your order
+                  </p>
+                )}
+                {order.status === "preparing" && (
+                  <p className="text-xs text-blue-600 mt-2">
+                    👨‍🍳 Food is being prepared - delivery person will pick up soon
+                  </p>
+                )}
+                {order.status === "prepared" && (
+                  <p className="text-xs text-blue-600 mt-2">
+                    ✅ Food is ready - delivery person is on the way to pick up
+                  </p>
+                )}
               </CardContent>
             </Card>
           )}

@@ -233,30 +233,50 @@ export default function MyOrders() {
         label: "Preparing",
         icon: <ChefHat className="h-5 w-5" />,
         completed:
+          order.status === "accepted_by_chef" ||
           order.status === "preparing" ||
+          order.status === "prepared" ||
+          order.status === "assigned" ||
+          order.status === "accepted_by_delivery" ||
           order.status === "out_for_delivery" ||
           order.status === "delivered",
         description:
-          order.status === "preparing"
+          order.status === "accepted_by_chef"
+            ? "Chef accepted your order"
+            : order.status === "preparing"
             ? "Chef is preparing your food"
+            : order.status === "prepared"
+            ? "Food is ready for pickup"
             : order.status === "confirmed"
-            ? "Waiting for chef"
+            ? "Waiting for chef to accept"
             : order.status === "out_for_delivery" || order.status === "delivered"
             ? "Preparation complete"
             : "Pending",
       },
       {
         key: "delivery",
-        label: "Out for Delivery",
+        label: order.status === "accepted_by_delivery" || order.status === "assigned" 
+          ? "Delivery Person Assigned" 
+          : "Out for Delivery",
         icon: <Truck className="h-5 w-5" />,
         completed:
-          order.status === "out_for_delivery" || order.status === "delivered",
+          order.status === "accepted_by_delivery" || order.status === "assigned" || order.status === "out_for_delivery" || order.status === "delivered",
         description:
-          order.status === "out_for_delivery"
-            ? "On the way"
+          order.status === "accepted_by_delivery"
+            ? order.deliveryPersonName
+              ? `Accepted by ${order.deliveryPersonName}`
+              : "Delivery person accepted"
+            : order.status === "assigned"
+            ? order.deliveryPersonName
+              ? `Assigned to ${order.deliveryPersonName}`
+              : "Delivery person assigned"
+            : order.status === "out_for_delivery"
+            ? order.deliveryPersonName
+              ? `${order.deliveryPersonName} is on the way`
+              : "On the way"
             : order.status === "delivered"
-            ? "Delivered"
-            : "Pending pickup",
+            ? order.deliveryPersonName ? `Delivered by ${order.deliveryPersonName}` : "Delivered"
+            : "Waiting for delivery assignment",
       },
       {
         key: "delivered",

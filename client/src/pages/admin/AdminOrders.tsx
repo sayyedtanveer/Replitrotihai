@@ -1,4 +1,3 @@
-
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -37,7 +36,7 @@ export default function AdminOrders() {
       if (!response.ok) throw new Error("Failed to fetch orders");
       const allOrders = await response.json();
       // Sort by latest first (descending order by createdAt)
-      return allOrders.sort((a: Order, b: Order) => 
+      return allOrders.sort((a: Order, b: Order) =>
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
     },
@@ -168,8 +167,8 @@ export default function AdminOrders() {
     return person ? person.name : "Unknown";
   };
 
-  const availableDeliveryPersonnel = deliveryPersonnel?.filter((dp) => 
-    dp.isActive && dp.status === "available"
+  const availableDeliveryPersonnel = deliveryPersonnel?.filter((dp) =>
+    dp.isActive
   ) || [];
 
   const handleOpenAssignDialog = (order: Order) => {
@@ -195,13 +194,13 @@ export default function AdminOrders() {
 
   // Filter and search orders
   const filteredOrders = orders?.filter((order) => {
-    const matchesSearch = 
+    const matchesSearch =
       order.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       order.phone.includes(searchQuery) ||
       order.id.toLowerCase().includes(searchQuery.toLowerCase());
-    
+
     const matchesStatus = statusFilter === "all" || order.status === statusFilter;
-    
+
     return matchesSearch && matchesStatus;
   }) || [];
 
@@ -464,7 +463,7 @@ export default function AdminOrders() {
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
-              {availableDeliveryPersonnel.length > 0 ? (
+              {deliveryPersonnel && deliveryPersonnel.length > 0 ? (
                 <>
                   <div className="space-y-2">
                     <Label htmlFor="delivery-person">Select Delivery Person</Label>
@@ -476,13 +475,16 @@ export default function AdminOrders() {
                         <SelectValue placeholder="Choose a delivery person" />
                       </SelectTrigger>
                       <SelectContent>
-                        {availableDeliveryPersonnel.map((person) => (
+                        {deliveryPersonnel.map((person) => (
                           <SelectItem key={person.id} value={person.id}>
                             <div className="flex items-center gap-2">
                               <User className="h-4 w-4" />
                               <span>{person.name}</span>
                               <span className="text-xs text-muted-foreground">• {person.phone}</span>
-                              <Badge variant="outline" className="ml-auto">
+                              <Badge
+                                variant={person.status === "available" ? "default" : "secondary"}
+                                className="ml-auto"
+                              >
                                 {person.status}
                               </Badge>
                             </div>
@@ -491,19 +493,18 @@ export default function AdminOrders() {
                       </SelectContent>
                     </Select>
                   </div>
-                  {deliveryPersonnel && deliveryPersonnel.length > availableDeliveryPersonnel.length && (
-                    <p className="text-sm text-muted-foreground">
-                      Showing {availableDeliveryPersonnel.length} available delivery personnel.
-                      {deliveryPersonnel.length - availableDeliveryPersonnel.length} are currently busy or inactive.
-                    </p>
-                  )}
+                  <p className="text-sm text-muted-foreground">
+                    Showing {deliveryPersonnel.filter(dp => dp.isActive).length} active delivery personnel.
+                    {deliveryPersonnel.filter(dp => !dp.isActive).length} are inactive.
+                    {deliveryPersonnel.filter(dp => dp.status !== "available" && dp.isActive).length} are currently busy.
+                  </p>
                 </>
               ) : (
                 <div className="text-center py-8">
                   <Truck className="h-12 w-12 mx-auto text-slate-400 mb-4" />
-                  <p className="text-slate-600 dark:text-slate-400">No available delivery personnel</p>
+                  <p className="text-slate-600 dark:text-slate-400">No delivery personnel available</p>
                   <p className="text-sm text-slate-500 dark:text-slate-500 mt-1">
-                    All delivery personnel are currently busy or inactive
+                    Please add delivery personnel to the system
                   </p>
                 </div>
               )}
