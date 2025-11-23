@@ -475,6 +475,15 @@ export default function MyOrders() {
                             Order Items
                           </h4>
                           <div className="space-y-1">
+                            {activeOrder.chefName && (
+                              <div className="mb-2 pb-2 border-b">
+                                <p className="text-xs text-muted-foreground">Prepared by</p>
+                                <p className="text-sm font-medium flex items-center gap-1">
+                                  <ChefHat className="h-3 w-3" />
+                                  {activeOrder.chefName}
+                                </p>
+                              </div>
+                            )}
                             {activeOrder.items.map((item: any, idx: number) => (
                               <div key={idx} className="flex justify-between text-sm">
                                 <span className="text-muted-foreground">

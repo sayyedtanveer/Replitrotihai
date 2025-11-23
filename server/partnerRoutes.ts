@@ -52,7 +52,7 @@ export function registerPartnerRoutes(app: Express): void {
     }
   });
 
-  // Accept order
+  // Accept order (chef accepts after admin confirms payment)
   app.post("/api/partner/orders/:orderId/accept", requirePartner(), async (req: AuthenticatedPartnerRequest, res) => {
     try {
       const { orderId } = req.params;
@@ -65,11 +65,23 @@ export function registerPartnerRoutes(app: Express): void {
       }
 
       if (order.chefId !== req.partner?.chefId) {
-        res.status(403).json({ message: "Unauthorized" });
+        res.status(403).json({ message: "Not authorized to accept this order" });
         return;
       }
 
-      // Accept order - change status to accepted_by_chef (not confirmed)
+      if (order.paymentStatus !== "confirmed") {
+        res.status(400).json({ message: "Payment not confirmed yet" });
+        return;
+      }
+
+      if (order.status !== "confirmed") {
+        res.status(400).json({ message: "Order cannot be accepted in current status" });
+        return;
+      }
+
+      console.log(`🔄 Chef ${req.partner?.chefId} accepting order ${orderId}`);
+
+      // Accept order - change status to accepted_by_chef
       const [updatedOrder] = await db
         .update(orders)
         .set({
@@ -81,10 +93,12 @@ export function registerPartnerRoutes(app: Express): void {
         .returning();
 
       if (updatedOrder) {
+        console.log(`✅ Chef accepted order ${orderId}, status: ${updatedOrder.status}`);
+
         // Broadcast order update to customer and admin
         broadcastOrderUpdate(updatedOrder);
-        console.log(`✅ Chef accepted order ${orderId}, status: ${updatedOrder.status}`);
-        
+        console.log(`📡 Broadcasted chef acceptance to customer and admin`);
+
         // STAGE 1: Notify delivery personnel that chef has accepted - they can start preparing to head out
         console.log(`📢 STAGE 1: Broadcasting to delivery personnel - Chef accepted order ${orderId}`);
         await broadcastPreparedOrderToAvailableDelivery(updatedOrder);
@@ -128,7 +142,7 @@ export function registerPartnerRoutes(app: Express): void {
     }
   });
 
-  // Update order status (preparing, prepared, out_for_delivery, delivered)
+  // Update order status (for preparing, prepared, etc.)
   app.patch("/api/partner/orders/:orderId/status", requirePartner(), async (req: AuthenticatedPartnerRequest, res) => {
     try {
       const { orderId } = req.params;
@@ -141,18 +155,24 @@ export function registerPartnerRoutes(app: Express): void {
       }
 
       if (order.chefId !== req.partner?.chefId) {
-        res.status(403).json({ message: "Unauthorized" });
+        res.status(403).json({ message: "Not authorized to update this order" });
         return;
       }
+
+      console.log(`🔄 Chef updating order ${orderId} status from ${order.status} to ${status}`);
 
       const updatedOrder = await storage.updateOrderStatus(orderId, status);
 
       if (updatedOrder) {
-        broadcastOrderUpdate(updatedOrder);
+        console.log(`✅ Order ${orderId} status updated to ${status}`);
 
-        // STAGE 2: Broadcast to delivery personnel when order is prepared and ready for pickup
+        // Broadcast to customer and admin
+        broadcastOrderUpdate(updatedOrder);
+        console.log(`📡 Broadcasted status update to customer and admin`);
+
+        // STAGE 2: When order is marked as prepared, notify delivery personnel again
         if (status === "prepared") {
-          console.log(`🍽️ STAGE 2: Order ${orderId} is PREPARED and ready for pickup - broadcasting to delivery personnel`);
+          console.log(`📢 STAGE 2: Broadcasting to delivery personnel - Food is ready for order ${orderId}`);
           await broadcastPreparedOrderToAvailableDelivery(updatedOrder);
         }
       }

@@ -71,6 +71,32 @@ export function registerDeliveryRoutes(app: Express) {
     }
   });
 
+  // Get available orders that can be claimed
+  app.get("/api/delivery/available-orders", requireDeliveryAuth(), async (req: AuthenticatedDeliveryRequest, res) => {
+    try {
+      const deliveryPersonId = req.delivery!.deliveryId;
+      
+      // Check if delivery person is active
+      const deliveryPerson = await storage.getDeliveryPersonnelById(deliveryPersonId);
+      if (!deliveryPerson || !deliveryPerson.isActive) {
+        res.json([]);
+        return;
+      }
+
+      // Get all orders that are waiting for delivery assignment
+      const allOrders = await storage.getAllOrders();
+      const availableOrders = allOrders.filter(order => {
+        const validStatuses = ["accepted_by_chef", "preparing", "prepared"];
+        return validStatuses.includes(order.status) && !order.assignedTo;
+      });
+
+      res.json(availableOrders);
+    } catch (error) {
+      console.error("Error fetching available orders:", error);
+      res.status(500).json({ message: "Failed to fetch available orders" });
+    }
+  });
+
   // Claim an available order (auto-assignment) - claiming means auto-accepting
   app.post("/api/delivery/orders/:id/claim", requireDeliveryAuth(), async (req: AuthenticatedDeliveryRequest, res) => {
     try {

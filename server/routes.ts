@@ -688,6 +688,12 @@ app.post("/api/orders", async (req: any, res) => {
         .json({ message: "Unable to determine chefId for the order" });
     }
 
+    // Get chef name and add to order
+    const chef = await storage.getChefById(orderPayload.chefId);
+    if (chef) {
+      orderPayload.chefName = chef.name;
+    }
+
     const order = await storage.createOrder(orderPayload);
 
       // Increment coupon usage if coupon was applied

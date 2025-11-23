@@ -135,7 +135,12 @@ export function broadcastOrderUpdate(order: Order) {
     data: order
   });
 
-  console.log(`📡 Broadcasting order update for order ${order.id} (status: ${order.status}, paymentStatus: ${order.paymentStatus}) to chef ${order.chefId}`);
+  console.log(`\n📡 ========== BROADCASTING ORDER UPDATE ==========`);
+  console.log(`Order ID: ${order.id}`);
+  console.log(`Status: ${order.status}`);
+  console.log(`Payment Status: ${order.paymentStatus}`);
+  console.log(`Chef ID: ${order.chefId}`);
+  console.log(`Assigned To: ${order.assignedTo || 'None'}`);
 
   // Cancel timeout if order is no longer waiting for delivery assignment
   // Valid statuses for delivery assignment: "accepted_by_chef", "preparing", "prepared"
@@ -144,10 +149,15 @@ export function broadcastOrderUpdate(order: Order) {
     cancelPreparedOrderTimeout(order.id);
   }
 
+  let adminNotified = 0;
   let chefNotified = false;
+  let deliveryNotified = false;
+  let customerNotified = false;
+
   clients.forEach((client, clientId) => {
     if (client.type === "admin") {
       client.ws.send(message);
+      adminNotified++;
       console.log(`  ✅ Sent to admin ${clientId}`);
     } else if (client.type === "chef" && client.chefId === order.chefId) {
       client.ws.send(message);
@@ -155,23 +165,31 @@ export function broadcastOrderUpdate(order: Order) {
       console.log(`  ✅ Sent to chef ${clientId} (chefId: ${client.chefId})`);
     } else if (client.type === "delivery" && client.id === order.assignedTo) {
       client.ws.send(message);
+      deliveryNotified = true;
       console.log(`  ✅ Sent to delivery ${clientId}`);
     } else if (client.type === "customer" && client.orderId === order.id) {
       client.ws.send(message);
+      customerNotified = true;
       console.log(`  ✅ Sent to customer ${clientId}`);
     }
   });
 
+  console.log(`\n📊 Broadcast Summary:`);
+  console.log(`  - Admins notified: ${adminNotified}`);
+  console.log(`  - Chef notified: ${chefNotified ? 'YES' : 'NO'}`);
+  console.log(`  - Delivery notified: ${deliveryNotified ? 'YES' : 'NO'}`);
+  console.log(`  - Customer notified: ${customerNotified ? 'YES' : 'NO'}`);
+
   if (!chefNotified && order.chefId) {
-    console.log(`  ⚠️ WARNING: No chef WebSocket connected for chefId: ${order.chefId}`);
+    console.log(`\n  ⚠️ WARNING: No chef WebSocket connected for chefId: ${order.chefId}`);
     console.log(`  📋 Currently connected clients:`, Array.from(clients.entries()).map(([id, c]) => ({
       id,
       type: c.type,
       chefId: c.chefId,
     })));
-  } else if (chefNotified) {
-    console.log(`  ✅ Order successfully sent to chef ${order.chefId}`);
   }
+  
+  console.log(`================================================\n`);
 }
 
 export function notifyDeliveryAssignment(order: Order, deliveryPersonId: string) {

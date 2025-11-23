@@ -23,21 +23,27 @@ export function useDeliveryNotifications() {
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
       
-      if (data.type === "order_assigned" || data.type === "order_confirmed" || data.type === "order_update") {
+      if (data.type === "order_assigned" || data.type === "order_confirmed" || data.type === "order_update" || data.type === "new_prepared_order") {
         // Invalidate queries to refresh data
         queryClient.invalidateQueries({ queryKey: ["/api/delivery/orders"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/delivery/available-orders"] });
         
-        // Show notification for new assignments
-        if (data.type === "order_assigned" || data.type === "order_confirmed") {
-          const order = data.data as Order;
+        // Show notification for new assignments and new available orders
+        if (data.type === "order_assigned" || data.type === "order_confirmed" || data.type === "new_prepared_order") {
+          const order = data.data || data.order;
           setNewAssignmentsCount((prev) => prev + 1);
           
           // Browser notification
           if (Notification.permission === "granted") {
+            const notificationTitle = 
+              data.type === "order_confirmed" ? "Order Ready for Pickup!" :
+              data.type === "new_prepared_order" ? "New Order Available!" :
+              "New Delivery Assignment!";
+            
             new Notification(
-              data.type === "order_confirmed" ? "Order Ready for Pickup!" : "New Delivery Assignment!",
+              notificationTitle,
               {
-                body: data.message || `Order #${order.id.slice(0, 8)} - ${order.address}`,
+                body: data.message || `Order #${order.id.slice(0, 8)} - ${order.address || 'Available to claim'}`,
                 icon: "/favicon.png",
                 tag: order.id,
               }

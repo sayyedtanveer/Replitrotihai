@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,21 +12,12 @@ import { useDeliveryNotifications } from "@/hooks/useDeliveryNotifications";
 import { useEffect, useState } from "react";
 
 export default function DeliveryDashboard() {
-  const deliveryToken = localStorage.getItem("deliveryToken");
   const deliveryPersonName = localStorage.getItem("deliveryPersonName");
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
   const { wsConnected, newAssignmentsCount, requestNotificationPermission, clearNewAssignmentsCount } = useDeliveryNotifications();
   const [selectedTab, setSelectedTab] = useState("dashboard");
-
-  const fetchOrders = async () => {
-    const response = await fetch("/api/delivery/orders", {
-      headers: { Authorization: `Bearer ${deliveryToken}` },
-    });
-    if (!response.ok) throw new Error("Failed to fetch orders");
-    return response.json();
-  };
 
   useEffect(() => {
     requestNotificationPermission();
@@ -35,15 +27,9 @@ export default function DeliveryDashboard() {
   useEffect(() => {
     const refreshToken = async () => {
       try {
-        const response = await fetch("/api/delivery/auth/refresh", {
-          method: "POST",
-          credentials: "include",
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          localStorage.setItem("deliveryToken", data.accessToken);
-        }
+        const response = await apiRequest("POST", "/api/delivery/auth/refresh");
+        const data = await response.json();
+        localStorage.setItem("deliveryToken", data.accessToken);
       } catch (error) {
         console.error("Token refresh failed:", error);
       }
@@ -56,40 +42,47 @@ export default function DeliveryDashboard() {
   }, []);
 
 
-  const { data: orders = [] } = useQuery({
+  const { data: orders = [] } = useQuery<any[]>({
     queryKey: ["/api/delivery/orders"],
-    queryFn: fetchOrders,
   });
 
-  const { data: earnings } = useQuery({
+  const { data: availableOrders = [] } = useQuery<any[]>({
+    queryKey: ["/api/delivery/available-orders"],
+  });
+
+  const { data: earnings } = useQuery<any>({
     queryKey: ["/api/delivery/earnings"],
-    queryFn: async () => {
-      const response = await fetch("/api/delivery/earnings", {
-        headers: { Authorization: `Bearer ${deliveryToken}` },
-      });
-      if (!response.ok) throw new Error("Failed to fetch earnings");
+  });
+
+  const { data: stats } = useQuery<any>({
+    queryKey: ["/api/delivery/stats"],
+  });
+
+  const claimOrderMutation = useMutation({
+    mutationFn: async (orderId: string) => {
+      const response = await apiRequest("POST", `/api/delivery/orders/${orderId}/claim`);
       return response.json();
     },
-  });
-
-  const { data: stats } = useQuery({
-    queryKey: ["/api/delivery/stats"],
-    queryFn: async () => {
-      const response = await fetch("/api/delivery/stats", {
-        headers: { Authorization: `Bearer ${deliveryToken}` },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/delivery/orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/delivery/available-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/delivery/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/delivery/earnings"] });
+      clearNewAssignmentsCount();
+      toast({ title: "Order claimed successfully! You can now pick it up." });
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: "Failed to claim order", 
+        description: error.message,
+        variant: "destructive" 
       });
-      if (!response.ok) throw new Error("Failed to fetch stats");
-      return response.json();
     },
   });
 
   const acceptOrderMutation = useMutation({
     mutationFn: async (orderId: string) => {
-      const response = await fetch(`/api/delivery/orders/${orderId}/accept`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${deliveryToken}` },
-      });
-      if (!response.ok) throw new Error("Failed to accept order");
+      const response = await apiRequest("POST", `/api/delivery/orders/${orderId}/accept`);
       return response.json();
     },
     onSuccess: () => {
@@ -102,11 +95,7 @@ export default function DeliveryDashboard() {
 
   const pickupOrderMutation = useMutation({
     mutationFn: async (orderId: string) => {
-      const response = await fetch(`/api/delivery/orders/${orderId}/pickup`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${deliveryToken}` },
-      });
-      if (!response.ok) throw new Error("Failed to mark pickup");
+      const response = await apiRequest("POST", `/api/delivery/orders/${orderId}/pickup`);
       return response.json();
     },
     onSuccess: () => {
@@ -119,11 +108,7 @@ export default function DeliveryDashboard() {
 
   const deliverOrderMutation = useMutation({
     mutationFn: async (orderId: string) => {
-      const response = await fetch(`/api/delivery/orders/${orderId}/deliver`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${deliveryToken}` },
-      });
-      if (!response.ok) throw new Error("Failed to mark delivery");
+      const response = await apiRequest("POST", `/api/delivery/orders/${orderId}/deliver`);
       return response.json();
     },
     onSuccess: () => {
@@ -200,8 +185,14 @@ export default function DeliveryDashboard() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Tabs value={selectedTab} onValueChange={setSelectedTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="dashboard" data-testid="tab-dashboard">Dashboard</TabsTrigger>
+            <TabsTrigger value="available" data-testid="tab-available" className="relative">
+              Available
+              {availableOrders && availableOrders.length > 0 && (
+                <Badge variant="destructive" className="ml-1 h-5 min-w-5 px-1">{availableOrders.length}</Badge>
+              )}
+            </TabsTrigger>
             <TabsTrigger value="orders" data-testid="tab-orders">My Deliveries</TabsTrigger>
             <TabsTrigger value="earnings" data-testid="tab-earnings">Earnings</TabsTrigger>
           </TabsList>
@@ -238,6 +229,64 @@ export default function DeliveryDashboard() {
                 </CardContent>
               </Card>
             </div>
+
+            {availableOrders && availableOrders.length > 0 && (
+              <Card className="border-orange-200 dark:border-orange-800">
+                <CardHeader>
+                  <div className="flex items-center justify-between gap-2">
+                    <CardTitle className="flex items-center gap-2">
+                      <Bell className="h-5 w-5 text-orange-600" />
+                      Available Orders to Claim
+                    </CardTitle>
+                    <Badge variant="destructive">{availableOrders.length} Available</Badge>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {availableOrders.map((order: any) => (
+                      <div
+                        key={order.id}
+                        className="flex flex-col gap-4 p-4 border border-orange-200 dark:border-orange-800 rounded-lg bg-orange-50 dark:bg-orange-950/20"
+                        data-testid={`available-order-${order.id}`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <p className="font-medium">Order #{order.id.slice(0, 8)}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {order.customerName} • {order.phone}
+                            </p>
+                            <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
+                              <MapPin className="h-3 w-3" />
+                              {order.address}
+                            </p>
+                            <p className="text-sm text-muted-foreground mt-1">
+                              {format(new Date(order.createdAt), "PPp")}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <Badge className={getStatusColor(order.status)}>
+                              {order.status.replace("_", " ").toUpperCase()}
+                            </Badge>
+                            <p className="font-bold mt-2">₹{order.total}</p>
+                            <p className="text-sm text-muted-foreground mt-1">Fee: ₹{order.deliveryFee}</p>
+                          </div>
+                        </div>
+
+                        <Button
+                          onClick={() => claimOrderMutation.mutate(order.id)}
+                          disabled={claimOrderMutation.isPending}
+                          size="default"
+                          className="w-full"
+                          data-testid={`button-claim-${order.id}`}
+                        >
+                          {claimOrderMutation.isPending ? "Claiming..." : "Claim This Order"}
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             <Card>
               <CardHeader>
@@ -310,6 +359,67 @@ export default function DeliveryDashboard() {
                     ))
                   ) : (
                     <p className="text-center text-muted-foreground py-8">No orders assigned yet</p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="available" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Bell className="h-5 w-5 text-orange-600" />
+                  Available Orders to Claim
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {availableOrders && availableOrders.length > 0 ? (
+                    availableOrders.map((order: any) => (
+                      <div
+                        key={order.id}
+                        className="flex flex-col gap-4 p-4 border border-orange-200 dark:border-orange-800 rounded-lg bg-orange-50 dark:bg-orange-950/20"
+                        data-testid={`available-order-${order.id}`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <p className="font-medium">Order #{order.id.slice(0, 8)}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {order.customerName} • {order.phone}
+                            </p>
+                            <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
+                              <MapPin className="h-3 w-3" />
+                              {order.address}
+                            </p>
+                            <p className="text-sm text-muted-foreground mt-1">
+                              {format(new Date(order.createdAt), "PPp")}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <Badge className={getStatusColor(order.status)}>
+                              {order.status.replace("_", " ").toUpperCase()}
+                            </Badge>
+                            <p className="font-bold mt-2">₹{order.total}</p>
+                            <p className="text-sm text-muted-foreground mt-1">Fee: ₹{order.deliveryFee}</p>
+                          </div>
+                        </div>
+
+                        <Button
+                          onClick={() => claimOrderMutation.mutate(order.id)}
+                          disabled={claimOrderMutation.isPending}
+                          size="default"
+                          className="w-full"
+                          data-testid={`button-claim-${order.id}`}
+                        >
+                          {claimOrderMutation.isPending ? "Claiming..." : "Claim This Order"}
+                        </Button>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-center text-muted-foreground py-8">
+                      No available orders at the moment. You'll be notified when new orders are available.
+                    </p>
                   )}
                 </div>
               </CardContent>

@@ -380,6 +380,15 @@ export default function OrderTracking() {
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
+                {order.chefName && (
+                  <div className="mb-3 pb-2 border-b">
+                    <p className="text-xs text-muted-foreground">Prepared by</p>
+                    <p className="font-medium flex items-center gap-1">
+                      <ChefHat className="h-4 w-4" />
+                      {order.chefName}
+                    </p>
+                  </div>
+                )}
                 {(order.items as any[]).map((item, idx) => (
                   <div key={idx} className="flex justify-between text-sm">
                     <span>

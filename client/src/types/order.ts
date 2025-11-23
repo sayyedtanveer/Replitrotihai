@@ -19,4 +19,6 @@ export interface Order {
   paymentStatus: string;  
   rejectionReason?: string;
   deliveryPersonName?: string;
+  chefName?: string;
+  chefId?: string;
 }

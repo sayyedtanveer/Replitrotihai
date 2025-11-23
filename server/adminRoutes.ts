@@ -101,11 +101,11 @@ export function registerAdminRoutes(app: Express) {
       const accessToken = generateAccessToken(admin);
       const refreshToken = generateRefreshToken(admin);
 
-      console.log('[Admin Login Success]', { 
-        ...loginAttempt, 
-        success: true, 
+      console.log('[Admin Login Success]', {
+        ...loginAttempt,
+        success: true,
         adminId: admin.id,
-        role: admin.role 
+        role: admin.role
       });
 
       res.cookie("refreshToken", refreshToken, {
@@ -224,12 +224,13 @@ export function registerAdminRoutes(app: Express) {
     }
   });
 
+  // Confirm payment
   app.patch("/api/admin/orders/:orderId/payment", requireAdmin(), async (req: AuthenticatedAdminRequest, res) => {
     try {
       const { orderId } = req.params;
       const { paymentStatus } = req.body;
 
-      if (!["pending", "paid", "confirmed"].includes(paymentStatus)) {
+      if (!paymentStatus || !["pending", "paid", "confirmed"].includes(paymentStatus)) {
         res.status(400).json({ message: "Invalid payment status" });
         return;
       }
@@ -240,26 +241,24 @@ export function registerAdminRoutes(app: Express) {
         return;
       }
 
-      // Update payment status first
-      await storage.updateOrderPaymentStatus(orderId, paymentStatus);
+      // Update payment status to confirmed and order status to confirmed
+      const updatedOrder = await storage.updateOrderPaymentStatus(orderId, paymentStatus as "pending" | "paid" | "confirmed");
 
-      // If payment is confirmed, also update order status to "confirmed"
       if (paymentStatus === "confirmed") {
-        await storage.updateOrderStatus(orderId, "confirmed");
-      }
+        // Also update order status to confirmed
+        const confirmedOrder = await storage.updateOrderStatus(orderId, "confirmed");
 
-      // Get the updated order with both fields set
-      const updatedOrder = await storage.getOrderById(orderId);
-
-      if (updatedOrder && paymentStatus === "confirmed") {
-        console.log(`📤 Admin confirmed payment for order ${orderId}, broadcasting to chef ${updatedOrder.chefId}`);
-        broadcastOrderUpdate(updatedOrder);
+        if (confirmedOrder) {
+          console.log(`✅ Admin confirmed payment for order ${orderId} - Broadcasting to chef ${confirmedOrder.chefId}`);
+          // Broadcast to chef and admin
+          broadcastOrderUpdate(confirmedOrder);
+        }
       }
 
       res.json(updatedOrder);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error updating payment status:", error);
-      res.status(500).json({ message: "Failed to update payment status" });
+      res.status(500).json({ message: error.message || "Failed to update payment status" });
     }
   });
 
@@ -351,9 +350,9 @@ export function registerAdminRoutes(app: Express) {
 
       // Cancel the timeout since admin manually assigned the order
       cancelPreparedOrderTimeout(id);
-      
+
       console.log(`✅ Admin assigned order ${id} to ${deliveryPerson.name} (${deliveryPerson.phone})`);
-      
+
       broadcastOrderUpdate(order);
       notifyDeliveryAssignment(order, deliveryPersonId);
       res.json(order);
@@ -1073,11 +1072,11 @@ export function registerAdminRoutes(app: Express) {
         return;
       }
 
-      const setting = await storage.createCartSetting({ 
-        categoryId, 
+      const setting = await storage.createCartSetting({
+        categoryId,
         minOrderAmount,
         categoryName: '', // Will be fetched in storage.createCartSetting
-        isActive: true 
+        isActive: true
       });
       res.status(201).json(setting);
     } catch (error: any) {

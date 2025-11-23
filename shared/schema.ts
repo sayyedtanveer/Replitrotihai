@@ -126,6 +126,7 @@ export const orders = pgTable("orders", {
   paymentStatus: paymentStatusEnum("payment_status").notNull().default("pending"),
   paymentQrShown: boolean("payment_qr_shown").notNull().default(false),
   chefId: text("chef_id"),
+  chefName: text("chef_name"),
   approvedBy: text("approved_by"),
   rejectedAt: timestamp("rejected_at"),
   approvedAt: timestamp("approved_at"),
