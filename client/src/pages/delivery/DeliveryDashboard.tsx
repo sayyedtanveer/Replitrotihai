@@ -128,14 +128,14 @@ export default function DeliveryDashboard() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "assigned":
-        return "bg-yellow-100 text-yellow-800";
       case "accepted_by_delivery":
         return "bg-blue-100 text-blue-800";
       case "prepared":
         return "bg-cyan-100 text-cyan-800";
       case "preparing":
         return "bg-blue-100 text-blue-800";
+      case "accepted_by_chef":
+        return "bg-green-100 text-green-800";
       case "out_for_delivery":
         return "bg-purple-100 text-purple-800";
       case "delivered":
@@ -145,8 +145,8 @@ export default function DeliveryDashboard() {
     }
   };
 
-  const pendingOrders = orders.filter((o: any) => o.status === "assigned");
-  const activeOrders = orders.filter((o: any) => ["accepted_by_delivery", "prepared", "out_for_delivery"].includes(o.status));
+  const pendingOrders = orders.filter((o: any) => o.assignedTo && !["accepted_by_delivery", "out_for_delivery", "delivered"].includes(o.status));
+  const activeOrders = orders.filter((o: any) => ["accepted_by_delivery", "out_for_delivery"].includes(o.status));
   const completedOrders = orders.filter((o: any) => o.status === "delivered");
 
   return (
@@ -323,7 +323,7 @@ export default function DeliveryDashboard() {
                         </div>
 
                         <div className="flex gap-2">
-                          {(order.status === "assigned" || order.status === "prepared") && (
+                          {(order.status === "preparing" || order.status === "accepted_by_chef") && order.assignedTo && order.status !== "accepted_by_delivery" && order.status !== "prepared" && (
                             <Button
                               onClick={() => acceptOrderMutation.mutate(order.id)}
                               disabled={acceptOrderMutation.isPending}
@@ -333,14 +333,15 @@ export default function DeliveryDashboard() {
                               Accept Order
                             </Button>
                           )}
-                          {order.status === "accepted_by_delivery" && (
+                          {(order.status === "accepted_by_delivery" || order.status === "prepared") && (
                             <Button
+                              size="sm"
                               onClick={() => pickupOrderMutation.mutate(order.id)}
                               disabled={pickupOrderMutation.isPending}
-                              size="sm"
+                              className="bg-purple-600 hover:bg-purple-700"
                               data-testid={`button-pickup-${order.id}`}
                             >
-                              Pickup & Start Delivery
+                              Mark as Picked Up
                             </Button>
                           )}
                           {order.status === "out_for_delivery" && (
@@ -464,7 +465,7 @@ export default function DeliveryDashboard() {
                         </div>
 
                         <div className="flex gap-2">
-                          {(order.status === "assigned" || order.status === "prepared") && (
+                          {(order.status === "preparing" || order.status === "accepted_by_chef") && order.status !== "accepted_by_delivery" && order.status !== "prepared" && (
                             <Button
                               onClick={() => acceptOrderMutation.mutate(order.id)}
                               disabled={acceptOrderMutation.isPending}
@@ -473,13 +474,14 @@ export default function DeliveryDashboard() {
                               Accept Order
                             </Button>
                           )}
-                          {order.status === "accepted_by_delivery" && (
+                          {(order.status === "accepted_by_delivery" || order.status === "prepared") && (
                             <Button
+                              size="sm"
                               onClick={() => pickupOrderMutation.mutate(order.id)}
                               disabled={pickupOrderMutation.isPending}
-                              size="sm"
+                              className="bg-purple-600 hover:bg-purple-700"
                             >
-                              Pickup & Start Delivery
+                              Mark as Picked Up
                             </Button>
                           )}
                           {order.status === "out_for_delivery" && (

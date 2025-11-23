@@ -137,12 +137,12 @@ export default function AdminOrders() {
         return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200";
       case "confirmed":
         return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200";
+      case "accepted_by_chef":
+        return "bg-sky-100 text-sky-800 dark:bg-sky-900 dark:text-sky-200";
       case "preparing":
         return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200";
       case "prepared":
         return "bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200";
-      case "assigned":
-        return "bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200";
       case "accepted_by_delivery":
         return "bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-200";
       case "out_for_delivery":
@@ -263,7 +263,6 @@ export default function AdminOrders() {
                   <SelectItem value="confirmed">Confirmed</SelectItem>
                   <SelectItem value="preparing">Preparing</SelectItem>
                   <SelectItem value="prepared">Prepared</SelectItem>
-                  <SelectItem value="assigned">Assigned</SelectItem>
                   <SelectItem value="accepted_by_delivery">Accepted by Delivery</SelectItem>
                   <SelectItem value="out_for_delivery">Out for Delivery</SelectItem>
                   <SelectItem value="delivered">Delivered</SelectItem>
@@ -382,7 +381,6 @@ export default function AdminOrders() {
                               <SelectItem value="confirmed">Confirmed</SelectItem>
                               <SelectItem value="preparing">Preparing</SelectItem>
                               <SelectItem value="prepared">Prepared</SelectItem>
-                              <SelectItem value="assigned">Assigned</SelectItem>
                               <SelectItem value="accepted_by_delivery">Accepted by Delivery</SelectItem>
                               <SelectItem value="out_for_delivery">Out for Delivery</SelectItem>
                               <SelectItem value="delivered">Delivered</SelectItem>

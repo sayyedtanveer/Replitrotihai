@@ -947,8 +947,7 @@ export class MemStorage implements IStorage {
           assignedTo: deliveryPersonId,
           assignedAt: new Date(),
           deliveryPersonName: deliveryPerson.name,
-          deliveryPersonPhone: deliveryPerson.phone,
-          status: "assigned"
+          deliveryPersonPhone: deliveryPerson.phone
         })
         .where(eq(orders.id, orderId))
         .returning();

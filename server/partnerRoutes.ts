@@ -170,10 +170,19 @@ export function registerPartnerRoutes(app: Express): void {
         broadcastOrderUpdate(updatedOrder);
         console.log(`📡 Broadcasted status update to customer and admin`);
 
-        // STAGE 2: When order is marked as prepared, notify delivery personnel again
+        // STAGE 2: When order is marked as prepared, notify the assigned delivery person to pickup
         if (status === "prepared") {
-          console.log(`📢 STAGE 2: Broadcasting to delivery personnel - Food is ready for order ${orderId}`);
-          await broadcastPreparedOrderToAvailableDelivery(updatedOrder);
+          console.log(`📢 STAGE 2: Notifying assigned delivery person - Food is ready for pickup for order ${orderId}`);
+          
+          // If delivery person is already assigned, just broadcast the update to them
+          if (updatedOrder.assignedTo) {
+            console.log(`✅ Order ${orderId} already assigned to ${updatedOrder.deliveryPersonName}, notifying them food is ready`);
+            // broadcastOrderUpdate already sent above, which notifies the assigned delivery person
+          } else {
+            // If no one claimed yet, broadcast to all available delivery personnel
+            console.log(`📢 No delivery person assigned yet, broadcasting to all available delivery personnel`);
+            await broadcastPreparedOrderToAvailableDelivery(updatedOrder);
+          }
         }
       }
 

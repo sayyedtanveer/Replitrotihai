@@ -342,12 +342,6 @@ export function registerAdminRoutes(app: Express) {
         return;
       }
 
-      // Update status to 'assigned' for any valid pre-delivery status
-      const preDeliveryStatuses = ["confirmed", "accepted_by_chef", "preparing", "prepared"];
-      if (preDeliveryStatuses.includes(order.status)) {
-        order = await storage.updateOrderStatus(id, "assigned") || order;
-      }
-
       // Cancel the timeout since admin manually assigned the order
       cancelPreparedOrderTimeout(id);
 

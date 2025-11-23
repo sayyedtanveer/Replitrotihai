@@ -307,7 +307,6 @@ export const insertOrderSchema = createInsertSchema(orders, {
     'accepted_by_chef',     // Chef accepted the order
     'preparing',            // Chef is preparing the food
     'prepared',             // Food ready, waiting for pickup
-    'assigned',             // Delivery person assigned
     'accepted_by_delivery', // Delivery person accepted
     'out_for_delivery',     // Delivery person picked up, on the way
     'delivered',            // Order delivered to customer

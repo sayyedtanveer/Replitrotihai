@@ -74,6 +74,9 @@ export default function PartnerDashboard() {
       });
       if (!response.ok) throw new Error("Failed to fetch orders");
       const allOrders = await response.json();
+      console.log(`📦 Partner Dashboard - Received ${allOrders.length} orders:`, 
+        allOrders.map((o: any) => ({ id: o.id.slice(0, 8), status: o.status, assignedTo: o.assignedTo }))
+      );
       // Sort by latest first
       return allOrders.sort((a: any, b: any) =>
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -185,8 +188,6 @@ export default function PartnerDashboard() {
         return "bg-blue-100 text-blue-800";
       case "prepared":
         return "bg-indigo-100 text-indigo-800";
-      case "assigned":
-        return "bg-violet-100 text-violet-800";
       case "accepted_by_delivery":
         return "bg-purple-100 text-purple-800";
       case "out_for_delivery":
@@ -335,7 +336,9 @@ export default function PartnerDashboard() {
 
                           {/* Action buttons based on status */}
                           <div className="flex gap-2 mt-2 flex-wrap">
-                            {order.paymentStatus === "confirmed" && order.status === "confirmed" && (
+                            {
+                            
+                            order.paymentStatus === "confirmed" && order.status === "confirmed" && (
                               <>
                                 <Button
                                   size="sm"
@@ -362,7 +365,7 @@ export default function PartnerDashboard() {
                                 </Button>
                               </>
                             )}
-                            {order.status === "accepted_by_chef" && (
+                            {(order.status === "accepted_by_chef" || order.status === "accepted_by_delivery") && (
                               <Button
                                 size="sm"
                                 onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: "preparing" })}
@@ -383,9 +386,14 @@ export default function PartnerDashboard() {
                                 Mark as Prepared
                               </Button>
                             )}
-                            {(order.status === "prepared" || order.status === "assigned" || order.status === "accepted_by_delivery") && (
+                            {order.status === "prepared" && (
                               <Badge variant="outline" className="bg-green-50">
                                 ✓ Ready - Waiting for Delivery
+                              </Badge>
+                            )}
+                            {order.status === "out_for_delivery" && (
+                              <Badge variant="outline" className="bg-blue-50">
+                                ✓ Out for Delivery
                               </Badge>
                             )}
                           </div>
@@ -482,7 +490,7 @@ export default function PartnerDashboard() {
                                   </Button>
                                 </>
                               )}
-                              {order.status === "accepted_by_chef" && (
+                              {(order.status === "accepted_by_chef" || order.status === "accepted_by_delivery") && (
                                 <Button
                                   size="sm"
                                   onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: "preparing" })}
@@ -502,9 +510,14 @@ export default function PartnerDashboard() {
                                   Ready
                                 </Button>
                               )}
-                              {(order.status === "prepared" || order.status === "assigned" || order.status === "accepted_by_delivery") && (
+                              {order.status === "prepared" && (
                                 <Badge variant="outline" className="bg-green-50">
                                   ✓ Ready
+                                </Badge>
+                              )}
+                              {order.status === "out_for_delivery" && (
+                                <Badge variant="outline" className="bg-blue-50">
+                                  ✓ Out for Delivery
                                 </Badge>
                               )}
                             </div>

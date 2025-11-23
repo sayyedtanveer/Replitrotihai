@@ -201,7 +201,7 @@ export function registerDeliveryRoutes(app: Express) {
       }
 
       // Allow acceptance from any status where delivery is assigned but not yet out for delivery
-      const validStatuses = ["assigned", "prepared", "accepted_by_chef", "preparing"];
+      const validStatuses = ["prepared", "accepted_by_chef", "preparing"];
       if (!validStatuses.includes(order.status)) {
         res.status(400).json({ message: "Order cannot be accepted in current status" });
         return;
@@ -370,8 +370,8 @@ export function registerDeliveryRoutes(app: Express) {
       const deliveryPerson = await storage.getDeliveryPersonnelById(deliveryPersonId);
       const orders = await storage.getOrdersByDeliveryPerson(deliveryPersonId);
       
-      const pendingOrders = orders.filter(o => o.status === "assigned");
-      const activeOrders = orders.filter(o => ["preparing", "out_for_delivery"].includes(o.status));
+      const pendingOrders = orders.filter(o => o.assignedTo && !["accepted_by_delivery", "out_for_delivery", "delivered", "completed", "cancelled"].includes(o.status));
+      const activeOrders = orders.filter(o => ["accepted_by_delivery", "out_for_delivery"].includes(o.status));
       const completedOrders = orders.filter(o => o.status === "delivered");
 
       const now = new Date();

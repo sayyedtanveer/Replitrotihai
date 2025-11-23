@@ -177,10 +177,17 @@ export default function MyOrders() {
       case "pending":
         return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200";
       case "confirmed":
-      case "preparing":
         return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200";
-      case "out_for_delivery":
+      case "accepted_by_chef":
+        return "bg-sky-100 text-sky-800 dark:bg-sky-900 dark:text-sky-200";
+      case "preparing":
         return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200";
+      case "prepared":
+        return "bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200";
+      case "accepted_by_delivery":
+        return "bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-200";
+      case "out_for_delivery":
+        return "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200";
       case "delivered":
       case "completed":
         return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200";
@@ -236,7 +243,6 @@ export default function MyOrders() {
           order.status === "accepted_by_chef" ||
           order.status === "preparing" ||
           order.status === "prepared" ||
-          order.status === "assigned" ||
           order.status === "accepted_by_delivery" ||
           order.status === "out_for_delivery" ||
           order.status === "delivered",
@@ -255,21 +261,17 @@ export default function MyOrders() {
       },
       {
         key: "delivery",
-        label: order.status === "accepted_by_delivery" || order.status === "assigned" 
-          ? "Delivery Person Assigned" 
+        label: order.status === "accepted_by_delivery"
+          ? "Delivery Person Accepted" 
           : "Out for Delivery",
         icon: <Truck className="h-5 w-5" />,
         completed:
-          order.status === "accepted_by_delivery" || order.status === "assigned" || order.status === "out_for_delivery" || order.status === "delivered",
+          order.status === "accepted_by_delivery" || order.status === "out_for_delivery" || order.status === "delivered",
         description:
           order.status === "accepted_by_delivery"
             ? order.deliveryPersonName
               ? `Accepted by ${order.deliveryPersonName}`
               : "Delivery person accepted"
-            : order.status === "assigned"
-            ? order.deliveryPersonName
-              ? `Assigned to ${order.deliveryPersonName}`
-              : "Delivery person assigned"
             : order.status === "out_for_delivery"
             ? order.deliveryPersonName
               ? `${order.deliveryPersonName} is on the way`
