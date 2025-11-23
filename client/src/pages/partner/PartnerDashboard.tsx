@@ -374,17 +374,17 @@ export default function PartnerDashboard() {
                                 🍳 Preparing - {order.deliveryPersonName} is on the way
                               </Badge>
                             )}
-                            {order.status === "accepted_by_delivery" && (
-                              <Button
-                                size="sm"
-                                onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: "prepared" })}
-                                disabled={updateStatusMutation.isPending}
-                                variant="default"
-                                data-testid={`button-ready-${order.id}`}
-                              >
-                                Mark as Prepared
-                              </Button>
-                            )}
+                            {["preparing", "accepted_by_delivery"].includes(order.status) && (
+  <Button
+    size="sm"
+    onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: "prepared" })}
+    disabled={updateStatusMutation.isPending}
+    variant="default"
+  >
+    Mark as Prepared
+  </Button>
+)}
+
                             {order.status === "prepared" && (
                               <Badge variant="outline" className="bg-green-50">
                                 ✓ Ready - Waiting for Delivery

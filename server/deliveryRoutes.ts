@@ -99,88 +99,58 @@ export function registerDeliveryRoutes(app: Express) {
 
   // Claim an available order (auto-assignment) - claiming means auto-accepting
   app.post("/api/delivery/orders/:id/claim", requireDeliveryAuth(), async (req: AuthenticatedDeliveryRequest, res) => {
-    try {
-      const orderId = req.params.id;
-      const deliveryPersonId = req.delivery!.deliveryId;
+  try {
+    const orderId = req.params.id;
+    const deliveryPersonId = req.delivery!.deliveryId;
 
-      console.log(`📦 Delivery person ${deliveryPersonId} attempting to claim order ${orderId}`);
+    console.log(`📦 Delivery person ${deliveryPersonId} attempting to claim order ${orderId}`);
 
-      // Check if delivery person is available to claim
-      const deliveryPerson = await storage.getDeliveryPersonnelById(deliveryPersonId);
-      if (!deliveryPerson || !deliveryPerson.isActive) {
-        res.status(403).json({ message: "You are not active to claim orders" });
-        return;
-      }
-
-      const order = await storage.getOrderById(orderId);
-      if (!order) {
-        res.status(404).json({ message: "Order not found" });
-        return;
-      }
-
-      // Check if order is accepted by chef or prepared and not yet assigned
-      // Allow claiming as soon as chef accepts (gives delivery person time to reach)
-      const validStatuses = ["accepted_by_chef", "preparing", "prepared"];
-      if (!validStatuses.includes(order.status)) {
-        res.status(400).json({ message: "Order is not available for pickup" });
-        return;
-      }
-
-      if (order.assignedTo) {
-        res.status(400).json({ message: "Order already claimed by another delivery person" });
-        return;
-      }
-
-      const claimStage = order.status === "accepted_by_chef" ? "EARLY_CLAIM (chef just accepted)" : 
-                         order.status === "prepared" ? "READY_CLAIM (food is ready)" : "CLAIM";
-      console.log(`✅ Order ${orderId} is available for claiming [${claimStage}]`);
-
-      // Assign to this delivery person (this will populate delivery person name and phone)
-      const assignedOrder = await storage.assignOrderToDeliveryPerson(orderId, deliveryPersonId);
-      
-      if (!assignedOrder) {
-        res.status(500).json({ message: "Failed to claim order" });
-        return;
-      }
-
-      // Claiming automatically means accepting
-      // If chef is already preparing, keep the status as "preparing"
-      // Otherwise update to accepted_by_delivery
-      const newStatus = order.status === "preparing" ? "preparing" : "accepted_by_delivery";
-      console.log(`🔄 Updating order ${orderId} status to ${newStatus}`);
-      const acceptedOrder = await storage.updateOrderStatus(orderId, newStatus);
-      
-      if (!acceptedOrder) {
-        console.error(`❌ Failed to update order ${orderId} to ${newStatus}`);
-        res.status(500).json({ message: "Failed to accept order" });
-        return;
-      }
-      
-      console.log(`✅ Order ${orderId} status updated to: ${acceptedOrder.status}`);
-
-      // Cancel the timeout since delivery person accepted the order
-      cancelPreparedOrderTimeout(orderId);
-      
-      const assignmentMessage = acceptedOrder.status === "accepted_by_chef" 
-        ? `Chef is preparing your order - you have time to reach the location`
-        : acceptedOrder.status === "prepared"
-        ? `Order is ready for pickup - please head to the location`
-        : `Order assigned - please check status`;
-      
-      console.log(`✅ Order ${orderId} claimed and accepted by ${deliveryPerson.name} (${deliveryPerson.phone})`);
-      console.log(`✅ Order details - deliveryPersonName: ${acceptedOrder.deliveryPersonName}, deliveryPersonPhone: ${acceptedOrder.deliveryPersonPhone}`);
-      console.log(`📍 Assignment context: ${assignmentMessage}`);
-      
-      broadcastOrderUpdate(acceptedOrder);
-      res.json({ 
-        ...acceptedOrder, 
-        assignmentMessage 
-      });
-    } catch (error) {
-      console.error("Error claiming order:", error);
-      res.status(500).json({ message: "Failed to claim order" });
+    const deliveryPerson = await storage.getDeliveryPersonnelById(deliveryPersonId);
+    if (!deliveryPerson || !deliveryPerson.isActive) {
+      return res.status(403).json({ message: "You are not active to claim orders" });
     }
-  });
+
+    const order = await storage.getOrderById(orderId);
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    // Valid claim statuses — IMPORTANT: DO NOT change status here
+    const validStatuses = ["accepted_by_chef", "preparing"];
+    if (!validStatuses.includes(order.status)) {
+      return res.status(400).json({ message: "Order is not available for delivery assignment" });
+    }
+
+    if (order.assignedTo) {
+      return res.status(400).json({ message: "Order already claimed by another delivery person" });
+    }
+
+    // Assignment only — NO STATUS UPDATE
+    const assignedOrder = await storage.assignOrderToDeliveryPerson(orderId, deliveryPersonId);
+
+    if (!assignedOrder) {
+      return res.status(500).json({ message: "Failed to claim order" });
+    }
+
+    // Do NOT update order.status → keeps “preparing”
+    console.log(`🟢 Order ${orderId} assigned to delivery person. Chef must mark prepared manually.`);
+
+    // Cancel auto-timeout
+    cancelPreparedOrderTimeout(orderId);
+
+    broadcastOrderUpdate(assignedOrder);
+
+    return res.json({
+      ...assignedOrder,
+      assignmentMessage: "Order assigned. Chef will mark it prepared manually."
+    });
+
+  } catch (error) {
+    console.error("Error claiming order:", error);
+    res.status(500).json({ message: "Failed to claim order" });
+  }
+});
+
 
   app.post("/api/delivery/orders/:id/accept", requireDeliveryAuth(), async (req: AuthenticatedDeliveryRequest, res) => {
     try {
