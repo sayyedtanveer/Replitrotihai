@@ -2,6 +2,31 @@ import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
+    // Handle 401 Unauthorized errors - redirect to appropriate login
+    if (res.status === 401) {
+      const path = window.location.pathname;
+      
+      // Clear tokens and redirect based on current path
+      if (path.startsWith('/admin')) {
+        localStorage.removeItem('adminToken');
+        window.location.href = '/admin/login';
+        throw new Error('Session expired. Redirecting to login...');
+      } else if (path.startsWith('/partner')) {
+        localStorage.removeItem('partnerToken');
+        window.location.href = '/partner/login';
+        throw new Error('Session expired. Redirecting to login...');
+      } else if (path.startsWith('/delivery')) {
+        localStorage.removeItem('deliveryToken');
+        window.location.href = '/delivery/login';
+        throw new Error('Session expired. Redirecting to login...');
+      } else {
+        // Regular user
+        localStorage.removeItem('userToken');
+        window.location.href = '/login';
+        throw new Error('Session expired. Redirecting to login...');
+      }
+    }
+    
     const text = (await res.text()) || res.statusText;
     throw new Error(`${res.status}: ${text}`);
   }

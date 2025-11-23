@@ -69,6 +69,46 @@ export function registerDeliveryRoutes(app: Express) {
     }
   });
 
+  // Claim an available prepared order (auto-assignment)
+  app.post("/api/delivery/orders/:id/claim", requireDeliveryAuth(), async (req: AuthenticatedDeliveryRequest, res) => {
+    try {
+      const orderId = req.params.id;
+      const deliveryPersonId = req.delivery!.deliveryId;
+
+      const order = await storage.getOrderById(orderId);
+      if (!order) {
+        res.status(404).json({ message: "Order not found" });
+        return;
+      }
+
+      // Check if order is prepared and not yet assigned
+      if (order.status !== "prepared") {
+        res.status(400).json({ message: "Order is not available for pickup" });
+        return;
+      }
+
+      if (order.assignedTo) {
+        res.status(400).json({ message: "Order already claimed by another delivery person" });
+        return;
+      }
+
+      // Assign to this delivery person
+      const updatedOrder = await storage.assignOrderToDeliveryPerson(orderId, deliveryPersonId);
+      
+      if (updatedOrder) {
+        // Update status to accepted_by_delivery
+        const acceptedOrder = await storage.updateOrderStatus(orderId, "accepted_by_delivery");
+        if (acceptedOrder) {
+          broadcastOrderUpdate(acceptedOrder);
+          res.json(acceptedOrder);
+        }
+      }
+    } catch (error) {
+      console.error("Error claiming order:", error);
+      res.status(500).json({ message: "Failed to claim order" });
+    }
+  });
+
   app.post("/api/delivery/orders/:id/accept", requireDeliveryAuth(), async (req: AuthenticatedDeliveryRequest, res) => {
     try {
       const orderId = req.params.id;

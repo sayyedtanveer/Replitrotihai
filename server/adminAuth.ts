@@ -4,8 +4,8 @@ import type { Request, Response, NextFunction } from "express";
 import type { AdminUser } from "@shared/schema";
 
 const JWT_SECRET = process.env.JWT_SECRET || "admin-jwt-secret-change-in-production";
-const JWT_EXPIRES_IN = "15m";
-const REFRESH_TOKEN_EXPIRES_IN = "7d";
+const JWT_EXPIRES_IN = "24h";
+const REFRESH_TOKEN_EXPIRES_IN = "30d";
 
 export interface AdminTokenPayload {
   adminId: string;

@@ -461,7 +461,12 @@ export class MemStorage implements IStorage {
     const orderRecords = await db
       .select()
       .from(orders)
-      .where(and(eq(orders.chefId, chefId), eq(orders.paymentStatus, 'confirmed')))
+      .where(
+        and(
+          eq(orders.chefId, chefId),
+          eq(orders.paymentStatus, 'confirmed')
+        )
+      )
       .orderBy(desc(orders.createdAt));
 
     return orderRecords.map(this.mapOrder);
@@ -925,11 +930,19 @@ export class MemStorage implements IStorage {
 
   async assignOrderToDeliveryPerson(orderId: string, deliveryPersonId: string): Promise<Order | undefined> {
     try {
+      // Get delivery person details
+      const deliveryPerson = await this.getDeliveryPersonnelById(deliveryPersonId);
+      if (!deliveryPerson) {
+        throw new Error("Delivery person not found");
+      }
+
       const [updatedOrder] = await db
         .update(orders)
         .set({ 
           assignedTo: deliveryPersonId,
           assignedAt: new Date(),
+          deliveryPersonName: deliveryPerson.name,
+          deliveryPersonPhone: deliveryPerson.phone,
           status: "assigned"
         })
         .where(eq(orders.id, orderId))

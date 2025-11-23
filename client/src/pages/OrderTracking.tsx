@@ -155,13 +155,21 @@ export default function OrderTracking() {
       },
       {
         key: "delivery",
-        label: "Out for Delivery",
+        label: order.status === "accepted_by_delivery" || order.status === "assigned" 
+          ? "Accepted by Delivery" 
+          : "Out for Delivery",
         icon: <Truck className="h-5 w-5" />,
-        completed: order.status === "out_for_delivery" || order.status === "delivered",
+        completed: order.status === "accepted_by_delivery" || order.status === "assigned" || order.status === "out_for_delivery" || order.status === "delivered",
         description:
-          order.status === "out_for_delivery"
+          order.status === "accepted_by_delivery" || order.status === "assigned"
+            ? order.deliveryPersonName && order.deliveryPersonPhone
+              ? `${order.deliveryPersonName} - ${order.deliveryPersonPhone}`
+              : "Delivery person assigned"
+            : order.status === "out_for_delivery"
             ? order.pickedUpAt
-              ? `Picked up at ${format(new Date(order.pickedUpAt), "h:mm a")}`
+              ? `Picked up at ${format(new Date(order.pickedUpAt), "h:mm a")}${order.deliveryPersonName ? ` - ${order.deliveryPersonName}` : ""}`
+              : order.deliveryPersonName
+              ? `On the way - ${order.deliveryPersonName}`
               : "On the way"
             : order.status === "delivered"
             ? "Delivered"

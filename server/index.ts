@@ -134,24 +134,32 @@ app.use((req, res, next) => {
       const accessToken = generateAccessToken(partner);
       const refreshToken = generateRefreshToken(partner);
 
+      // Set refresh token in httpOnly cookie
       res.cookie("partnerRefreshToken", refreshToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
-        sameSite: "strict",
+        sameSite: "lax",
         maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
       });
 
-      console.log("✅ Partner login successful:", partner.username);
+      // Update last login
+      await storage.updatePartner(partner.id, { lastLoginAt: new Date() });
+
+      // Get chef name (chef variable already declared above)
+      const chefName = chef ? chef.name : "Unknown Chef";
+
+      console.log("✅ Partner login successful:", partner.username, "Chef:", chefName);
       res.json({
         accessToken,
         partner: {
           id: partner.id,
           username: partner.username,
           chefId: partner.chefId,
-        },
+          chefName: chefName
+        }
       });
-    } catch (error) {
-      console.error("Partner login error:", error);
+    } catch (error: any) {
+      console.error("❌ Partner login error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });

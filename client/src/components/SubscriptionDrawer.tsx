@@ -21,13 +21,14 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
   const { toast } = useToast();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
-  const { data: plans } = useQuery<SubscriptionPlan[]>({
+  const { data: plans, isLoading: plansLoading, error: plansError } = useQuery<SubscriptionPlan[]>({
     queryKey: ["/api/subscription-plans"],
     queryFn: async () => {
       const response = await fetch("/api/subscription-plans");
       if (!response.ok) throw new Error("Failed to fetch subscription plans");
       return response.json();
     },
+    retry: 2,
   });
 
   const getAuthHeaders = (): Record<string, string> => {
@@ -151,24 +152,47 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
           </TabsList>
 
           <TabsContent value="plans" className="space-y-4">
-            <div className="grid grid-cols-1 gap-4 mt-4">
-              {filteredPlans.map(plan => (
-                <SubscriptionCard
-                  key={plan.id}
-                  plan={plan}
-                  onSubscribe={(p) => subscribeMutation.mutate(p.id)}
-                  isSubscribed={subscribedPlanIds.includes(plan.id)}
-                />
-              ))}
-              {filteredPlans.length === 0 && (
-                <Card>
-                  <CardContent className="text-center py-12">
-                    <Calendar className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-                    <p className="text-muted-foreground">No subscription plans available</p>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
+            {plansLoading ? (
+              <div className="grid grid-cols-1 gap-4 mt-4">
+                {[1, 2, 3].map((i) => (
+                  <Card key={i}>
+                    <CardContent className="p-6">
+                      <div className="animate-pulse space-y-4">
+                        <div className="h-4 bg-muted rounded w-3/4"></div>
+                        <div className="h-3 bg-muted rounded w-1/2"></div>
+                        <div className="h-8 bg-muted rounded w-1/4"></div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : plansError ? (
+              <Card>
+                <CardContent className="text-center py-12">
+                  <p className="text-destructive">Failed to load subscription plans</p>
+                  <p className="text-sm text-muted-foreground mt-2">Please try again later</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 mt-4">
+                {filteredPlans.map(plan => (
+                  <SubscriptionCard
+                    key={plan.id}
+                    plan={plan}
+                    onSubscribe={(p) => subscribeMutation.mutate(p.id)}
+                    isSubscribed={subscribedPlanIds.includes(plan.id)}
+                  />
+                ))}
+                {filteredPlans.length === 0 && (
+                  <Card>
+                    <CardContent className="text-center py-12">
+                      <Calendar className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+                      <p className="text-muted-foreground">No subscription plans available</p>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            )}
           </TabsContent>
 
           <TabsContent value="my-subscriptions" className="space-y-4">

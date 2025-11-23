@@ -2,7 +2,7 @@
 import type { Express } from "express";
 import { requirePartner, type AuthenticatedPartnerRequest } from "./partnerAuth";
 import { storage } from "./storage";
-import { broadcastOrderUpdate } from "./websocket";
+import { broadcastOrderUpdate, broadcastPreparedOrderToAvailableDelivery } from "./websocket";
 
 export function registerPartnerRoutes(app: Express): void {
   // Get all orders for this partner
@@ -68,12 +68,12 @@ export function registerPartnerRoutes(app: Express): void {
         return;
       }
 
-      // Accept order and change status to preparing
+      // Accept order - set status to accepted_by_chef
       let updatedOrder = await storage.acceptOrder(orderId, partnerId!);
       
       if (updatedOrder) {
-        // Update status to preparing when chef accepts
-        updatedOrder = await storage.updateOrderStatus(orderId, "preparing") || updatedOrder;
+        // Chef acceptance sets status to 'accepted_by_chef', not 'preparing'
+        // Partner must explicitly click "Start Preparing" to change to 'preparing'
         broadcastOrderUpdate(updatedOrder);
       }
 
@@ -136,12 +136,71 @@ export function registerPartnerRoutes(app: Express): void {
       
       if (updatedOrder) {
         broadcastOrderUpdate(updatedOrder);
+        
+        // Broadcast to all available delivery personnel when order is prepared
+        if (status === "prepared" && !updatedOrder.assignedTo) {
+          broadcastPreparedOrderToAvailableDelivery(updatedOrder);
+        }
       }
 
       res.json(updatedOrder);
     } catch (error) {
       console.error("Error updating order status:", error);
       res.status(500).json({ message: "Failed to update order status" });
+    }
+  });
+
+  // Update product availability
+  app.patch("/api/partner/products/:productId/availability", requirePartner(), async (req: AuthenticatedPartnerRequest, res) => {
+    try {
+      const { productId } = req.params;
+      const { isAvailable } = req.body;
+      const chefId = req.partner?.chefId;
+
+      if (!chefId) {
+        res.status(401).json({ message: "Unauthorized" });
+        return;
+      }
+
+      if (typeof isAvailable !== "boolean") {
+        res.status(400).json({ message: "isAvailable must be a boolean" });
+        return;
+      }
+
+      const product = await storage.getProductById(productId);
+      if (!product) {
+        res.status(404).json({ message: "Product not found" });
+        return;
+      }
+
+      if (product.chefId !== chefId) {
+        res.status(403).json({ message: "Unauthorized - Product does not belong to your kitchen" });
+        return;
+      }
+
+      const updatedProduct = await storage.updateProduct(productId, { isAvailable });
+      res.json(updatedProduct);
+    } catch (error) {
+      console.error("Error updating product availability:", error);
+      res.status(500).json({ message: "Failed to update product availability" });
+    }
+  });
+
+  // Get partner's products
+  app.get("/api/partner/products", requirePartner(), async (req: AuthenticatedPartnerRequest, res) => {
+    try {
+      const chefId = req.partner?.chefId;
+      if (!chefId) {
+        res.status(401).json({ message: "Unauthorized" });
+        return;
+      }
+
+      const allProducts = await storage.getAllProducts();
+      const chefProducts = allProducts.filter(p => p.chefId === chefId);
+      res.json(chefProducts);
+    } catch (error) {
+      console.error("Error fetching partner products:", error);
+      res.status(500).json({ message: "Failed to fetch products" });
     }
   });
 

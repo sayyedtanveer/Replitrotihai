@@ -224,48 +224,37 @@ export function registerAdminRoutes(app: Express) {
     }
   });
 
-  app.patch("/api/admin/orders/:id/payment", requireAdmin(), async (req, res) => {
+  app.patch("/api/admin/orders/:orderId/payment", requireAdmin(), async (req: AuthenticatedAdminRequest, res) => {
     try {
+      const { orderId } = req.params;
       const { paymentStatus } = req.body;
-      const order = await storage.getOrderById(req.params.id);
 
+      if (!["pending", "paid", "confirmed"].includes(paymentStatus)) {
+        res.status(400).json({ message: "Invalid payment status" });
+        return;
+      }
+
+      const order = await storage.getOrderById(orderId);
       if (!order) {
         res.status(404).json({ message: "Order not found" });
         return;
       }
 
-      // Update payment status
-      let updatedOrder = await storage.updateOrderPaymentStatus(
-        req.params.id, 
-        paymentStatus as "pending" | "paid" | "confirmed"
-      );
+      // Update payment status first
+      await storage.updateOrderPaymentStatus(orderId, paymentStatus);
 
-      if (!updatedOrder) {
-        res.status(404).json({ message: "Order not found" });
-        return;
+      // If payment is confirmed, also update order status to "confirmed"
+      if (paymentStatus === "confirmed") {
+        await storage.updateOrderStatus(orderId, "confirmed");
       }
 
-      // When admin confirms payment, also update order status to confirmed
-      if (paymentStatus === "confirmed" && order.status === "pending") {
-        updatedOrder = await storage.updateOrderStatus(req.params.id, "confirmed") || updatedOrder;
+      // Get the updated order with both fields set
+      const updatedOrder = await storage.getOrderById(orderId);
+
+      if (updatedOrder && paymentStatus === "confirmed") {
+        console.log(`📤 Admin confirmed payment for order ${orderId}, broadcasting to chef ${updatedOrder.chefId}`);
+        broadcastOrderUpdate(updatedOrder);
       }
-
-      // Log payment confirmation
-      console.log(`
-╔════════════════════════════════════════════════════════════════
-║ 💰 PAYMENT CONFIRMED BY ADMIN
-╠════════════════════════════════════════════════════════════════
-║ Order ID: ${updatedOrder.id.slice(0, 8)}
-║ Customer: ${updatedOrder.customerName}
-║ Amount: ₹${updatedOrder.total}
-║ Status: Order sent to chef for preparation
-║ Time: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
-╠════════════════════════════════════════════════════════════════
-║ 📱 Notification sent to chef
-╚════════════════════════════════════════════════════════════════
-      `);
-
-      broadcastOrderUpdate(updatedOrder);
 
       res.json(updatedOrder);
     } catch (error) {
@@ -659,7 +648,12 @@ export function registerAdminRoutes(app: Express) {
   app.get("/api/admin/chefs", requireAdmin(), async (req, res) => {
     try {
       const chefs = await storage.getChefs();
-      res.json(chefs);
+      // Ensure isActive is properly serialized as boolean
+      const serializedChefs = chefs.map(chef => ({
+        ...chef,
+        isActive: Boolean(chef.isActive)
+      }));
+      res.json(serializedChefs);
     } catch (error) {
       console.error("Get chefs error:", error);
       res.status(500).json({ message: "Failed to fetch chefs" });
@@ -887,7 +881,7 @@ export function registerAdminRoutes(app: Express) {
     }
   });
 
-  app.delete("/api/admin/subscription-plans/:id", requireSuperAdmin(), async (req, res) => {
+  app.delete("/api/admin/subscription-plans/:id", requireAdminOrManager(), async (req, res) => {
     try {
       const { id } = req.params;
       await storage.deleteSubscriptionPlan(id);
@@ -898,7 +892,7 @@ export function registerAdminRoutes(app: Express) {
     }
   });
 
-  // Active Subscriptions
+  // Get all subscriptions for admin
   app.get("/api/admin/subscriptions", requireAdmin(), async (req, res) => {
     try {
       const subscriptions = await storage.getSubscriptions();

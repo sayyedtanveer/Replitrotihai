@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -17,7 +16,7 @@ export default function PartnerLogin() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Validate inputs
     if (!username.trim()) {
       toast({
@@ -62,7 +61,7 @@ export default function PartnerLogin() {
 
       localStorage.setItem("partnerToken", data.accessToken);
       localStorage.setItem("partnerChefId", data.partner.chefId);
-      localStorage.setItem("partnerChefName", data.partner.chefName);
+      localStorage.setItem("partnerChefName", data.partner.chefName || "Partner");
 
       toast({
         title: "Login successful",

@@ -68,8 +68,8 @@ export const chefs = pgTable("chefs", {
   reviewCount: integer("review_count").notNull(),
   categoryId: text("category_id").notNull(),
   latitude: real("latitude").notNull().default(19.0728),
-longitude: real("longitude").notNull().default(72.8826),
-
+  longitude: real("longitude").notNull().default(72.8826),
+  isActive: boolean("is_active").notNull().default(true),
 });
 
 

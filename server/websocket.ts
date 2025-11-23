@@ -16,7 +16,7 @@ interface ConnectedClient {
 const clients: Map<string, ConnectedClient> = new Map();
 
 export function setupWebSocket(server: Server) {
-  const wss = new WebSocketServer({ 
+  const wss = new WebSocketServer({
     server,
     path: "/ws"
   });
@@ -131,17 +131,36 @@ export function broadcastOrderUpdate(order: Order) {
     data: order
   });
 
-  clients.forEach((client) => {
+  console.log(`📡 Broadcasting order update for order ${order.id} (status: ${order.status}, paymentStatus: ${order.paymentStatus}) to chef ${order.chefId}`);
+
+  let chefNotified = false;
+  clients.forEach((client, clientId) => {
     if (client.type === "admin") {
       client.ws.send(message);
+      console.log(`  ✅ Sent to admin ${clientId}`);
     } else if (client.type === "chef" && client.chefId === order.chefId) {
       client.ws.send(message);
+      chefNotified = true;
+      console.log(`  ✅ Sent to chef ${clientId} (chefId: ${client.chefId})`);
     } else if (client.type === "delivery" && client.id === order.assignedTo) {
       client.ws.send(message);
+      console.log(`  ✅ Sent to delivery ${clientId}`);
     } else if (client.type === "customer" && client.orderId === order.id) {
       client.ws.send(message);
+      console.log(`  ✅ Sent to customer ${clientId}`);
     }
   });
+
+  if (!chefNotified && order.chefId) {
+    console.log(`  ⚠️ WARNING: No chef WebSocket connected for chefId: ${order.chefId}`);
+    console.log(`  📋 Currently connected clients:`, Array.from(clients.entries()).map(([id, c]) => ({
+      id,
+      type: c.type,
+      chefId: c.chefId,
+    })));
+  } else if (chefNotified) {
+    console.log(`  ✅ Order successfully sent to chef ${order.chefId}`);
+  }
 }
 
 export function notifyDeliveryAssignment(order: Order, deliveryPersonId: string) {
@@ -151,9 +170,32 @@ export function notifyDeliveryAssignment(order: Order, deliveryPersonId: string)
     client.ws.send(JSON.stringify({
       type: notificationType,
       data: order,
-      message: order.status === "confirmed" 
+      message: order.status === "confirmed"
         ? `Order #${order.id.slice(0, 8)} has been confirmed and is ready for pickup`
         : `New order #${order.id.slice(0, 8)} has been assigned to you`
     }));
   }
+}
+
+export function broadcastPreparedOrderToAvailableDelivery(order: any) {
+  console.log(`📣 Broadcasting prepared order ${order.id} to available delivery personnel`);
+
+  // Geographic filtering: Only broadcast to delivery personnel within reasonable distance
+  const MAX_DELIVERY_RADIUS_KM = 10; // 10km radius
+
+  clients.forEach((client, deliveryPersonId) => {
+    if (client.type === "delivery" && client.ws.readyState === WebSocket.OPEN) {
+      // TODO: Implement actual distance calculation when delivery person locations are tracked
+      // For now, broadcast to all available delivery personnel
+      // Future: Get delivery person's current location and calculate distance
+      // const distance = calculateDistance(deliveryPersonLocation, order.chefLocation);
+      // if (distance <= MAX_DELIVERY_RADIUS_KM) { ... }
+
+      client.ws.send(JSON.stringify({
+        type: "new_prepared_order",
+        order: order,
+      }));
+      console.log(`✅ Sent prepared order to delivery person: ${deliveryPersonId}`);
+    }
+  });
 }

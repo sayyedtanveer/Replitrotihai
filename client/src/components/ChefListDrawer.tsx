@@ -26,6 +26,7 @@ export default function ChefListDrawer({
 }: ChefListDrawerProps) {
   if (!isOpen || !category) return null;
 
+  // Filter chefs by category and optionally show inactive chefs (but greyed out)
   const categoryChefs = chefs.filter((chef) => chef.categoryId === category.id);
 
   return (
@@ -55,48 +56,67 @@ export default function ChefListDrawer({
                   No chefs or restaurants available in this category
                 </p>
               ) : (
-                categoryChefs.map((chef) => (
-                  <div
-                    key={chef.id}
-                    className="border rounded-lg p-4 cursor-pointer hover:shadow-md transition-shadow hover:border-primary"
-                    onClick={() => {
-                      onChefClick(chef);
-                      onClose();
-                    }}
-                  >
-                    <div className="flex gap-4">
-                      <img
-                        src={chef.image}
-                        alt={chef.name}
-                        className="w-20 h-20 rounded-lg object-cover"
-                      />
-                      <div className="flex-1">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1">
-                            <h3 className="font-semibold text-lg mb-1">
-                              {chef.name}
-                            </h3>
-                            <p className="text-sm text-muted-foreground mb-2">
-                              {chef.description}
-                            </p>
-                            <div className="flex items-center gap-2">
-                              <div className="flex items-center gap-1">
-                                <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                                <span className="text-sm font-medium">
-                                  {chef.rating}
+                categoryChefs.map((chef) => {
+                  const isInactive = chef.isActive === false;
+                  return (
+                    <div
+                      key={chef.id}
+                      className={`border rounded-lg p-4 transition-shadow ${
+                        isInactive 
+                          ? 'opacity-50 cursor-not-allowed bg-muted/50' 
+                          : 'cursor-pointer hover:shadow-md hover:border-primary'
+                      }`}
+                      onClick={() => {
+                        if (!isInactive) {
+                          onChefClick(chef);
+                          onClose();
+                        }
+                      }}
+                      data-testid={`chef-card-${chef.id}`}
+                    >
+                      <div className="flex gap-4">
+                        <img
+                          src={chef.image}
+                          alt={chef.name}
+                          className={`w-20 h-20 rounded-lg object-cover ${isInactive ? 'grayscale' : ''}`}
+                        />
+                        <div className="flex-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <h3 className="font-semibold text-lg mb-1">
+                                  {chef.name}
+                                </h3>
+                                {isInactive && (
+                                  <span className="text-xs bg-destructive/20 text-destructive px-2 py-0.5 rounded-full">
+                                    Inactive
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-sm text-muted-foreground mb-2">
+                                {chef.description}
+                              </p>
+                              <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-1">
+                                  <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+                                  <span className="text-sm font-medium">
+                                    {chef.rating}
+                                  </span>
+                                </div>
+                                <span className="text-xs text-muted-foreground">
+                                  ({chef.reviewCount} reviews)
                                 </span>
                               </div>
-                              <span className="text-xs text-muted-foreground">
-                                ({chef.reviewCount} reviews)
-                              </span>
                             </div>
+                            {!isInactive && (
+                              <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                            )}
                           </div>
-                          <ChevronRight className="h-5 w-5 text-muted-foreground" />
                         </div>
                       </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </ScrollArea>
