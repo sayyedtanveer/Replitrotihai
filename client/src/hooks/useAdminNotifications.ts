@@ -33,7 +33,7 @@ export function useAdminNotifications() {
     if (!token) return;
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${window.location.host}/ws?type=admin&token=${token}`;
+    const wsUrl = `${protocol}//${window.location.host}/ws?type=admin&token=${encodeURIComponent(token)}`;
     const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
@@ -45,15 +45,15 @@ export function useAdminNotifications() {
       const data = JSON.parse(event.data);
       if (data.type === "new_order" || data.type === "order_update") {
         const order = data.data as Order;
-        
+
         // Invalidate all order queries for real-time updates
         queryClient.invalidateQueries({ queryKey: ["/api/admin", "orders"] });
         queryClient.invalidateQueries({ queryKey: ["/api/admin/dashboard/metrics"] });
-        
+
         // Show notification only for payment-related updates
         if (order.paymentStatus === "pending" || order.paymentStatus === "paid") {
           setUnreadCount((prev) => prev + 1);
-          
+
           if (Notification.permission === "granted") {
             new Notification("New Payment Pending", {
               body: `Order #${order.id.slice(0, 8)} - ₹${order.total} from ${order.customerName}`,
@@ -61,6 +61,13 @@ export function useAdminNotifications() {
             });
           }
         }
+      }
+
+      if (data.type === "chef_status_update") {
+        console.log("🔄 Chef status updated:", data.data);
+        // Invalidate chefs query to refresh the list immediately
+        queryClient.invalidateQueries({ queryKey: ["/api/admin", "chefs"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/chefs"] });
       }
     };
 

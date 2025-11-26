@@ -288,6 +288,11 @@ export function registerPartnerRoutes(app: Express): void {
       }
 
       console.log(`🏪 Chef ${updatedChef.name} is now ${isActive ? "ACTIVE" : "INACTIVE"}`);
+      
+      // Broadcast chef status update to all connected clients
+      const { broadcastChefStatusUpdate } = await import("./websocket");
+      broadcastChefStatusUpdate(updatedChef);
+      
       return res.status(200).json(updatedChef);
     } catch (error) {
       console.error("Error updating chef status:", error);

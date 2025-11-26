@@ -93,6 +93,9 @@ export default function CartSidebar({
     }
   };
 
+  // Helper to get chef status for each cart
+  const getChefIsClosed = (cart: CategoryCart) => cart.chefIsActive === false;
+
   if (!isOpen) return null;
 
   return (
@@ -147,24 +150,36 @@ export default function CartSidebar({
         ) : (
           <ScrollArea className="flex-1 p-4">
             <div className="space-y-4">
-              {cartsWithDelivery.map((cart) => (
-                <CartCard
-                  key={cart.categoryId}
-                  categoryName={cart.categoryName}
-                  chefName={cart.chefName}
-                  items={cart.items}
-                  distance={cart.distance}
-                  deliveryFee={cart.deliveryFee}
-                  freeDeliveryEligible={cart.freeDeliveryEligible}
-                  amountForFreeDelivery={cart.amountForFreeDelivery}
-                  deliveryRangeName={cart.deliveryRangeName}
-                  subtotal={cart.total || 0}
-                  onUpdateQuantity={(itemId, quantity) =>
-                    handleUpdateQuantity(cart.categoryId, itemId, quantity)
-                  }
-                  onCheckout={() => handleCheckout(cart.categoryId)}
-                />
-              ))}
+              {cartsWithDelivery.map((cart) => {
+                const isChefClosed = getChefIsClosed(cart);
+                return (
+                  <div key={cart.categoryId} className="relative">
+                    {isChefClosed && (
+                      <div className="absolute inset-0 bg-red-50 bg-opacity-70 flex flex-col items-center justify-center z-10 rounded-lg border border-red-200 pointer-events-none">
+                        <span className="text-red-700 font-semibold">Chef Closed</span>
+                        <span className="text-xs text-red-600">{cart.chefName} is not accepting orders.</span>
+                      </div>
+                    )}
+                    <CartCard
+                      key={cart.categoryId}
+                      categoryName={cart.categoryName}
+                      chefName={cart.chefName}
+                      items={cart.items}
+                      distance={cart.distance}
+                      deliveryFee={cart.deliveryFee}
+                      freeDeliveryEligible={cart.freeDeliveryEligible}
+                      amountForFreeDelivery={cart.amountForFreeDelivery}
+                      deliveryRangeName={cart.deliveryRangeName}
+                      subtotal={cart.total || 0}
+                      onUpdateQuantity={(itemId, quantity) =>
+                        !isChefClosed && handleUpdateQuantity(cart.categoryId, itemId, quantity)
+                      }
+                      onCheckout={() => !isChefClosed && handleCheckout(cart.categoryId)}
+                      disabled={isChefClosed}
+                    />
+                  </div>
+                );
+              })}
             </div>
           </ScrollArea>
         )}

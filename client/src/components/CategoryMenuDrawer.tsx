@@ -8,7 +8,7 @@ interface CategoryMenuDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   category: Category | null;
-  chef: { id: string; name: string } | null;
+  chef: { id: string; name: string; isActive?: boolean } | null; // Added isActive for chef status
   products: Product[];
   onAddToCart?: (product: Product) => void;
   cartItems?: { id: string; quantity: number; price: number }[];
@@ -16,21 +16,23 @@ interface CategoryMenuDrawerProps {
   onProceedToCart?: () => void;
 }
 
-export default function CategoryMenuDrawer({ 
-  isOpen, 
-  onClose, 
+export default function CategoryMenuDrawer({
+  isOpen,
+  onClose,
   category,
   chef,
   products,
   onAddToCart,
   cartItems = [],
   autoCloseOnAdd = false,
-  onProceedToCart
+  onProceedToCart,
 }: CategoryMenuDrawerProps) {
   if (!isOpen || !category || !chef) return null;
 
-  const categoryProducts = products.filter(p => 
-    p.categoryId === category.id && p.chefId === chef.id
+  const isChefClosed = chef.isActive === false;
+
+  const categoryProducts = products.filter(
+    (p) => p.categoryId === category.id && p.chefId === chef.id
   );
 
   const avgRating = categoryProducts.length > 0
@@ -72,28 +74,37 @@ export default function CategoryMenuDrawer({
         data-testid="category-menu-drawer"
       >
         <div className="flex flex-col h-full">
-          <div className="flex items-center justify-between p-4 border-b">
-            <div>
-              <h2 className="text-xl font-bold text-primary" data-testid="text-category-menu-title">
-                {chef.name}
-              </h2>
-              <p className="text-sm text-muted-foreground">{category.name}</p>
+          <div className="p-4 border-b">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <h3 className="font-semibold text-lg">{chef.name}</h3>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onClose}
+                data-testid="button-close-category-menu"
+              >
+                <X className="h-5 w-5" />
+              </Button>
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onClose}
-              data-testid="button-close-category-menu"
-            >
-              <X className="h-5 w-5" />
-            </Button>
+            <p className="text-sm text-muted-foreground">{category.name}</p>
           </div>
+
+          {isChefClosed && (
+            <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-md p-3 mx-4">
+              <p className="text-sm font-semibold text-red-700 dark:text-red-400">
+                ⚠️ Currently Closed
+              </p>
+              <p className="text-xs text-red-600 dark:text-red-500 mt-1">
+                {chef.name} is not accepting orders right now. You can browse the menu but cannot place orders.
+              </p>
+            </div>
+          )}
 
           <ScrollArea className="flex-1">
             <div className="p-4 border-b bg-muted/30" data-testid={`header-${category.id}`}>
               <div className="flex items-start gap-3">
-                <img 
-                  src={category.image} 
+                <img
+                  src={category.image}
                   alt={category.name}
                   className="w-16 h-16 rounded-lg object-cover"
                   data-testid={`img-category-${category.id}`}
@@ -131,6 +142,7 @@ export default function CategoryMenuDrawer({
               ) : (
                 categoryProducts.map((product) => {
                   const currentQuantity = getProductQuantity(product.id);
+                  const cartItem = cartItems.find(item => item.id === product.id); // To get current quantity for quantity controls
                   return (
                     <div
                       key={product.id}
@@ -182,34 +194,47 @@ export default function CategoryMenuDrawer({
                         {currentQuantity === 0 ? (
                           <Button
                             size="sm"
-                            onClick={() => handleQuantityChange(product, 1)}
-                            className="w-24"
+                            onClick={() => {
+                              onAddToCart?.(product); // <-- optional chaining
+                              if (autoCloseOnAdd) {
+                                onClose();
+                              }
+                            }}
+                            disabled={isChefClosed}
                             data-testid={`button-add-${product.id}`}
                           >
-                            Add
+                            <Plus className="h-4 w-4 mr-1" />
+                            {isChefClosed ? "Chef Closed" : "Add"}
                           </Button>
                         ) : (
-                          <div className="flex items-center gap-3 border rounded-md">
+                          <div className="flex items-center gap-1">
                             <Button
                               size="icon"
-                              variant="ghost"
-                              onClick={() => handleQuantityChange(product, currentQuantity - 1)}
-                              className="h-8 w-8"
+                              variant="outline"
+                              className="h-7 w-7"
+                              onClick={() => {
+                                const currentQuantity = cartItem?.quantity || 0;
+                                if (currentQuantity > 0) {
+                                  onAddToCart?.(product); // <-- optional chaining
+                                }
+                              }}
+                              disabled={isChefClosed}
                               data-testid={`button-decrease-${product.id}`}
                             >
-                              <Minus className="h-4 w-4" />
+                              <Minus className="h-3 w-3" />
                             </Button>
-                            <span className="font-semibold min-w-8 text-center" data-testid={`text-quantity-${product.id}`}>
-                              {currentQuantity}
+                            <span className="w-8 text-center text-sm font-medium">
+                              {cartItem?.quantity || 0}
                             </span>
                             <Button
                               size="icon"
-                              variant="ghost"
-                              onClick={() => handleQuantityChange(product, currentQuantity + 1)}
-                              className="h-8 w-8"
+                              variant="outline"
+                              className="h-7 w-7"
+                              onClick={() => onAddToCart?.(product)} // <-- optional chaining
+                              disabled={isChefClosed}
                               data-testid={`button-increase-${product.id}`}
                             >
-                              <Plus className="h-4 w-4" />
+                              <Plus className="h-3 w-3" />
                             </Button>
                           </div>
                         )}
@@ -222,7 +247,7 @@ export default function CategoryMenuDrawer({
           </ScrollArea>
 
           {/* Proceed to Cart Button */}
-          <div className="border-t p-4">
+          <div className="p-4 border-t">
             {totalItems > 0 ? (
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
@@ -234,15 +259,16 @@ export default function CategoryMenuDrawer({
                   </span>
                 </div>
                 <Button
-                  size="lg"
                   className="w-full"
+                  size="lg"
                   onClick={() => {
                     onClose();
-                    onProceedToCart?.();
+                    onProceedToCart?.(); // <-- optional chaining
                   }}
+                  disabled={isChefClosed}
                   data-testid="button-proceed-to-cart"
                 >
-                  Proceed to Cart
+                  {isChefClosed ? "Chef is Currently Closed" : "Proceed to Cart"}
                 </Button>
               </div>
             ) : (

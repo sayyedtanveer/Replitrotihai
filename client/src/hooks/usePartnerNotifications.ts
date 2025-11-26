@@ -10,10 +10,8 @@ export function usePartnerNotifications() {
     const token = localStorage.getItem("partnerToken");
     if (!token) return;
 
-    // Get the host, fallback to current location
-    const host = window.location.host || `${window.location.hostname}:${window.location.port || '5000'}`;
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${host}/ws?type=chef&token=${encodeURIComponent(token)}`;
+    const wsUrl = `${protocol}//${window.location.host}/ws?type=chef&token=${encodeURIComponent(token)}`;
 
     console.log("Partner WebSocket connecting to:", wsUrl);
     const ws = new WebSocket(wsUrl);
@@ -28,6 +26,13 @@ export function usePartnerNotifications() {
         const data = JSON.parse(event.data);
         console.log("Partner received WebSocket message:", data.type, data);
 
+        if (data.type === "chef_status_update") {
+          console.log("🔄 Chef status updated:", data.data);
+          // Invalidate chef query to refresh status immediately
+          queryClient.invalidateQueries({ queryKey: ["/api/partner/chef"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/chefs"] });
+        }
+        
         if (data.type === "new_order" || data.type === "order_update") {
           // Invalidate queries to refresh data
           queryClient.invalidateQueries({ queryKey: ["/api/partner/orders"] });

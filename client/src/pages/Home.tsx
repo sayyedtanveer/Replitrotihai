@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Header from "@/components/Header";
 import Hero from "@/components/Hero";
 import CategoryCard from "@/components/CategoryCard";
@@ -53,6 +53,8 @@ export default function Home() {
   const [selectedCart, setSelectedCart] = useState<any>(null); // State to hold the cart for checkout
 
   const { carts, addToCart: cartAddToCart, canAddItem, clearCart, getTotalItems, setUserLocation, getAllCartsWithDelivery } = useCart();
+  const queryClient = useQueryClient();
+
 
   const handleCategoryTabChange = (value: string) => {
     setSelectedCategoryTab(value);
@@ -79,7 +81,7 @@ export default function Home() {
   const handleAddToCart = (product: Product) => {
     const category = categories.find(c => c.id === product.categoryId);
     const categoryName = category?.name || "Unknown";
-    
+
     // Get chef location if available
     const chef = product.chefId ? chefs.find(c => c.id === product.chefId) : null;
 
@@ -115,7 +117,7 @@ export default function Home() {
     // Get the cart with precomputed delivery values
     const cartsWithDelivery = getAllCartsWithDelivery();
     const cart = cartsWithDelivery.find(c => c.categoryId === categoryId);
-    
+
     if (cart) {
       setSelectedCart(cart);
       setCheckoutCategoryId(categoryId);
@@ -219,6 +221,75 @@ export default function Home() {
     return matchesSearch && matchesCategory && isAvailable;
   });
 
+  const requestLocationPermission = () => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setUserLocation(position.coords.latitude, position.coords.longitude);
+        },
+        (error) => {
+          console.error("Error Code = " + error.code + " - " + error.message);
+          // Optionally set a default location or inform the user
+          // For example, set to a default point if location services fail
+          // setUserLocation(37.7749, -122.4194); // Example: San Francisco coordinates
+          toast({
+            title: "Location Access Denied",
+            description: "Please enable location services to find nearby restaurants.",
+            variant: "destructive",
+          });
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 5000,
+          maximumAge: 0
+        }
+      );
+    } else {
+      console.log("Geolocation is not supported by this browser.");
+      toast({
+        title: "Geolocation Not Supported",
+        description: "Your browser does not support geolocation. Some features may be limited.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  useEffect(() => {
+    requestLocationPermission();
+
+    // Setup WebSocket for real-time chef status updates
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${protocol}//${window.location.host}/ws?type=customer`;
+
+    const ws = new WebSocket(wsUrl);
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === "chef_status_update") {
+          console.log("🔄 Chef status updated:", data.data);
+          // Invalidate chefs query to refresh the list immediately
+          queryClient.invalidateQueries({ queryKey: ["/api/chefs"] });
+          
+          // Show toast notification
+          toast({
+            title: data.data.isActive ? "Chef is now Open" : "Chef is now Closed",
+            description: `${data.data.name} has ${data.data.isActive ? 'opened' : 'closed'} their store`,
+          });
+        }
+      } catch (error) {
+        console.error("WebSocket message error:", error);
+      }
+    };
+
+    ws.onerror = (error) => {
+      console.error("WebSocket error:", error);
+    };
+
+    return () => {
+      ws.close();
+    };
+  }, []);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -401,8 +472,8 @@ export default function Home() {
                           <div
                             key={chef.id}
                             className={`border rounded-lg overflow-hidden transition-all ${
-                              isChefActive 
-                                ? "cursor-pointer hover:shadow-lg hover:border-primary" 
+                              isChefActive
+                                ? "cursor-pointer hover:shadow-lg hover:border-primary"
                                 : "opacity-60 cursor-not-allowed"
                             }`}
                             onClick={() => {
@@ -468,9 +539,9 @@ export default function Home() {
                                     ~{Math.ceil(distance * 2 + 15)} mins
                                   </span>
                                 )}
-                                <Button 
-                                  variant="ghost" 
-                                  size="sm" 
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
                                   className="gap-1"
                                   disabled={!isChefActive}
                                 >

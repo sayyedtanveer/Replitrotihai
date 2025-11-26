@@ -680,15 +680,20 @@ export function registerAdminRoutes(app: Express) {
     try {
       const { id } = req.params;
       const chef = await storage.updateChef(id, req.body);
-
       if (!chef) {
         res.status(404).json({ message: "Chef not found" });
         return;
       }
 
+      // If isActive status was changed, broadcast the update
+      if (req.body.isActive !== undefined) {
+        const { broadcastChefStatusUpdate } = await import("./websocket");
+        broadcastChefStatusUpdate(chef);
+      }
+
       res.json(chef);
     } catch (error) {
-      console.error("Update chef error:", error);
+      console.error("Error updating chef:", error);
       res.status(500).json({ message: "Failed to update chef" });
     }
   });

@@ -317,3 +317,42 @@ export function cancelPreparedOrderTimeout(orderId: string) {
     console.log(`✅ Cancelled prepared order timeout for ${orderId} - delivery person accepted`);
   }
 }
+
+// Broadcast chef status updates to all connected clients
+export function broadcastChefStatusUpdate(chef: any) {
+  const message = JSON.stringify({
+    type: "chef_status_update",
+    data: chef
+  });
+
+  console.log(`\n📡 ========== BROADCASTING CHEF STATUS UPDATE ==========`);
+  console.log(`Chef ID: ${chef.id}`);
+  console.log(`Chef Name: ${chef.name}`);
+  console.log(`Status: ${chef.isActive ? "ACTIVE" : "INACTIVE"}`);
+
+  let adminNotified = 0;
+  let customerNotified = 0;
+  let partnerNotified = false;
+
+  clients.forEach((client, clientId) => {
+    if (client.type === "admin" && client.ws.readyState === WebSocket.OPEN) {
+      client.ws.send(message);
+      adminNotified++;
+      console.log(`  ✅ Sent to admin ${clientId}`);
+    } else if (client.type === "customer" && client.ws.readyState === WebSocket.OPEN) {
+      client.ws.send(message);
+      customerNotified++;
+      console.log(`  ✅ Sent to customer ${clientId}`);
+    } else if (client.type === "chef" && client.chefId === chef.id && client.ws.readyState === WebSocket.OPEN) {
+      client.ws.send(message);
+      partnerNotified = true;
+      console.log(`  ✅ Sent to partner ${clientId}`);
+    }
+  });
+
+  console.log(`\n📊 Broadcast Summary:`);
+  console.log(`  - Admins notified: ${adminNotified}`);
+  console.log(`  - Customers notified: ${customerNotified}`);
+  console.log(`  - Partner notified: ${partnerNotified ? 'YES' : 'NO'}`);
+  console.log(`================================================\n`);
+}
