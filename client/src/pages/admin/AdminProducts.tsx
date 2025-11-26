@@ -512,10 +512,38 @@ export default function AdminProducts() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {products.map((product) => (
-              <Card key={product.id} data-testid={`card-product-${product.id}`}>
-                <img src={product.image} alt={product.name} className="w-full aspect-video object-cover rounded-t-lg" />
+              <Card 
+                key={product.id} 
+                data-testid={`card-product-${product.id}`}
+                className={product.isAvailable === false ? "opacity-60" : ""}
+              >
+                <div className="relative">
+                  <img 
+                    src={product.image} 
+                    alt={product.name} 
+                    className={`w-full aspect-video object-cover rounded-t-lg ${product.isAvailable === false ? "grayscale" : ""}`} 
+                  />
+                  {product.isAvailable === false && (
+                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center rounded-t-lg">
+                      <Badge variant="destructive" className="text-sm">
+                        UNAVAILABLE
+                      </Badge>
+                    </div>
+                  )}
+                </div>
                 <CardContent className="p-4">
-                  <h3 className="font-semibold text-lg mb-1 text-slate-900 dark:text-slate-100">{product.name}</h3>
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <h3 className={`font-semibold text-lg text-slate-900 dark:text-slate-100 ${product.isAvailable === false ? "text-muted-foreground" : ""}`}>
+                      {product.name}
+                    </h3>
+                    <Switch
+                      checked={product.isAvailable ?? true}
+                      onCheckedChange={(checked) => 
+                        toggleAvailabilityMutation.mutate({ id: product.id, isAvailable: checked })
+                      }
+                      data-testid={`switch-product-${product.id}`}
+                    />
+                  </div>
                   <p className="text-sm text-slate-600 dark:text-slate-400 mb-2 line-clamp-2">{product.description}</p>
                   <div className="space-y-2 mb-3">
                     <div className="flex items-center justify-between text-sm">
@@ -530,15 +558,15 @@ export default function AdminProducts() {
                       <span className="text-muted-foreground">Stock:</span>
                       <span className={product.stockQuantity && product.stockQuantity < (product.lowStockThreshold || 20) ? "text-yellow-600 font-semibold" : ""}>{product.stockQuantity || 0}</span>
                     </div>
-                    <div className="flex items-center gap-2 text-sm">
+                    <div className="flex items-center gap-2 text-sm flex-wrap">
                       <Badge variant={product.isVeg ? "default" : "destructive"} className="text-xs">
                         {product.isVeg ? "Veg" : "Non-Veg"}
                       </Badge>
                       {product.isCustomizable && (
                         <Badge variant="secondary" className="text-xs">Customizable</Badge>
                       )}
-                      <Badge variant={product.isAvailable ? "default" : "outline"} className="text-xs">
-                        {product.isAvailable ? "Available" : "Unavailable"}
+                      <Badge variant={product.isAvailable !== false ? "default" : "destructive"} className="text-xs">
+                        {product.isAvailable !== false ? "Available" : "Unavailable"}
                       </Badge>
                     </div>
                   </div>

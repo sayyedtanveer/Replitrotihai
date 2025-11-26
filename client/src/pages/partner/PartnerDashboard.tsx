@@ -1,16 +1,18 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Package, DollarSign, Clock, CheckCircle, Bell, Wifi, WifiOff, TrendingUp, Calendar, UserCircle, LogOut } from "lucide-react";
+import { Package, DollarSign, Clock, CheckCircle, Bell, Wifi, WifiOff, TrendingUp, Calendar, UserCircle, LogOut, Store, UtensilsCrossed, ToggleLeft, ToggleRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Switch } from "@/components/ui/switch";
 import { format, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { usePartnerNotifications } from "@/hooks/usePartnerNotifications";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
+import type { Chef, Product } from "@shared/schema";
 
 export default function PartnerDashboard() {
   const partnerToken = localStorage.getItem("partnerToken");
@@ -92,6 +94,90 @@ export default function PartnerDashboard() {
       });
       if (!response.ok) throw new Error("Failed to fetch income report");
       return response.json();
+    },
+  });
+
+  const { data: chefDetails } = useQuery<Chef>({
+    queryKey: ["/api/partner/chef"],
+    queryFn: async () => {
+      const response = await fetch("/api/partner/chef", {
+        headers: { Authorization: `Bearer ${partnerToken}` },
+      });
+      if (!response.ok) throw new Error("Failed to fetch chef details");
+      return response.json();
+    },
+  });
+
+  const { data: products = [] } = useQuery<Product[]>({
+    queryKey: ["/api/partner/products"],
+    queryFn: async () => {
+      const response = await fetch("/api/partner/products", {
+        headers: { Authorization: `Bearer ${partnerToken}` },
+      });
+      if (!response.ok) throw new Error("Failed to fetch products");
+      return response.json();
+    },
+  });
+
+  const toggleChefStatusMutation = useMutation({
+    mutationFn: async (isActive: boolean) => {
+      const response = await fetch("/api/partner/chef/status", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${partnerToken}`,
+        },
+        body: JSON.stringify({ isActive }),
+      });
+      if (!response.ok) throw new Error("Failed to update status");
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/partner/chef"] });
+      toast({
+        title: data.isActive ? "Store is now OPEN" : "Store is now CLOSED",
+        description: data.isActive 
+          ? "Customers can now see and order from your menu" 
+          : "Your store will appear as unavailable to customers",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Failed to update status",
+        description: "Please try again",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const toggleProductAvailabilityMutation = useMutation({
+    mutationFn: async ({ productId, isAvailable }: { productId: string; isAvailable: boolean }) => {
+      const response = await fetch(`/api/partner/products/${productId}/availability`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${partnerToken}`,
+        },
+        body: JSON.stringify({ isAvailable }),
+      });
+      if (!response.ok) throw new Error("Failed to update product availability");
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/partner/products"] });
+      toast({
+        title: data.isAvailable ? "Item is now available" : "Item is now unavailable",
+        description: data.isAvailable 
+          ? `${data.name} can now be ordered by customers` 
+          : `${data.name} will appear as unavailable`,
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Failed to update item",
+        description: "Please try again",
+        variant: "destructive",
+      });
     },
   });
 
@@ -205,11 +291,29 @@ export default function PartnerDashboard() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
       <header className="bg-white dark:bg-slate-800 border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between gap-4">
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">
             {chefName} - Partner Dashboard
           </h1>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
+            <div 
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-full border-2 transition-all ${
+                chefDetails?.isActive 
+                  ? "bg-green-50 dark:bg-green-950 border-green-500" 
+                  : "bg-red-50 dark:bg-red-950 border-red-500"
+              }`}
+            >
+              <Store className={`h-4 w-4 ${chefDetails?.isActive ? "text-green-600" : "text-red-600"}`} />
+              <span className={`text-sm font-medium ${chefDetails?.isActive ? "text-green-700 dark:text-green-400" : "text-red-700 dark:text-red-400"}`}>
+                {chefDetails?.isActive ? "OPEN" : "CLOSED"}
+              </span>
+              <Switch
+                checked={chefDetails?.isActive ?? true}
+                onCheckedChange={(checked) => toggleChefStatusMutation.mutate(checked)}
+                disabled={toggleChefStatusMutation.isPending}
+                data-testid="switch-chef-status"
+              />
+            </div>
             {newOrdersCount > 0 && (
               <Badge variant="destructive" className="flex items-center gap-1">
                 <Bell className="h-3 w-3" />
@@ -251,8 +355,9 @@ export default function PartnerDashboard() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Tabs value={selectedTab} onValueChange={setSelectedTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
+            <TabsTrigger value="menu">Menu</TabsTrigger>
             <TabsTrigger value="orders">All Orders</TabsTrigger>
             <TabsTrigger value="income">Income Report</TabsTrigger>
           </TabsList>
@@ -403,6 +508,113 @@ export default function PartnerDashboard() {
                     <p className="text-center text-muted-foreground py-8">No orders yet</p>
                   )}
                 </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="menu" className="space-y-6">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between gap-4">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <UtensilsCrossed className="h-5 w-5" />
+                    Menu Items
+                  </CardTitle>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Toggle items on/off to control what customers can order
+                  </p>
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  {products.filter(p => p.isAvailable).length} / {products.length} available
+                </div>
+              </CardHeader>
+              <CardContent>
+                {products.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {products.map((product) => (
+                      <div
+                        key={product.id}
+                        className={`relative border rounded-lg overflow-hidden transition-all ${
+                          product.isAvailable 
+                            ? "bg-white dark:bg-slate-800" 
+                            : "bg-slate-100 dark:bg-slate-900 opacity-60"
+                        }`}
+                        data-testid={`card-product-${product.id}`}
+                      >
+                        <div className="relative h-32 overflow-hidden">
+                          <img
+                            src={product.image}
+                            alt={product.name}
+                            className={`w-full h-full object-cover ${!product.isAvailable ? "grayscale" : ""}`}
+                          />
+                          {!product.isAvailable && (
+                            <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                              <Badge variant="destructive" className="text-sm">
+                                UNAVAILABLE
+                              </Badge>
+                            </div>
+                          )}
+                        </div>
+                        <div className="p-4">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <h3 className={`font-semibold truncate ${!product.isAvailable ? "text-muted-foreground" : ""}`}>
+                                {product.name}
+                              </h3>
+                              <p className="text-sm text-muted-foreground truncate">
+                                {product.description}
+                              </p>
+                              <div className="flex items-center gap-2 mt-2">
+                                <span className="font-bold text-lg">
+                                  ₹{product.price}
+                                </span>
+                                {product.isVeg ? (
+                                  <Badge variant="outline" className="text-green-600 border-green-600">
+                                    VEG
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="outline" className="text-red-600 border-red-600">
+                                    NON-VEG
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex flex-col items-end gap-1">
+                              <Switch
+                                checked={product.isAvailable}
+                                onCheckedChange={(checked) => 
+                                  toggleProductAvailabilityMutation.mutate({ 
+                                    productId: product.id, 
+                                    isAvailable: checked 
+                                  })
+                                }
+                                disabled={toggleProductAvailabilityMutation.isPending}
+                                data-testid={`switch-product-${product.id}`}
+                              />
+                              <span className={`text-xs ${product.isAvailable ? "text-green-600" : "text-red-600"}`}>
+                                {product.isAvailable ? "Available" : "Unavailable"}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
+                            <span>Stock: {product.stockQuantity}</span>
+                            {product.stockQuantity <= product.lowStockThreshold && (
+                              <Badge variant="outline" className="text-orange-600 border-orange-600">
+                                Low Stock
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <UtensilsCrossed className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p>No menu items found</p>
+                    <p className="text-sm">Contact admin to add items to your menu</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

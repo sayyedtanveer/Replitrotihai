@@ -4,6 +4,8 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,7 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { adminApiRequest } from "@/hooks/useAdminAuth";
 import { queryClient } from "@/lib/queryClient";
 import type { Chef, Category } from "@shared/schema";
-import { Star, Pencil, Trash2, Plus } from "lucide-react";
+import { Star, Pencil, Trash2, Plus, Store } from "lucide-react";
 
 export default function AdminChefs() {
   const { toast } = useToast();
@@ -105,6 +107,30 @@ export default function AdminChefs() {
     },
   });
 
+  const toggleChefStatusMutation = useMutation({
+    mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
+      const response = await adminApiRequest(`/api/admin/chefs/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive }),
+      });
+      if (!response.ok) throw new Error("Failed to update chef status");
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin", "chefs"] });
+      toast({ 
+        title: data.isActive ? "Chef is now OPEN" : "Chef is now CLOSED", 
+        description: data.isActive 
+          ? `${data.name} is now accepting orders` 
+          : `${data.name} will appear as unavailable to customers`
+      });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to update chef status", variant: "destructive" });
+    },
+  });
+
   const resetForm = () => {
     setFormData({
       name: "",
@@ -173,10 +199,42 @@ export default function AdminChefs() {
         ) : chefs && chefs.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {chefs.map((chef) => (
-              <Card key={chef.id} data-testid={`card-chef-${chef.id}`}>
-                <img src={chef.image} alt={chef.name} className="w-full aspect-video object-cover rounded-t-lg" />
+              <Card 
+                key={chef.id} 
+                data-testid={`card-chef-${chef.id}`}
+                className={chef.isActive === false ? "opacity-60" : ""}
+              >
+                <div className="relative">
+                  <img 
+                    src={chef.image} 
+                    alt={chef.name} 
+                    className={`w-full aspect-video object-cover rounded-t-lg ${chef.isActive === false ? "grayscale" : ""}`} 
+                  />
+                  {chef.isActive === false && (
+                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center rounded-t-lg">
+                      <Badge variant="destructive" className="text-sm">
+                        CLOSED
+                      </Badge>
+                    </div>
+                  )}
+                </div>
                 <CardContent className="p-4">
-                  <h3 className="font-semibold text-lg mb-1 text-slate-900 dark:text-slate-100">{chef.name}</h3>
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <h3 className={`font-semibold text-lg text-slate-900 dark:text-slate-100 ${chef.isActive === false ? "text-muted-foreground" : ""}`}>
+                      {chef.name}
+                    </h3>
+                    <div className="flex items-center gap-2">
+                      <Store className={`h-4 w-4 ${chef.isActive !== false ? "text-green-600" : "text-red-600"}`} />
+                      <Switch
+                        checked={chef.isActive !== false}
+                        onCheckedChange={(checked) => 
+                          toggleChefStatusMutation.mutate({ id: chef.id, isActive: checked })
+                        }
+                        disabled={toggleChefStatusMutation.isPending}
+                        data-testid={`switch-chef-status-${chef.id}`}
+                      />
+                    </div>
+                  </div>
                   <p className="text-sm text-slate-600 dark:text-slate-400 mb-2">{chef.description}</p>
                   <div className="flex items-center gap-2 text-sm mb-3">
                     <div className="flex items-center gap-1">
@@ -184,6 +242,12 @@ export default function AdminChefs() {
                       <span className="font-medium text-slate-900 dark:text-slate-100">{chef.rating}</span>
                     </div>
                     <span className="text-slate-500 dark:text-slate-400">({chef.reviewCount} reviews)</span>
+                    <Badge 
+                      variant={chef.isActive !== false ? "default" : "destructive"} 
+                      className="ml-auto"
+                    >
+                      {chef.isActive !== false ? "OPEN" : "CLOSED"}
+                    </Badge>
                   </div>
                   <div className="flex items-center gap-2">
                     <Button

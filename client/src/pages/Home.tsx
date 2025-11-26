@@ -362,6 +362,7 @@ export default function Home() {
                         const userLat = localStorage.getItem('userLatitude');
                         const userLon = localStorage.getItem('userLongitude');
                         let distance: number | null = null;
+                        const isChefActive = chef.isActive !== false;
 
                         if (userLat && userLon && chef.latitude && chef.longitude) {
                           const R = 6371; // Earth's radius in km
@@ -399,22 +400,44 @@ export default function Home() {
                         return (
                           <div
                             key={chef.id}
-                            className="border rounded-lg overflow-hidden cursor-pointer hover:shadow-lg transition-all hover:border-primary"
+                            className={`border rounded-lg overflow-hidden transition-all ${
+                              isChefActive 
+                                ? "cursor-pointer hover:shadow-lg hover:border-primary" 
+                                : "opacity-60 cursor-not-allowed"
+                            }`}
                             onClick={() => {
+                              if (!isChefActive) {
+                                toast({
+                                  title: "Currently Unavailable",
+                                  description: `${chef.name} is not accepting orders right now`,
+                                  variant: "destructive",
+                                });
+                                return;
+                              }
                               const category = categories.find(c => c.id === selectedCategoryTab);
                               setSelectedChefForMenu(chef);
                               setSelectedCategoryForMenu(category || null);
                               setIsCategoryMenuOpen(true);
                             }}
+                            data-testid={`card-chef-${chef.id}`}
                           >
                             <div className="relative h-48 overflow-hidden">
                               <img
                                 src={chef.image}
                                 alt={chef.name}
-                                className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
+                                className={`w-full h-full object-cover transition-transform duration-300 ${
+                                  isChefActive ? "hover:scale-105" : "grayscale"
+                                }`}
                               />
                               <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-                              {distance !== null && (
+                              {!isChefActive && (
+                                <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                                  <div className="bg-red-600 text-white px-4 py-2 rounded-full text-sm font-semibold">
+                                    Currently Closed
+                                  </div>
+                                </div>
+                              )}
+                              {distance !== null && isChefActive && (
                                 <div className="absolute top-3 right-3 bg-white/95 backdrop-blur-sm px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1">
                                   <span className="text-primary">📍</span>
                                   {distance.toFixed(1)} km
@@ -423,21 +446,35 @@ export default function Home() {
                             </div>
 
                             <div className="p-4">
-                              <h3 className="font-bold text-xl mb-2">{chef.name}</h3>
+                              <div className="flex items-center gap-2 mb-2">
+                                <h3 className={`font-bold text-xl ${!isChefActive ? "text-muted-foreground" : ""}`}>
+                                  {chef.name}
+                                </h3>
+                                {!isChefActive && (
+                                  <span className="px-2 py-0.5 bg-red-100 dark:bg-red-950 text-red-600 dark:text-red-400 text-xs rounded-full">
+                                    Closed
+                                  </span>
+                                )}
+                              </div>
                               <p className="text-sm text-muted-foreground mb-3">
                                 {chef.description}
                               </p>
                               <div className="flex items-center justify-between flex-wrap gap-2">
                                 <span className="text-sm text-muted-foreground">
-                                  ⭐ {chef.rating} ({chef.reviewCount} reviews)
+                                  {chef.rating} ({chef.reviewCount} reviews)
                                 </span>
-                                {distance !== null && (
+                                {distance !== null && isChefActive && (
                                   <span className="text-xs text-muted-foreground">
                                     ~{Math.ceil(distance * 2 + 15)} mins
                                   </span>
                                 )}
-                                <Button variant="ghost" size="sm" className="gap-1">
-                                  View Menu →
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm" 
+                                  className="gap-1"
+                                  disabled={!isChefActive}
+                                >
+                                  {isChefActive ? "View Menu →" : "Unavailable"}
                                 </Button>
                               </div>
                             </div>

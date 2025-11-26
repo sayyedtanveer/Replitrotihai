@@ -247,6 +247,54 @@ export function registerPartnerRoutes(app: Express): void {
     }
   });
 
+  // Get chef details (for partner to view their own status)
+  app.get("/api/partner/chef", requirePartner(), async (req: AuthenticatedPartnerRequest, res) => {
+    try {
+      const chefId = req.partner?.chefId;
+      if (!chefId) {
+        res.status(401).json({ message: "Unauthorized" });
+        return;
+      }
+
+      const chef = await storage.getChefById(chefId);
+      if (!chef) {
+        res.status(404).json({ message: "Chef not found" });
+        return;
+      }
+
+      res.json(chef);
+    } catch (error) {
+      console.error("Error fetching chef details:", error);
+      res.status(500).json({ message: "Failed to fetch chef details" });
+    }
+  });
+
+  // Toggle chef active/inactive status
+  app.patch("/api/partner/chef/status", requirePartner(), async (req: AuthenticatedPartnerRequest, res) => {
+    try {
+      const chefId = req.partner?.chefId;
+      if (!chefId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const { isActive } = req.body;
+      if (typeof isActive !== "boolean") {
+        return res.status(400).json({ message: "isActive must be a boolean" });
+      }
+
+      const updatedChef = await storage.updateChef(chefId, { isActive });
+      if (!updatedChef) {
+        return res.status(404).json({ message: "Chef not found" });
+      }
+
+      console.log(`🏪 Chef ${updatedChef.name} is now ${isActive ? "ACTIVE" : "INACTIVE"}`);
+      return res.status(200).json(updatedChef);
+    } catch (error) {
+      console.error("Error updating chef status:", error);
+      return res.status(500).json({ message: "Failed to update chef status" });
+    }
+  });
+
   // Get income report
   app.get("/api/partner/income-report", requirePartner(), async (req: AuthenticatedPartnerRequest, res) => {
     try {
