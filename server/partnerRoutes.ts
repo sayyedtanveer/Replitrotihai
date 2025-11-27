@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { requirePartner, type AuthenticatedPartnerRequest } from "./partnerAuth";
 import { storage } from "./storage";
-import { broadcastOrderUpdate, broadcastPreparedOrderToAvailableDelivery } from "./websocket";
+import { broadcastOrderUpdate, broadcastPreparedOrderToAvailableDelivery, broadcastProductAvailabilityUpdate } from "./websocket";
 import { db, orders } from "@shared/db";
 import { eq } from "drizzle-orm";
 
@@ -222,6 +222,12 @@ export function registerPartnerRoutes(app: Express): void {
       }
 
       const updatedProduct = await storage.updateProduct(productId, { isAvailable });
+      
+      // Broadcast product availability update
+      if (updatedProduct) {
+        broadcastProductAvailabilityUpdate(updatedProduct);
+      }
+      
       res.json(updatedProduct);
     } catch (error) {
       console.error("Error updating product availability:", error);

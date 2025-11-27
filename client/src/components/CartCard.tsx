@@ -25,6 +25,8 @@ interface CartCardProps {
   deliveryRangeName?: string;
   onUpdateQuantity?: (itemId: string, quantity: number) => void;
   onCheckout?: () => void;
+  disabled?: boolean;
+  chefClosed?: boolean;
 }
 
 export default function CartCard({
@@ -39,6 +41,8 @@ export default function CartCard({
   deliveryRangeName,
   onUpdateQuantity,
   onCheckout,
+  disabled = false,
+  chefClosed = false,
 }: CartCardProps) {
   const total = subtotal + deliveryFee;
   const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);
@@ -75,12 +79,24 @@ export default function CartCard({
       </CardHeader>
 
       <CardContent className="space-y-3 pb-3">
+        {/* Chef closed warning */}
+        {chefClosed && (
+          <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-md p-2">
+            <p className="text-xs font-semibold text-red-700 dark:text-red-400">
+              Currently Closed
+            </p>
+            <p className="text-xs text-red-600 dark:text-red-500 mt-0.5">
+              {chefName} is not accepting orders right now.
+            </p>
+          </div>
+        )}
+
         {/* Warning for missing delivery settings */}
         {(deliveryRangeName === "No delivery settings configured" ||
           deliveryRangeName === "No active delivery settings") && (
           <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-md p-2">
             <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
-              ⚠️ Delivery settings not configured. Contact admin to set up delivery zones and pricing.
+              Delivery settings not configured. Contact admin to set up delivery zones and pricing.
             </p>
           </div>
         )}
@@ -215,9 +231,10 @@ export default function CartCard({
           className="w-full"
           size="lg"
           onClick={onCheckout}
+          disabled={disabled || chefClosed}
           data-testid="button-checkout"
         >
-          Checkout from {chefName}
+          {chefClosed ? `${chefName} is Closed` : `Checkout from ${chefName}`}
         </Button>
       </CardFooter>
     </Card>

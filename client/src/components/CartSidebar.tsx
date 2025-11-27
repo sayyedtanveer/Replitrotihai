@@ -33,6 +33,7 @@ interface CategoryCart {
   freeDeliveryEligible?: boolean;
   amountForFreeDelivery?: number;
   deliveryRangeName?: string;
+  chefIsActive?: boolean;
 }
 
 interface CartSidebarProps {
@@ -46,13 +47,14 @@ export default function CartSidebar({
   onClose,
   onCheckout,
 }: CartSidebarProps) {
-  const { getAllCartsWithDelivery, updateQuantity, fetchDeliverySettings, setUserLocation } = useCart();
+  const { getAllCartsWithDelivery, updateQuantity, fetchDeliverySettings, setUserLocation, fetchChefStatuses, updateChefStatus } = useCart();
   const cartsWithDelivery = getAllCartsWithDelivery();
 
-  // Fetch delivery settings and user location on mount
+  // Fetch delivery settings, chef statuses, and user location on mount
   React.useEffect(() => {
     const initializeDelivery = async () => {
       await fetchDeliverySettings();
+      await fetchChefStatuses();
       
       // Try to get stored location first
       const savedLat = localStorage.getItem('userLatitude');
@@ -74,7 +76,7 @@ export default function CartSidebar({
     };
     
     initializeDelivery();
-  }, [fetchDeliverySettings, setUserLocation]);
+  }, [fetchDeliverySettings, setUserLocation, fetchChefStatuses]);
 
 
   const totalItems = cartsWithDelivery.reduce(
@@ -93,7 +95,7 @@ export default function CartSidebar({
     }
   };
 
-  // Helper to get chef status for each cart
+  // Helper to get chef status for each cart (closed if isActive is explicitly false)
   const getChefIsClosed = (cart: CategoryCart) => cart.chefIsActive === false;
 
   if (!isOpen) return null;
@@ -153,31 +155,23 @@ export default function CartSidebar({
               {cartsWithDelivery.map((cart) => {
                 const isChefClosed = getChefIsClosed(cart);
                 return (
-                  <div key={cart.categoryId} className="relative">
-                    {isChefClosed && (
-                      <div className="absolute inset-0 bg-red-50 bg-opacity-70 flex flex-col items-center justify-center z-10 rounded-lg border border-red-200 pointer-events-none">
-                        <span className="text-red-700 font-semibold">Chef Closed</span>
-                        <span className="text-xs text-red-600">{cart.chefName} is not accepting orders.</span>
-                      </div>
-                    )}
-                    <CartCard
-                      key={cart.categoryId}
-                      categoryName={cart.categoryName}
-                      chefName={cart.chefName}
-                      items={cart.items}
-                      distance={cart.distance}
-                      deliveryFee={cart.deliveryFee}
-                      freeDeliveryEligible={cart.freeDeliveryEligible}
-                      amountForFreeDelivery={cart.amountForFreeDelivery}
-                      deliveryRangeName={cart.deliveryRangeName}
-                      subtotal={cart.total || 0}
-                      onUpdateQuantity={(itemId, quantity) =>
-                        !isChefClosed && handleUpdateQuantity(cart.categoryId, itemId, quantity)
-                      }
-                      onCheckout={() => !isChefClosed && handleCheckout(cart.categoryId)}
-                      disabled={isChefClosed}
-                    />
-                  </div>
+                  <CartCard
+                    key={cart.categoryId}
+                    categoryName={cart.categoryName}
+                    chefName={cart.chefName}
+                    items={cart.items}
+                    distance={cart.distance}
+                    deliveryFee={cart.deliveryFee}
+                    freeDeliveryEligible={cart.freeDeliveryEligible}
+                    amountForFreeDelivery={cart.amountForFreeDelivery}
+                    deliveryRangeName={cart.deliveryRangeName}
+                    subtotal={cart.total || 0}
+                    onUpdateQuantity={(itemId, quantity) =>
+                      handleUpdateQuantity(cart.categoryId, itemId, quantity)
+                    }
+                    onCheckout={() => handleCheckout(cart.categoryId)}
+                    chefClosed={isChefClosed}
+                  />
                 );
               })}
             </div>

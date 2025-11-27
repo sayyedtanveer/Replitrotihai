@@ -27,6 +27,12 @@ interface CategoryCart {
   freeDeliveryEligible?: boolean;
   amountForFreeDelivery?: number;
   deliveryRangeName?: string;
+  chefIsActive?: boolean;
+}
+
+interface ChefStatus {
+  chefId: string;
+  isActive: boolean;
 }
 
 interface CartStore {
@@ -34,9 +40,13 @@ interface CartStore {
   userLatitude: number | null;
   userLongitude: number | null;
   deliverySettings: DeliverySetting[];
+  chefStatuses: Record<string, boolean>;
   setUserLocation: (lat: number, lon: number) => void;
   setDeliverySettings: (settings: DeliverySetting[]) => void;
   fetchDeliverySettings: () => Promise<void>;
+  updateChefStatus: (chefId: string, isActive: boolean) => void;
+  setChefStatuses: (statuses: ChefStatus[]) => void;
+  fetchChefStatuses: () => Promise<void>;
   addToCart: (
     item: Omit<CartItem, "quantity">, 
     categoryName: string,
@@ -65,6 +75,7 @@ export const useCart = create<CartStore>()(
       userLatitude: null,
       userLongitude: null,
       deliverySettings: [],
+      chefStatuses: {},
 
       setUserLocation: (lat: number, lon: number) => {
         set({ userLatitude: lat, userLongitude: lon });
@@ -83,6 +94,36 @@ export const useCart = create<CartStore>()(
           }
         } catch (error) {
           console.error("Failed to fetch delivery settings:", error);
+        }
+      },
+
+      updateChefStatus: (chefId: string, isActive: boolean) => {
+        set((state) => {
+          const newStatuses = { ...state.chefStatuses, [chefId]: isActive };
+          // Force a re-render by creating a new object reference
+          return { chefStatuses: newStatuses };
+        });
+      },
+
+      setChefStatuses: (statuses: ChefStatus[]) => {
+        const newStatuses: Record<string, boolean> = {};
+        statuses.forEach(s => newStatuses[s.chefId] = s.isActive);
+        set({ chefStatuses: newStatuses });
+      },
+
+      fetchChefStatuses: async () => {
+        try {
+          const response = await fetch("/api/chefs");
+          if (response.ok) {
+            const chefs = await response.json();
+            const statuses: ChefStatus[] = chefs.map((chef: { id: string; isActive: boolean }) => ({
+              chefId: chef.id,
+              isActive: chef.isActive ?? true,
+            }));
+            get().setChefStatuses(statuses);
+          }
+        } catch (error) {
+          console.error("Failed to fetch chef statuses:", error);
         }
       },
 
@@ -264,7 +305,7 @@ export const useCart = create<CartStore>()(
 
       // ✅ Get all carts with delivery fee calculation
       getAllCartsWithDelivery: () => {
-        const { carts, userLatitude, userLongitude, deliverySettings } = get();
+        const { carts, userLatitude, userLongitude, deliverySettings, chefStatuses } = get();
         
         return carts.map((cart) => {
           const subtotal = cart.items.reduce((total, item) => total + item.price * item.quantity, 0);
@@ -296,6 +337,9 @@ export const useCart = create<CartStore>()(
             deliveryRangeName = "Location required for delivery fee";
           }
 
+          // Get chef active status from Record (default to true if not found)
+          const chefIsActive = cart.chefId in chefStatuses ? chefStatuses[cart.chefId] : true;
+
           return {
             ...cart,
             total: subtotal,
@@ -304,6 +348,7 @@ export const useCart = create<CartStore>()(
             freeDeliveryEligible,
             amountForFreeDelivery,
             deliveryRangeName,
+            chefIsActive,
           };
         });
       },

@@ -34,6 +34,7 @@ interface CategoryCart {
   distance?: number;
   freeDeliveryEligible?: boolean;
   amountForFreeDelivery?: number;
+  chefIsActive?: boolean;
 }
 
 interface CheckoutDialogProps {
@@ -239,6 +240,16 @@ export default function CheckoutDialog({
       toast({
         title: "Error",
         description: "Your cart is empty",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Check if chef is accepting orders
+    if (cart.chefIsActive === false) {
+      toast({
+        title: "Chef Currently Closed",
+        description: `${cart.chefName} is not accepting orders right now. Please try again later.`,
         variant: "destructive",
       });
       return;
@@ -524,6 +535,18 @@ export default function CheckoutDialog({
             </DialogDescription>
           </DialogHeader>
 
+          {/* Chef closed warning */}
+          {cart?.chefIsActive === false && (
+            <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-md p-3 mb-4">
+              <p className="text-sm font-semibold text-red-700 dark:text-red-400">
+                Chef Currently Closed
+              </p>
+              <p className="text-xs text-red-600 dark:text-red-500 mt-0.5">
+                {cart.chefName} is not accepting orders right now. Please check back later.
+              </p>
+            </div>
+          )}
+
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="grid w-full grid-cols-2 mb-4">
               <TabsTrigger value="checkout" onClick={() => setActiveTab("checkout")}>
@@ -718,14 +741,16 @@ export default function CheckoutDialog({
                   </Button>
                   <Button
                     type="submit"
-                    disabled={isLoading || !isFormValid || (phoneExists === true && !userToken)}
-                    variant={phoneExists && !userToken ? "destructive" : "default"}
+                    disabled={isLoading || !isFormValid || (phoneExists === true && !userToken) || cart?.chefIsActive === false}
+                    variant={phoneExists && !userToken ? "destructive" : cart?.chefIsActive === false ? "destructive" : "default"}
                   >
                     {isLoading ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                         Processing...
                       </>
+                    ) : cart?.chefIsActive === false ? (
+                      "Chef Currently Closed"
                     ) : phoneExists && !userToken ? (
                       "Login Required - Switch to Login Tab"
                     ) : (

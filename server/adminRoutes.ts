@@ -14,7 +14,7 @@ import {
 import { db, walletSettings } from "@shared/db";
 import { adminLoginSchema, insertAdminUserSchema, insertCategorySchema, insertProductSchema, insertDeliveryPersonnelSchema } from "@shared/schema";
 import { fromZodError } from "zod-validation-error";
-import { broadcastOrderUpdate, broadcastNewOrder, notifyDeliveryAssignment, cancelPreparedOrderTimeout } from "./websocket";
+import { broadcastOrderUpdate, broadcastNewOrder, notifyDeliveryAssignment, cancelPreparedOrderTimeout, broadcastProductAvailabilityUpdate, broadcastChefStatusUpdate } from "./websocket";
 import { hashPassword as hashDeliveryPassword } from "./deliveryAuth";
 
 export function registerAdminRoutes(app: Express) {
@@ -530,6 +530,11 @@ export function registerAdminRoutes(app: Express) {
       if (!product) {
         res.status(404).json({ message: "Product not found" });
         return;
+      }
+
+      // Broadcast product availability update if isAvailable or stockQuantity changed
+      if (req.body.isAvailable !== undefined || req.body.stockQuantity !== undefined) {
+        broadcastProductAvailabilityUpdate(product);
       }
 
       res.json(product);

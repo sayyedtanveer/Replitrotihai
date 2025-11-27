@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import type { Category, Product } from "@shared/schema";
+import { useCustomerNotifications } from "@/hooks/useCustomerNotifications";
 
 interface CategoryMenuDrawerProps {
   isOpen: boolean;
@@ -27,9 +28,13 @@ export default function CategoryMenuDrawer({
   autoCloseOnAdd = false,
   onProceedToCart,
 }: CategoryMenuDrawerProps) {
+  const { productAvailability, chefStatuses } = useCustomerNotifications();
+  
   if (!isOpen || !category || !chef) return null;
 
-  const isChefClosed = chef.isActive === false;
+  // Use realtime chef status from WebSocket, fallback to chef prop
+  const realtimeChefStatus = chefStatuses[chef.id];
+  const isChefClosed = realtimeChefStatus !== undefined ? !realtimeChefStatus : (chef.isActive === false);
 
   const categoryProducts = products.filter(
     (p) => p.categoryId === category.id && p.chefId === chef.id
@@ -142,20 +147,37 @@ export default function CategoryMenuDrawer({
               ) : (
                 categoryProducts.map((product) => {
                   const currentQuantity = getProductQuantity(product.id);
-                  const cartItem = cartItems.find(item => item.id === product.id); // To get current quantity for quantity controls
+                  const cartItem = cartItems.find(item => item.id === product.id);
+                  
+                  // Get real-time availability or fall back to product data
+                  const realtimeAvailability = productAvailability[product.id];
+                  const isProductAvailable = realtimeAvailability?.isAvailable ?? product.isAvailable ?? true;
+                  const productStock = realtimeAvailability?.stock ?? product.stockQuantity ?? 0;
+                  
                   return (
                     <div
                       key={product.id}
-                      className="border rounded-lg p-4 space-y-3 hover:shadow-md transition-shadow"
+                      className={`border rounded-lg p-4 space-y-3 transition-shadow ${
+                        isProductAvailable ? "hover:shadow-md" : "opacity-60 bg-muted/30"
+                      }`}
                       data-testid={`product-card-${product.id}`}
                     >
                       <div className="flex gap-4">
-                        <img
-                          src={product.image}
-                          alt={product.name}
-                          className="w-20 h-20 rounded-lg object-cover"
-                          data-testid={`img-product-${product.id}`}
-                        />
+                        <div className="relative">
+                          <img
+                            src={product.image}
+                            alt={product.name}
+                            className={`w-20 h-20 rounded-lg object-cover ${!isProductAvailable ? "grayscale" : ""}`}
+                            data-testid={`img-product-${product.id}`}
+                          />
+                          {!isProductAvailable && (
+                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center rounded-lg">
+                              <Badge variant="destructive" className="text-xs">
+                                UNAVAILABLE
+                              </Badge>
+                            </div>
+                          )}
+                        </div>
                         <div className="flex-1">
                           <div className="flex items-start justify-between gap-2">
                             <div>
@@ -195,16 +217,16 @@ export default function CategoryMenuDrawer({
                           <Button
                             size="sm"
                             onClick={() => {
-                              onAddToCart?.(product); // <-- optional chaining
+                              onAddToCart?.(product);
                               if (autoCloseOnAdd) {
                                 onClose();
                               }
                             }}
-                            disabled={isChefClosed}
+                            disabled={isChefClosed || !isProductAvailable || productStock <= 0}
                             data-testid={`button-add-${product.id}`}
                           >
                             <Plus className="h-4 w-4 mr-1" />
-                            {isChefClosed ? "Chef Closed" : "Add"}
+                            {isChefClosed ? "Chef Closed" : !isProductAvailable ? "Unavailable" : productStock <= 0 ? "Out of Stock" : "Add"}
                           </Button>
                         ) : (
                           <div className="flex items-center gap-1">

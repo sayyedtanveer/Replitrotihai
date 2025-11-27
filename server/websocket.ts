@@ -7,7 +7,7 @@ import type { Order } from "@shared/schema";
 
 interface ConnectedClient {
   ws: WebSocket;
-  type: "admin" | "chef" | "delivery" | "customer";
+  type: "admin" | "chef" | "delivery" | "customer" | "browser";
   id: string;
   chefId?: string;
   orderId?: string;
@@ -28,7 +28,7 @@ export function setupWebSocket(server: Server) {
   wss.on("connection", (ws, req) => {
     const url = new URL(req.url || "", `http://${req.headers.host}`);
     const token = url.searchParams.get("token");
-    const type = url.searchParams.get("type") as "admin" | "chef" | "delivery" | "customer";
+    const type = url.searchParams.get("type") as "admin" | "chef" | "delivery" | "customer" | "browser";
     const orderId = url.searchParams.get("orderId");
 
     if (!type) {
@@ -41,7 +41,10 @@ export function setupWebSocket(server: Server) {
     let customerOrderId: string | undefined;
 
     try {
-      if (type === "customer") {
+      if (type === "browser") {
+        // Browser connections don't need authentication - they receive broadcast updates
+        clientId = `browser_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      } else if (type === "customer") {
         if (!orderId) {
           ws.close(1008, "Order ID required for customer connection");
           return;
@@ -332,6 +335,7 @@ export function broadcastChefStatusUpdate(chef: any) {
 
   let adminNotified = 0;
   let customerNotified = 0;
+  let browserNotified = 0;
   let partnerNotified = false;
 
   clients.forEach((client, clientId) => {
@@ -343,6 +347,10 @@ export function broadcastChefStatusUpdate(chef: any) {
       client.ws.send(message);
       customerNotified++;
       console.log(`  ✅ Sent to customer ${clientId}`);
+    } else if (client.type === "browser" && client.ws.readyState === WebSocket.OPEN) {
+      client.ws.send(message);
+      browserNotified++;
+      console.log(`  ✅ Sent to browser ${clientId}`);
     } else if (client.type === "chef" && client.chefId === chef.id && client.ws.readyState === WebSocket.OPEN) {
       client.ws.send(message);
       partnerNotified = true;
@@ -353,6 +361,52 @@ export function broadcastChefStatusUpdate(chef: any) {
   console.log(`\n📊 Broadcast Summary:`);
   console.log(`  - Admins notified: ${adminNotified}`);
   console.log(`  - Customers notified: ${customerNotified}`);
+  console.log(`  - Browsers notified: ${browserNotified}`);
   console.log(`  - Partner notified: ${partnerNotified ? 'YES' : 'NO'}`);
+  console.log(`================================================\n`);
+}
+
+// Broadcast product availability updates to all connected clients
+export function broadcastProductAvailabilityUpdate(product: any) {
+  const message = JSON.stringify({
+    type: "product_availability_update",
+    data: {
+      id: product.id,
+      name: product.name,
+      isAvailable: product.isAvailable,
+      stock: product.stockQuantity
+    }
+  });
+
+  console.log(`\n📡 ========== BROADCASTING PRODUCT AVAILABILITY UPDATE ==========`);
+  console.log(`Product ID: ${product.id}`);
+  console.log(`Product Name: ${product.name}`);
+  console.log(`Available: ${product.isAvailable ? "YES" : "NO"}`);
+  console.log(`Stock: ${product.stockQuantity}`);
+
+  let adminNotified = 0;
+  let browserNotified = 0;
+  let partnerNotified = 0;
+
+  clients.forEach((client, clientId) => {
+    if (client.type === "admin" && client.ws.readyState === WebSocket.OPEN) {
+      client.ws.send(message);
+      adminNotified++;
+      console.log(`  ✅ Sent to admin ${clientId}`);
+    } else if (client.type === "browser" && client.ws.readyState === WebSocket.OPEN) {
+      client.ws.send(message);
+      browserNotified++;
+      console.log(`  ✅ Sent to browser ${clientId}`);
+    } else if (client.type === "chef" && client.ws.readyState === WebSocket.OPEN) {
+      client.ws.send(message);
+      partnerNotified++;
+      console.log(`  ✅ Sent to partner ${clientId}`);
+    }
+  });
+
+  console.log(`\n📊 Broadcast Summary:`);
+  console.log(`  - Admins notified: ${adminNotified}`);
+  console.log(`  - Browsers notified: ${browserNotified}`);
+  console.log(`  - Partners notified: ${partnerNotified}`);
   console.log(`================================================\n`);
 }
