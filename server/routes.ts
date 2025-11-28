@@ -492,6 +492,165 @@ app.post("/api/user/logout", async (req, res) => {
     } catch (error: any) {
       console.error("Error fetching referral stats:", error);
       res.status(500).json({ message: error.message || "Failed to fetch referral stats" });
+
+  // Confirm subscription payment
+  app.post("/api/subscriptions/:id/confirm-payment", requireUser(), async (req: AuthenticatedUserRequest, res) => {
+    try {
+      const userId = req.authenticatedUser!.userId;
+      const { paymentTransactionId } = req.body;
+      const subscription = await storage.getSubscription(req.params.id);
+
+      if (!subscription) {
+        res.status(404).json({ message: "Subscription not found" });
+        return;
+      }
+
+      if (subscription.userId !== userId) {
+        res.status(403).json({ message: "Unauthorized" });
+        return;
+      }
+
+      if (subscription.isPaid) {
+        res.status(400).json({ message: "Subscription already paid" });
+        return;
+      }
+
+      const updated = await storage.updateSubscription(req.params.id, { 
+        isPaid: true,
+        paymentTransactionId,
+        status: "active"
+      });
+
+      res.json({ message: "Payment confirmed", subscription: updated });
+    } catch (error: any) {
+      console.error("Error confirming subscription payment:", error);
+      res.status(500).json({ message: error.message || "Failed to confirm payment" });
+    }
+  });
+
+  // Get subscription delivery schedule
+  app.get("/api/subscriptions/:id/schedule", requireUser(), async (req: AuthenticatedUserRequest, res) => {
+    try {
+      const userId = req.authenticatedUser!.userId;
+      const subscription = await storage.getSubscription(req.params.id);
+
+      if (!subscription) {
+        res.status(404).json({ message: "Subscription not found" });
+        return;
+      }
+
+      if (subscription.userId !== userId) {
+        res.status(403).json({ message: "Unauthorized" });
+        return;
+      }
+
+      const plan = await storage.getSubscriptionPlan(subscription.planId);
+      if (!plan) {
+        res.status(404).json({ message: "Plan not found" });
+        return;
+      }
+
+      const deliveryDays = plan.deliveryDays as string[];
+      const schedule = [];
+      const currentDate = new Date(subscription.nextDeliveryDate);
+      const endDate = subscription.endDate ? new Date(subscription.endDate) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+      while (currentDate <= endDate && schedule.length < subscription.remainingDeliveries) {
+        const dayName = currentDate.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+        
+        if (deliveryDays.includes(dayName)) {
+          schedule.push({
+            date: new Date(currentDate),
+            time: subscription.nextDeliveryTime,
+            items: plan.items,
+            status: currentDate < new Date() ? "delivered" : "pending"
+          });
+        }
+        
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+
+      res.json({
+        subscription,
+        plan,
+        schedule,
+        remainingDeliveries: subscription.remainingDeliveries,
+        totalDeliveries: subscription.totalDeliveries,
+        deliveryHistory: subscription.deliveryHistory || []
+      });
+    } catch (error: any) {
+      console.error("Error fetching subscription schedule:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch schedule" });
+    }
+  });
+
+  // Mark delivery as completed (called by delivery personnel or auto-scheduled)
+  app.post("/api/subscriptions/:id/complete-delivery", requireUser(), async (req: AuthenticatedUserRequest, res) => {
+    try {
+      const subscription = await storage.getSubscription(req.params.id);
+
+      if (!subscription) {
+        res.status(404).json({ message: "Subscription not found" });
+        return;
+      }
+
+      if (!subscription.isPaid) {
+        res.status(400).json({ message: "Subscription not paid" });
+        return;
+      }
+
+      const plan = await storage.getSubscriptionPlan(subscription.planId);
+      if (!plan) {
+        res.status(404).json({ message: "Plan not found" });
+        return;
+      }
+
+      const deliveryHistory = (subscription.deliveryHistory as any[]) || [];
+      const now = new Date();
+      
+      deliveryHistory.push({
+        deliveredAt: now,
+        items: plan.items,
+        deliveryDate: subscription.nextDeliveryDate,
+        deliveryTime: subscription.nextDeliveryTime
+      });
+
+      const remainingDeliveries = subscription.remainingDeliveries - 1;
+      const deliveryDays = plan.deliveryDays as string[];
+      
+      // Calculate next delivery date
+      let nextDelivery = new Date(subscription.nextDeliveryDate);
+      nextDelivery.setDate(nextDelivery.getDate() + 1);
+      
+      while (nextDelivery <= (subscription.endDate || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000))) {
+        const dayName = nextDelivery.toLocaleDateString('en-US', { weekday: 'lowercase' });
+        if (deliveryDays.includes(dayName)) {
+          break;
+        }
+        nextDelivery.setDate(nextDelivery.getDate() + 1);
+      }
+
+      const updateData: any = {
+        remainingDeliveries,
+        lastDeliveryDate: now,
+        deliveryHistory,
+        nextDeliveryDate: nextDelivery
+      };
+
+      if (remainingDeliveries <= 0) {
+        updateData.status = "completed";
+      }
+
+      const updated = await storage.updateSubscription(req.params.id, updateData);
+
+      res.json({ message: "Delivery completed", subscription: updated });
+    } catch (error: any) {
+      console.error("Error completing delivery:", error);
+      res.status(500).json({ message: error.message || "Failed to complete delivery" });
+    }
+  });
+
+
     }
   });
 
@@ -963,7 +1122,7 @@ app.post("/api/orders", async (req: any, res) => {
   app.post("/api/subscriptions", requireUser(), async (req: AuthenticatedUserRequest, res) => {
     try {
       const userId = req.authenticatedUser!.userId;
-      const { planId } = req.body;
+      const { planId, deliveryTime = "09:00", durationDays = 30 } = req.body;
 
       if (!planId) {
         res.status(400).json({ message: "Plan ID is required" });
@@ -985,6 +1144,21 @@ app.post("/api/orders", async (req: any, res) => {
       const now = new Date();
       const nextDelivery = new Date(now);
       nextDelivery.setDate(nextDelivery.getDate() + 1);
+      
+      const endDate = new Date(now);
+      endDate.setDate(endDate.getDate() + durationDays);
+
+      // Calculate total deliveries based on frequency and duration
+      const deliveryDays = plan.deliveryDays as string[];
+      let totalDeliveries = 0;
+      
+      if (plan.frequency === "daily") {
+        totalDeliveries = deliveryDays.length > 0 ? Math.floor(durationDays / 7) * deliveryDays.length : durationDays;
+      } else if (plan.frequency === "weekly") {
+        totalDeliveries = Math.floor(durationDays / 7);
+      } else {
+        totalDeliveries = Math.floor(durationDays / 30);
+      }
 
       const subscription = await storage.createSubscription({
         userId,
@@ -995,9 +1169,16 @@ app.post("/api/orders", async (req: any, res) => {
         address: user.address || "",
         status: "active",
         startDate: now,
-        endDate: null,
+        endDate,
         nextDeliveryDate: nextDelivery,
+        nextDeliveryTime: deliveryTime,
         customItems: null,
+        remainingDeliveries: totalDeliveries,
+        totalDeliveries,
+        isPaid: false,
+        paymentTransactionId: null,
+        lastDeliveryDate: null,
+        deliveryHistory: [],
       });
 
       res.status(201).json(subscription);

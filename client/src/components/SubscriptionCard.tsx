@@ -7,7 +7,7 @@ import type { SubscriptionPlan } from "@shared/schema";
 
 interface SubscriptionCardProps {
   plan: SubscriptionPlan;
-  onSubscribe: (plan: SubscriptionPlan) => void;
+  onSubscribe: (planId: string) => void;
   isSubscribed?: boolean;
 }
 
@@ -58,10 +58,10 @@ export function SubscriptionCard({ plan, onSubscribe, isSubscribed }: Subscripti
       <CardFooter>
         <Button 
           className="w-full" 
-          onClick={() => onSubscribe(plan)}
+          onClick={() => onSubscribe(plan.id)}
           disabled={isSubscribed || !plan.isActive}
         >
-          {isSubscribed ? "Already Subscribed" : "Subscribe Now"}
+          {isSubscribed ? "Already Subscribed" : `Subscribe - ₹${plan.price}/${plan.frequency}`}
         </Button>
       </CardFooter>
     </Card>

@@ -269,7 +269,14 @@ export const subscriptions = pgTable("subscriptions", {
   startDate: timestamp("start_date").notNull(),
   endDate: timestamp("end_date"),
   nextDeliveryDate: timestamp("next_delivery_date").notNull(),
+  nextDeliveryTime: text("next_delivery_time").default("09:00"), // Delivery time (HH:mm format)
   customItems: jsonb("custom_items"), // User customized items
+  remainingDeliveries: integer("remaining_deliveries").notNull().default(30), // Track remaining deliveries
+  totalDeliveries: integer("total_deliveries").notNull().default(30), // Total deliveries in subscription
+  isPaid: boolean("is_paid").notNull().default(false),
+  paymentTransactionId: text("payment_transaction_id"),
+  lastDeliveryDate: timestamp("last_delivery_date"),
+  deliveryHistory: jsonb("delivery_history").default([]), // Array of delivery records
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

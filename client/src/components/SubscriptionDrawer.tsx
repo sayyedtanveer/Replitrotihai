@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SubscriptionCard } from "./SubscriptionCard";
+import { SubscriptionSchedule } from "./SubscriptionSchedule";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { format } from "date-fns";
@@ -62,7 +63,11 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
           "Content-Type": "application/json",
           ...getAuthHeaders(),
         },
-        body: JSON.stringify({ planId }),
+        body: JSON.stringify({ 
+          planId, 
+          deliveryTime: "09:00", 
+          durationDays: 30 
+        }),
       });
       if (!response.ok) {
         if (response.status === 401) {
@@ -72,12 +77,34 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
       }
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/subscriptions"] });
-      toast({ title: "Subscribed!", description: "Your subscription has been activated" });
+      toast({ 
+        title: "Subscription Created!", 
+        description: `Complete payment of ₹${data.plan?.price || 0} to activate your subscription` 
+      });
     },
     onError: () => {
       toast({ title: "Error", description: "Failed to create subscription", variant: "destructive" });
+    },
+  });
+
+  const confirmPaymentMutation = useMutation({
+    mutationFn: async ({ subscriptionId, paymentTransactionId }: { subscriptionId: string; paymentTransactionId: string }) => {
+      const response = await fetch(`/api/subscriptions/${subscriptionId}/confirm-payment`, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          ...getAuthHeaders(),
+        },
+        body: JSON.stringify({ paymentTransactionId }),
+      });
+      if (!response.ok) throw new Error("Failed to confirm payment");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/subscriptions"] });
+      toast({ title: "Payment Confirmed!", description: "Your subscription is now active" });
     },
   });
 
@@ -179,7 +206,7 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
                   <SubscriptionCard
                     key={plan.id}
                     plan={plan}
-                    onSubscribe={(p) => subscribeMutation.mutate(p.id)}
+                    onSubscribe={(planId) => subscribeMutation.mutate(planId)}
                     isSubscribed={subscribedPlanIds.includes(plan.id)}
                   />
                 ))}
@@ -227,52 +254,78 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
                           </div>
                         </div>
 
-                        <div className="flex gap-2">
-                          {sub.status === "active" && (
+                        {!sub.isPaid ? (
+                          <div className="space-y-2">
+                            <Badge variant="destructive" className="w-full justify-center">
+                              Payment Pending - ₹{plan?.price}
+                            </Badge>
                             <Button
                               size="sm"
-                              variant="outline"
-                              onClick={() => pauseMutation.mutate(sub.id)}
+                              className="w-full"
+                              onClick={() => {
+                                const txnId = `TXN${Date.now()}`;
+                                confirmPaymentMutation.mutate({ 
+                                  subscriptionId: sub.id, 
+                                  paymentTransactionId: txnId 
+                                });
+                              }}
                             >
-                              <Pause className="w-4 h-4 mr-2" />
-                              Pause
+                              Confirm Payment
                             </Button>
-                          )}
-                          {sub.status === "paused" && (
+                          </div>
+                        ) : (
+                          <div className="flex gap-2">
+                            {sub.status === "active" && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => pauseMutation.mutate(sub.id)}
+                              >
+                                <Pause className="w-4 h-4 mr-2" />
+                                Pause
+                              </Button>
+                            )}
+                            {sub.status === "paused" && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => resumeMutation.mutate(sub.id)}
+                              >
+                                <Play className="w-4 h-4 mr-2" />
+                                Resume
+                              </Button>
+                            )}
                             <Button
                               size="sm"
-                              variant="outline"
-                              onClick={() => resumeMutation.mutate(sub.id)}
+                              variant="destructive"
+                              onClick={() => cancelMutation.mutate(sub.id)}
                             >
-                              <Play className="w-4 h-4 mr-2" />
-                              Resume
+                              <X className="w-4 h-4 mr-2" />
+                              Cancel
                             </Button>
-                          )}
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            onClick={() => cancelMutation.mutate(sub.id)}
-                          >
-                            <X className="w-4 h-4 mr-2" />
-                            Cancel
-                          </Button>
-                        </div>
+                          </div>
+                        )}
                       </CardContent>
                     </Card>
-                  );
-                })}
-              </div>
-            ) : (
-              <Card>
-                <CardContent className="text-center py-12">
-                  <Calendar className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-                  <p className="text-muted-foreground">No active subscriptions</p>
-                  <p className="text-sm text-muted-foreground mt-2">
-                    Subscribe to a plan to see it here
-                  </p>
-                </CardContent>
-              </Card>
-            )}
+
+                    {sub.isPaid && sub.status === "active" && (
+                      <SubscriptionSchedule subscriptionId={sub.id} />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <Card>
+              <CardContent className="text-center py-12">
+                <Calendar className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+                <p className="text-muted-foreground">No active subscriptions</p>
+                <p className="text-sm text-muted-foreground mt-2">
+                  Subscribe to a plan to see it here
+                </p>
+              </CardContent>
+            </Card>
+          )}
           </TabsContent>
         </Tabs>
       </SheetContent>
