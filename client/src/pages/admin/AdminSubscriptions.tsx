@@ -423,19 +423,56 @@ export default function AdminSubscriptions() {
                       return (
                         <div key={sub.id} className="border rounded-lg p-4" data-testid={`subscription-${sub.id}`}>
                           <div className="flex items-start justify-between">
-                            <div>
+                            <div className="flex-1">
                               <h4 className="font-semibold">{sub.customerName}</h4>
                               <p className="text-sm text-slate-600 dark:text-slate-400">{plan?.name}</p>
+                              <p className="text-sm text-slate-600 dark:text-slate-400">Phone: {sub.phone}</p>
                               <p className="text-xs text-slate-500 mt-1">
                                 Next delivery: {format(new Date(sub.nextDeliveryDate), "PPP")}
                               </p>
+                              <p className="text-xs text-slate-500">
+                                Price: ₹{plan?.price}
+                              </p>
                             </div>
-                            <Badge variant={
-                              sub.status === "active" ? "default" :
-                              sub.status === "paused" ? "secondary" : "destructive"
-                            }>
-                              {sub.status}
-                            </Badge>
+                            <div className="flex flex-col items-end gap-2">
+                              <Badge variant={
+                                sub.status === "active" ? "default" :
+                                sub.status === "paused" ? "secondary" : "destructive"
+                              }>
+                                {sub.status}
+                              </Badge>
+                              {!sub.isPaid && (
+                                <Badge variant="destructive" className="text-xs">
+                                  Payment Pending
+                                </Badge>
+                              )}
+                              {!sub.isPaid && (
+                                <Button
+                                  size="sm"
+                                  onClick={async () => {
+                                    try {
+                                      const token = localStorage.getItem("adminToken");
+                                      const response = await fetch(`/api/admin/subscriptions/${sub.id}/confirm-payment`, {
+                                        method: "POST",
+                                        headers: {
+                                          "Content-Type": "application/json",
+                                          Authorization: `Bearer ${token}`,
+                                        },
+                                        body: JSON.stringify({ paymentTransactionId: `TXN${Date.now()}` }),
+                                      });
+                                      if (!response.ok) throw new Error("Failed to confirm payment");
+                                      queryClient.invalidateQueries({ queryKey: ["/api/admin", "subscriptions"] });
+                                      toast({ title: "Payment Confirmed", description: "Subscription activated successfully" });
+                                    } catch (error) {
+                                      toast({ title: "Error", description: "Failed to confirm payment", variant: "destructive" });
+                                    }
+                                  }}
+                                  data-testid={`button-confirm-payment-${sub.id}`}
+                                >
+                                  Confirm Payment
+                                </Button>
+                              )}
+                            </div>
                           </div>
                         </div>
                       );

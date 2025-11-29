@@ -22,6 +22,7 @@ interface PaymentQRDialogProps {
   address: string;
   accountCreated?: boolean;
   defaultPassword?: string;
+  onPaymentConfirmed?: (transactionId: string) => void;
 }
 
 export default function PaymentQRDialog({ 
@@ -34,7 +35,8 @@ export default function PaymentQRDialog({
   email, 
   address,
   accountCreated = false,
-  defaultPassword = ""
+  defaultPassword = "",
+  onPaymentConfirmed
 }: PaymentQRDialogProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [upiId] = useState("rotihai@paytm");
@@ -122,6 +124,16 @@ export default function PaymentQRDialog({
 
     setIsConfirming(true);
     try {
+      const txnId = `TXN${Date.now()}`;
+      
+      // If custom payment confirmed handler is provided (for subscriptions), use it
+      if (onPaymentConfirmed) {
+        await onPaymentConfirmed(txnId);
+        // Don't close dialog here - let the mutation handler do it
+        return;
+      }
+
+      // Otherwise, handle as order payment
       const response = await fetch(`/api/orders/${orderId}/payment-confirmed`, {
         method: "POST",
         headers: {

@@ -492,9 +492,11 @@ app.post("/api/user/logout", async (req, res) => {
     } catch (error: any) {
       console.error("Error fetching referral stats:", error);
       res.status(500).json({ message: error.message || "Failed to fetch referral stats" });
+    }
+  });
 
-  // Confirm subscription payment
-  app.post("/api/subscriptions/:id/confirm-payment", requireUser(), async (req: AuthenticatedUserRequest, res) => {
+  // User confirms they made payment (similar to order payment confirmation)
+  app.post("/api/subscriptions/:id/payment-confirmed", requireUser(), async (req: AuthenticatedUserRequest, res) => {
     try {
       const userId = req.authenticatedUser!.userId;
       const { paymentTransactionId } = req.body;
@@ -511,17 +513,22 @@ app.post("/api/user/logout", async (req, res) => {
       }
 
       if (subscription.isPaid) {
-        res.status(400).json({ message: "Subscription already paid" });
+        res.status(400).json({ message: "Payment already confirmed" });
         return;
       }
 
+      // Mark payment as user-confirmed (pending admin verification)
       const updated = await storage.updateSubscription(req.params.id, { 
-        isPaid: true,
-        paymentTransactionId,
-        status: "active"
+        paymentTransactionId: paymentTransactionId || `USER_CONFIRMED_${Date.now()}`,
+        status: "pending" // Explicitly set to pending while waiting for admin confirmation
       });
 
-      res.json({ message: "Payment confirmed", subscription: updated });
+      console.log(`✅ User confirmed payment for subscription ${req.params.id} - Waiting for admin verification`);
+
+      res.json({ 
+        message: "Payment confirmation received. Admin will verify and activate your subscription.", 
+        subscription: updated 
+      });
     } catch (error: any) {
       console.error("Error confirming subscription payment:", error);
       res.status(500).json({ message: error.message || "Failed to confirm payment" });
@@ -557,7 +564,7 @@ app.post("/api/user/logout", async (req, res) => {
 
       while (currentDate <= endDate && schedule.length < subscription.remainingDeliveries) {
         const dayName = currentDate.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
-        
+
         if (deliveryDays.includes(dayName)) {
           schedule.push({
             date: new Date(currentDate),
@@ -566,7 +573,7 @@ app.post("/api/user/logout", async (req, res) => {
             status: currentDate < new Date() ? "delivered" : "pending"
           });
         }
-        
+
         currentDate.setDate(currentDate.getDate() + 1);
       }
 
@@ -607,7 +614,7 @@ app.post("/api/user/logout", async (req, res) => {
 
       const deliveryHistory = (subscription.deliveryHistory as any[]) || [];
       const now = new Date();
-      
+
       deliveryHistory.push({
         deliveredAt: now,
         items: plan.items,
@@ -617,13 +624,13 @@ app.post("/api/user/logout", async (req, res) => {
 
       const remainingDeliveries = subscription.remainingDeliveries - 1;
       const deliveryDays = plan.deliveryDays as string[];
-      
+
       // Calculate next delivery date
       let nextDelivery = new Date(subscription.nextDeliveryDate);
       nextDelivery.setDate(nextDelivery.getDate() + 1);
-      
+
       while (nextDelivery <= (subscription.endDate || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000))) {
-        const dayName = nextDelivery.toLocaleDateString('en-US', { weekday: 'lowercase' });
+        const dayName = nextDelivery.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
         if (deliveryDays.includes(dayName)) {
           break;
         }
@@ -647,10 +654,6 @@ app.post("/api/user/logout", async (req, res) => {
     } catch (error: any) {
       console.error("Error completing delivery:", error);
       res.status(500).json({ message: error.message || "Failed to complete delivery" });
-    }
-  });
-
-
     }
   });
 
@@ -1070,7 +1073,7 @@ app.post("/api/orders", async (req: any, res) => {
 
       // Import delivery utilities
       const { calculateDistance, calculateDelivery } = await import("@shared/deliveryUtils");
-      
+
       // Calculate distance
       const distance = calculateDistance(latitude, longitude, chefLat, chefLon);
 
@@ -1144,14 +1147,14 @@ app.post("/api/orders", async (req: any, res) => {
       const now = new Date();
       const nextDelivery = new Date(now);
       nextDelivery.setDate(nextDelivery.getDate() + 1);
-      
+
       const endDate = new Date(now);
       endDate.setDate(endDate.getDate() + durationDays);
 
       // Calculate total deliveries based on frequency and duration
       const deliveryDays = plan.deliveryDays as string[];
       let totalDeliveries = 0;
-      
+
       if (plan.frequency === "daily") {
         totalDeliveries = deliveryDays.length > 0 ? Math.floor(durationDays / 7) * deliveryDays.length : durationDays;
       } else if (plan.frequency === "weekly") {
@@ -1167,7 +1170,7 @@ app.post("/api/orders", async (req: any, res) => {
         phone: user.phone || "",
         email: user.email || "",
         address: user.address || "",
-        status: "active",
+        status: "pending", // Start as pending until payment is confirmed
         startDate: now,
         endDate,
         nextDeliveryDate: nextDelivery,
@@ -1180,6 +1183,8 @@ app.post("/api/orders", async (req: any, res) => {
         lastDeliveryDate: null,
         deliveryHistory: [],
       });
+
+      console.log(`📋 Subscription created: ${subscription.id} - Status: pending (awaiting payment)`);
 
       res.status(201).json(subscription);
     } catch (error: any) {

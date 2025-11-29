@@ -240,7 +240,7 @@ export const referralRewards = pgTable("referral_rewards", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-export const subscriptionStatusEnum = pgEnum("subscription_status", ["active", "paused", "cancelled", "expired"]);
+export const subscriptionStatusEnum = pgEnum("subscription_status", ["pending", "active", "paused", "cancelled", "expired"]);
 export const subscriptionFrequencyEnum = pgEnum("subscription_frequency", ["daily", "weekly", "monthly"]);
 
 export const subscriptionPlans = pgTable("subscription_plans", {

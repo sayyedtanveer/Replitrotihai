@@ -908,14 +908,46 @@ export function registerAdminRoutes(app: Express) {
     }
   });
 
-  // Get all subscriptions for admin
+  // Get all subscriptions
   app.get("/api/admin/subscriptions", requireAdmin(), async (req, res) => {
     try {
       const subscriptions = await storage.getSubscriptions();
       res.json(subscriptions);
-    } catch (error) {
-      console.error("Get subscriptions error:", error);
-      res.status(500).json({ message: "Failed to fetch subscriptions" });
+    } catch (error: any) {
+      console.error("Error fetching subscriptions:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch subscriptions" });
+    }
+  });
+
+  // Confirm subscription payment
+  app.post("/api/admin/subscriptions/:id/confirm-payment", requireAdmin(), async (req: AuthenticatedAdminRequest, res) => {
+    try {
+      const { paymentTransactionId } = req.body;
+      const subscription = await storage.getSubscription(req.params.id);
+
+      if (!subscription) {
+        res.status(404).json({ message: "Subscription not found" });
+        return;
+      }
+
+      if (subscription.isPaid) {
+        res.status(400).json({ message: "Subscription already paid" });
+        return;
+      }
+
+      // Update subscription - mark as paid and activate
+      const updated = await storage.updateSubscription(req.params.id, { 
+        isPaid: true,
+        paymentTransactionId: paymentTransactionId || subscription.paymentTransactionId || `ADMIN_CONFIRMED_${Date.now()}`,
+        status: "active"
+      });
+
+      console.log(`✅ Admin confirmed payment for subscription ${req.params.id} - Subscription activated`);
+
+      res.json({ message: "Payment confirmed and subscription activated", subscription: updated });
+    } catch (error: any) {
+      console.error("Error confirming subscription payment:", error);
+      res.status(500).json({ message: error.message || "Failed to confirm payment" });
     }
   });
 
