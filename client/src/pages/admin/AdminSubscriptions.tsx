@@ -151,8 +151,8 @@ export default function AdminSubscriptions() {
       categoryId: plan.categoryId,
       frequency: plan.frequency,
       price: plan.price,
-      deliveryDays: plan.deliveryDays,
-      items: plan.items,
+      deliveryDays: plan.deliveryDays as string[],
+      items: plan.items as Record<string, unknown>[],
       isActive: plan.isActive,
     });
     setIsDialogOpen(true);
@@ -408,70 +408,156 @@ export default function AdminSubscriptions() {
           </TabsContent>
 
           <TabsContent value="active">
+            {/* Pending Payment Verification Section */}
+            {subscriptions?.filter(s => !s.isPaid && s.paymentTransactionId).length ? (
+              <Card className="mb-6 border-amber-200 dark:border-amber-800">
+                <CardHeader className="bg-amber-50 dark:bg-amber-900/20">
+                  <CardTitle className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+                    <Users className="w-5 h-5" />
+                    Pending Payment Verification ({subscriptions?.filter(s => !s.isPaid && s.paymentTransactionId).length})
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-4">
+                  <div className="space-y-4">
+                    {subscriptions?.filter(s => !s.isPaid && s.paymentTransactionId).map(sub => {
+                      const plan = plans?.find(p => p.id === sub.planId);
+                      return (
+                        <div key={sub.id} className="border rounded-lg p-4 bg-amber-50/50 dark:bg-amber-900/10" data-testid={`subscription-pending-${sub.id}`}>
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1 space-y-2">
+                              <div className="flex items-center gap-2">
+                                <h4 className="font-semibold">{sub.customerName}</h4>
+                                <Badge variant="secondary">Awaiting Verification</Badge>
+                              </div>
+                              <p className="text-sm text-slate-600 dark:text-slate-400">Plan: {plan?.name}</p>
+                              <p className="text-sm text-slate-600 dark:text-slate-400">Phone: {sub.phone}</p>
+                              <p className="text-sm text-slate-600 dark:text-slate-400">Amount: ₹{plan?.price}</p>
+                              <div className="p-2 bg-slate-100 dark:bg-slate-800 rounded text-sm">
+                                <span className="font-medium">Transaction ID: </span>
+                                <span className="font-mono">{sub.paymentTransactionId}</span>
+                              </div>
+                              <p className="text-xs text-slate-500">
+                                Submitted: {format(new Date(sub.createdAt), "PPP 'at' p")}
+                              </p>
+                            </div>
+                            <div className="flex flex-col items-end gap-2">
+                              <Button
+                                onClick={async () => {
+                                  try {
+                                    const token = localStorage.getItem("adminToken");
+                                    const response = await fetch(`/api/admin/subscriptions/${sub.id}/confirm-payment`, {
+                                      method: "POST",
+                                      headers: {
+                                        "Content-Type": "application/json",
+                                        Authorization: `Bearer ${token}`,
+                                      },
+                                    });
+                                    
+                                    if (!response.ok) {
+                                      const error = await response.json();
+                                      throw new Error(error.message || "Failed to confirm payment");
+                                    }
+                                    
+                                    queryClient.invalidateQueries({ queryKey: ["/api/admin", "subscriptions"] });
+                                    toast({ 
+                                      title: "Payment Verified ✅", 
+                                      description: "Subscription activated successfully" 
+                                    });
+                                  } catch (error: any) {
+                                    toast({ 
+                                      title: "Error", 
+                                      description: error.message || "Failed to confirm payment", 
+                                      variant: "destructive" 
+                                    });
+                                  }
+                                }}
+                                data-testid={`button-confirm-payment-${sub.id}`}
+                              >
+                                Verify & Activate
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+            ) : null}
+
+            {/* Subscriptions Without Payment */}
+            {subscriptions?.filter(s => !s.isPaid && !s.paymentTransactionId).length ? (
+              <Card className="mb-6 border-red-200 dark:border-red-800">
+                <CardHeader className="bg-red-50 dark:bg-red-900/20">
+                  <CardTitle className="flex items-center gap-2 text-red-700 dark:text-red-400">
+                    <Users className="w-5 h-5" />
+                    Awaiting Payment ({subscriptions?.filter(s => !s.isPaid && !s.paymentTransactionId).length})
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-4">
+                  <div className="space-y-4">
+                    {subscriptions?.filter(s => !s.isPaid && !s.paymentTransactionId).map(sub => {
+                      const plan = plans?.find(p => p.id === sub.planId);
+                      return (
+                        <div key={sub.id} className="border rounded-lg p-4" data-testid={`subscription-awaiting-${sub.id}`}>
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <h4 className="font-semibold">{sub.customerName}</h4>
+                                <Badge variant="destructive">No Payment</Badge>
+                              </div>
+                              <p className="text-sm text-slate-600 dark:text-slate-400">Plan: {plan?.name}</p>
+                              <p className="text-sm text-slate-600 dark:text-slate-400">Phone: {sub.phone}</p>
+                              <p className="text-sm text-slate-600 dark:text-slate-400">Amount: ₹{plan?.price}</p>
+                              <p className="text-xs text-slate-500 mt-1">
+                                Created: {format(new Date(sub.createdAt), "PPP 'at' p")}
+                              </p>
+                            </div>
+                            <div className="text-xs text-muted-foreground text-right">
+                              <p>User has not made payment yet</p>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+            ) : null}
+
+            {/* Active Subscriptions */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Users className="w-5 h-5" />
-                  Active Subscriptions ({subscriptions?.length || 0})
+                  Active Subscriptions ({subscriptions?.filter(s => s.isPaid).length || 0})
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {subscriptions && subscriptions.length > 0 ? (
+                {subscriptions?.filter(s => s.isPaid).length ? (
                   <div className="space-y-4">
-                    {subscriptions.map(sub => {
+                    {subscriptions?.filter(s => s.isPaid).map(sub => {
                       const plan = plans?.find(p => p.id === sub.planId);
                       return (
-                        <div key={sub.id} className="border rounded-lg p-4" data-testid={`subscription-${sub.id}`}>
-                          <div className="flex items-start justify-between">
+                        <div key={sub.id} className="border rounded-lg p-4" data-testid={`subscription-active-${sub.id}`}>
+                          <div className="flex items-start justify-between gap-4">
                             <div className="flex-1">
-                              <h4 className="font-semibold">{sub.customerName}</h4>
-                              <p className="text-sm text-slate-600 dark:text-slate-400">{plan?.name}</p>
-                              <p className="text-sm text-slate-600 dark:text-slate-400">Phone: {sub.phone}</p>
-                              <p className="text-xs text-slate-500 mt-1">
-                                Next delivery: {format(new Date(sub.nextDeliveryDate), "PPP")}
-                              </p>
-                              <p className="text-xs text-slate-500">
-                                Price: ₹{plan?.price}
-                              </p>
-                            </div>
-                            <div className="flex flex-col items-end gap-2">
-                              <Badge variant={
-                                sub.status === "active" ? "default" :
-                                sub.status === "paused" ? "secondary" : "destructive"
-                              }>
-                                {sub.status}
-                              </Badge>
-                              {!sub.isPaid && (
-                                <Badge variant="destructive" className="text-xs">
-                                  Payment Pending
+                              <div className="flex items-center gap-2">
+                                <h4 className="font-semibold">{sub.customerName}</h4>
+                                <Badge variant={sub.status === "active" ? "default" : "secondary"}>
+                                  {sub.status === "active" ? "Active" : sub.status === "paused" ? "Paused" : sub.status}
                                 </Badge>
-                              )}
-                              {!sub.isPaid && (
-                                <Button
-                                  size="sm"
-                                  onClick={async () => {
-                                    try {
-                                      const token = localStorage.getItem("adminToken");
-                                      const response = await fetch(`/api/admin/subscriptions/${sub.id}/confirm-payment`, {
-                                        method: "POST",
-                                        headers: {
-                                          "Content-Type": "application/json",
-                                          Authorization: `Bearer ${token}`,
-                                        },
-                                        body: JSON.stringify({ paymentTransactionId: `TXN${Date.now()}` }),
-                                      });
-                                      if (!response.ok) throw new Error("Failed to confirm payment");
-                                      queryClient.invalidateQueries({ queryKey: ["/api/admin", "subscriptions"] });
-                                      toast({ title: "Payment Confirmed", description: "Subscription activated successfully" });
-                                    } catch (error) {
-                                      toast({ title: "Error", description: "Failed to confirm payment", variant: "destructive" });
-                                    }
-                                  }}
-                                  data-testid={`button-confirm-payment-${sub.id}`}
-                                >
-                                  Confirm Payment
-                                </Button>
-                              )}
+                              </div>
+                              <p className="text-sm text-slate-600 dark:text-slate-400">Plan: {plan?.name}</p>
+                              <p className="text-sm text-slate-600 dark:text-slate-400">Phone: {sub.phone}</p>
+                              <div className="flex gap-4 mt-2 text-xs text-slate-500">
+                                <span>Next: {format(new Date(sub.nextDeliveryDate), "PPP")}</span>
+                                <span>Remaining: {sub.remainingDeliveries}/{sub.totalDeliveries}</span>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-semibold text-primary">₹{plan?.price}</p>
+                              <p className="text-xs text-slate-500">/{plan?.frequency}</p>
                             </div>
                           </div>
                         </div>

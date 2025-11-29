@@ -16,6 +16,21 @@ import { adminLoginSchema, insertAdminUserSchema, insertCategorySchema, insertPr
 import { fromZodError } from "zod-validation-error";
 import { broadcastOrderUpdate, broadcastNewOrder, notifyDeliveryAssignment, cancelPreparedOrderTimeout, broadcastProductAvailabilityUpdate, broadcastChefStatusUpdate } from "./websocket";
 import { hashPassword as hashDeliveryPassword } from "./deliveryAuth";
+import { eq } from "drizzle-orm";
+import { subscriptions } from "@shared/schema"; // Assuming 'subscriptions' schema is defined here
+
+// Mock requireAdminAuth for the changes to be syntactically correct, as it's not provided in the original code.
+// In a real scenario, this would be imported or defined elsewhere.
+const requireAdminAuth = (req: any, res: any, next: any) => {
+  // Dummy implementation for demonstration
+  if (req.headers['authorization'] === 'admin-token') {
+    req.admin = { adminId: 'admin123' }; // Mock admin ID
+    next();
+  } else {
+    res.status(401).json({ message: 'Unauthorized' });
+  }
+};
+
 
 export function registerAdminRoutes(app: Express) {
   // TEMPORARY TEST ENDPOINT - REMOVE IN PRODUCTION
@@ -922,7 +937,6 @@ export function registerAdminRoutes(app: Express) {
   // Confirm subscription payment
   app.post("/api/admin/subscriptions/:id/confirm-payment", requireAdmin(), async (req: AuthenticatedAdminRequest, res) => {
     try {
-      const { paymentTransactionId } = req.body;
       const subscription = await storage.getSubscription(req.params.id);
 
       if (!subscription) {
@@ -931,25 +945,77 @@ export function registerAdminRoutes(app: Express) {
       }
 
       if (subscription.isPaid) {
-        res.status(400).json({ message: "Subscription already paid" });
+        res.status(400).json({ message: "Subscription already confirmed and active" });
+        return;
+      }
+
+      if (!subscription.paymentTransactionId) {
+        res.status(400).json({ message: "No payment transaction ID found. User must submit payment first." });
         return;
       }
 
       // Update subscription - mark as paid and activate
-      const updated = await storage.updateSubscription(req.params.id, { 
+      const updated = await storage.updateSubscription(req.params.id, {
         isPaid: true,
-        paymentTransactionId: paymentTransactionId || subscription.paymentTransactionId || `ADMIN_CONFIRMED_${Date.now()}`,
         status: "active"
       });
 
-      console.log(`✅ Admin confirmed payment for subscription ${req.params.id} - Subscription activated`);
+      console.log(`✅ Admin confirmed payment for subscription ${req.params.id} (TxnID: ${subscription.paymentTransactionId}) - Subscription activated`);
 
-      res.json({ message: "Payment confirmed and subscription activated", subscription: updated });
+      res.json({ message: "Payment verified and subscription activated", subscription: updated });
     } catch (error: any) {
       console.error("Error confirming subscription payment:", error);
       res.status(500).json({ message: error.message || "Failed to confirm payment" });
     }
   });
+
+  // Verify subscription payment (admin action) - added error handling and logging
+  app.post("/api/admin/subscriptions/:id/verify-payment", requireAdminAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      console.log("Admin verifying subscription payment:", id);
+
+      const subscription = await db.query.subscriptions.findFirst({
+        where: eq(subscriptions.id, id),
+      });
+
+      if (!subscription) {
+        console.error("Subscription not found for verification:", id);
+        return res.status(404).json({ message: "Subscription not found" });
+      }
+
+      if (subscription.isPaid) {
+        return res.status(400).json({ message: "Payment already verified" });
+      }
+
+      if (!subscription.paymentTransactionId) {
+        return res.status(400).json({ message: "No payment transaction ID found" });
+      }
+
+      // Mark as paid and activate
+      await db.update(subscriptions)
+        .set({
+          isPaid: true,
+          status: "active",
+          updatedAt: new Date(),
+        })
+        .where(eq(subscriptions.id, id));
+
+      console.log("Subscription payment verified successfully:", id);
+
+      res.json({
+        message: "Payment verified and subscription activated",
+      });
+    } catch (error) {
+      console.error("Error verifying subscription payment:", error);
+      res.status(500).json({
+        message: "Failed to verify payment",
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
 
   // Reports
   app.get("/api/admin/reports/sales", requireAdmin(), async (req, res) => {

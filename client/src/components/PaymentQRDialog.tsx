@@ -142,7 +142,22 @@ export default function PaymentQRDialog({
       });
 
       if (!response.ok) {
-        throw new Error("Failed to confirm payment");
+        let errorMessage = "Failed to confirm payment";
+        try {
+          const contentType = response.headers.get("content-type");
+          if (contentType && contentType.includes("application/json")) {
+            const errorData = await response.json();
+            errorMessage = errorData.message || errorMessage;
+          } else {
+            // Handle HTML or other non-JSON responses
+            const errorText = await response.text();
+            console.error("Non-JSON error response:", errorText);
+            errorMessage = "Server error occurred. Please try again.";
+          }
+        } catch (parseError) {
+          console.error("Error parsing error response:", parseError);
+        }
+        throw new Error(errorMessage);
       }
 
       toast({
@@ -157,9 +172,10 @@ export default function PaymentQRDialog({
       }, 100);
     } catch (error) {
       console.error("Error confirming payment:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to confirm payment. Please contact support.";
       toast({
         title: "Confirmation Failed",
-        description: "Failed to confirm payment. Please contact support.",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {

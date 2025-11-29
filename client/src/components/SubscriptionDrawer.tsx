@@ -11,7 +11,7 @@ import PaymentQRDialog from "./PaymentQRDialog"; // Added PaymentQRDialog
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { format } from "date-fns";
-import { Calendar, Pause, Play, X } from "lucide-react"; // X icon is no longer used for cancel
+import { Calendar, Pause, Play, Clock, CheckCircle2, AlertCircle } from "lucide-react";
 import type { SubscriptionPlan, Subscription } from "@shared/schema";
 import { useLocation } from "wouter"; // Added useLocation
 
@@ -142,15 +142,38 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
 
   const confirmPaymentMutation = useMutation({
     mutationFn: async ({ subscriptionId, paymentTransactionId }: { subscriptionId: string; paymentTransactionId: string }) => {
+      if (!paymentTransactionId || paymentTransactionId.trim() === "") {
+        throw new Error("Transaction ID is required");
+      }
+      
       const response = await fetch(`/api/subscriptions/${subscriptionId}/payment-confirmed`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
           ...getAuthHeaders(),
         },
-        body: JSON.stringify({ paymentTransactionId }),
+        body: JSON.stringify({ paymentTransactionId: paymentTransactionId.trim() }),
       });
-      if (!response.ok) throw new Error("Failed to confirm payment");
+      
+      if (!response.ok) {
+        let errorMessage = "Failed to confirm payment";
+        try {
+          const contentType = response.headers.get("content-type");
+          if (contentType && contentType.includes("application/json")) {
+            const error = await response.json();
+            errorMessage = error.message || errorMessage;
+          } else {
+            // Handle HTML or other non-JSON responses
+            const errorText = await response.text();
+            console.error("Non-JSON error response:", errorText);
+            errorMessage = "Server error occurred. Please try again or contact support.";
+          }
+        } catch (parseError) {
+          console.error("Error parsing error response:", parseError);
+          errorMessage = "Unexpected error occurred. Please contact support.";
+        }
+        throw new Error(errorMessage);
+      }
       return response.json();
     },
     onSuccess: () => {
@@ -158,14 +181,15 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
       setShowPaymentQR(false);
       setPaymentDetails(null);
       toast({ 
-        title: "Payment Confirmed!", 
+        title: "Payment Submitted!", 
         description: "Admin will verify and activate your subscription shortly" 
       });
     },
-    onError: () => {
+    onError: (error: Error) => {
+      console.error("Payment confirmation error:", error);
       toast({ 
-        title: "Error", 
-        description: "Failed to confirm payment. Please try again.", 
+        title: "Payment Confirmation Failed", 
+        description: error.message || "Failed to confirm payment. Please try again.", 
         variant: "destructive" 
       });
     },
@@ -284,85 +308,133 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
                           <CardHeader>
                             <div className="flex items-center justify-between gap-2">
                               <CardTitle className="text-lg">{plan?.name}</CardTitle>
-                              <Badge variant={
-                                sub.status === "active" ? "default" :
-                                sub.status === "paused" ? "secondary" : "destructive"
-                              }>
-                                {sub.status}
-                              </Badge>
+                              {/* Enhanced status badge with clear states */}
+                              {!sub.isPaid && !sub.paymentTransactionId && (
+                                <Badge variant="destructive" className="gap-1">
+                                  <AlertCircle className="w-3 h-3" />
+                                  Pending Payment
+                                </Badge>
+                              )}
+                              {!sub.isPaid && sub.paymentTransactionId && (
+                                <Badge variant="secondary" className="gap-1">
+                                  <Clock className="w-3 h-3" />
+                                  Awaiting Verification
+                                </Badge>
+                              )}
+                              {sub.isPaid && sub.status === "active" && (
+                                <Badge variant="default" className="gap-1">
+                                  <CheckCircle2 className="w-3 h-3" />
+                                  Active
+                                </Badge>
+                              )}
+                              {sub.isPaid && sub.status === "paused" && (
+                                <Badge variant="secondary" className="gap-1">
+                                  <Pause className="w-3 h-3" />
+                                  Paused
+                                </Badge>
+                              )}
                             </div>
                           </CardHeader>
                           <CardContent className="space-y-4">
-                            <div className="text-sm space-y-2">
-                              <div className="flex justify-between gap-2">
-                                <span className="text-muted-foreground">Next Delivery:</span>
-                                <span className="font-medium">
-                                  {format(new Date(sub.nextDeliveryDate), "PPP")}
-                                </span>
+                            {/* Show delivery info only for active/paused subscriptions */}
+                            {sub.isPaid && (
+                              <div className="text-sm space-y-2">
+                                <div className="flex justify-between gap-2">
+                                  <span className="text-muted-foreground">Next Delivery:</span>
+                                  <span className="font-medium">
+                                    {format(new Date(sub.nextDeliveryDate), "PPP")}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between gap-2">
+                                  <span className="text-muted-foreground">Remaining:</span>
+                                  <span className="font-medium">
+                                    {sub.remainingDeliveries} of {sub.totalDeliveries} deliveries
+                                  </span>
+                                </div>
                               </div>
-                              <div className="flex justify-between gap-2">
-                                <span className="text-muted-foreground">Price:</span>
-                                <span className="font-medium">₹{plan?.price}/{plan?.frequency}</span>
-                              </div>
+                            )}
+                            
+                            <div className="flex justify-between gap-2 text-sm">
+                              <span className="text-muted-foreground">Price:</span>
+                              <span className="font-medium">₹{plan?.price}/{plan?.frequency}</span>
                             </div>
 
-                            {!sub.isPaid ? (
-                              <div className="space-y-2">
-                                <Badge variant="destructive" className="w-full justify-center">
-                                  Payment Pending - ₹{plan?.price}
-                                </Badge>
-                                <p className="text-xs text-center text-muted-foreground">
-                                  {sub.paymentTransactionId ? 
-                                    "Waiting for admin to verify your payment" : 
-                                    "Please complete payment to activate subscription"
-                                  }
-                                </p>
-                                {!sub.paymentTransactionId && (
-                                  <Button
-                                    size="sm"
-                                    className="w-full"
-                                    onClick={() => {
-                                      setPaymentDetails({
-                                        subscriptionId: sub.id,
-                                        amount: plan?.price || 0,
-                                        planName: plan?.name || "Subscription",
-                                      });
-                                      setShowPaymentQR(true);
-                                    }}
-                                  >
-                                    Pay Now - ₹{plan?.price}
-                                  </Button>
-                                )}
-                                {sub.paymentTransactionId && (
-                                  <Badge variant="outline" className="w-full justify-center text-xs">
-                                    Payment submitted - Under verification
-                                  </Badge>
-                                )}
+                            {/* Step 1: Payment Not Done */}
+                            {!sub.isPaid && !sub.paymentTransactionId && (
+                              <div className="space-y-3 pt-2">
+                                <div className="p-3 bg-destructive/10 rounded-md border border-destructive/20">
+                                  <p className="text-sm text-center font-medium text-destructive">
+                                    Complete payment to activate your subscription
+                                  </p>
+                                </div>
+                                <Button
+                                  className="w-full"
+                                  data-testid={`button-pay-${sub.id}`}
+                                  onClick={() => {
+                                    setPaymentDetails({
+                                      subscriptionId: sub.id,
+                                      amount: plan?.price || 0,
+                                      planName: plan?.name || "Subscription",
+                                    });
+                                    setShowPaymentQR(true);
+                                  }}
+                                >
+                                  Pay Now - ₹{plan?.price}
+                                </Button>
                               </div>
-                            ) : (
-                              <div className="flex flex-wrap gap-2">
-                                {sub.status === "active" && (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    data-testid={`button-pause-${sub.id}`}
-                                    onClick={() => pauseMutation.mutate(sub.id)}
-                                  >
-                                    <Pause className="w-4 h-4 mr-2" />
-                                    Pause
-                                  </Button>
-                                )}
-                                {sub.status === "paused" && (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    data-testid={`button-resume-${sub.id}`}
-                                    onClick={() => resumeMutation.mutate(sub.id)}
-                                  >
-                                    <Play className="w-4 h-4 mr-2" />
-                                    Resume
-                                  </Button>
-                                )}
+                            )}
+                            
+                            {/* Step 2: Payment Submitted - Waiting for Admin */}
+                            {!sub.isPaid && sub.paymentTransactionId && (
+                              <div className="space-y-3 pt-2">
+                                <div className="p-3 bg-muted rounded-md border">
+                                  <div className="flex items-center gap-2 justify-center">
+                                    <Clock className="w-4 h-4 text-muted-foreground animate-pulse" />
+                                    <span className="text-sm font-medium">Payment Under Review</span>
+                                  </div>
+                                  <p className="text-xs text-center text-muted-foreground mt-2">
+                                    Admin will verify and activate your subscription shortly
+                                  </p>
+                                  <p className="text-xs text-center text-muted-foreground mt-1">
+                                    Transaction ID: {sub.paymentTransactionId}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                            
+                            {/* Step 3: Active Subscription - Can Pause */}
+                            {sub.isPaid && sub.status === "active" && (
+                              <div className="flex flex-wrap gap-2 pt-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  data-testid={`button-pause-${sub.id}`}
+                                  onClick={() => pauseMutation.mutate(sub.id)}
+                                  disabled={pauseMutation.isPending}
+                                >
+                                  <Pause className="w-4 h-4 mr-2" />
+                                  {pauseMutation.isPending ? "Pausing..." : "Pause Deliveries"}
+                                </Button>
+                              </div>
+                            )}
+                            
+                            {/* Paused State - Can Resume */}
+                            {sub.isPaid && sub.status === "paused" && (
+                              <div className="space-y-3 pt-2">
+                                <div className="p-3 bg-muted rounded-md border">
+                                  <p className="text-sm text-center text-muted-foreground">
+                                    Your subscription is paused. Resume anytime to continue deliveries.
+                                  </p>
+                                </div>
+                                <Button
+                                  className="w-full"
+                                  data-testid={`button-resume-${sub.id}`}
+                                  onClick={() => resumeMutation.mutate(sub.id)}
+                                  disabled={resumeMutation.isPending}
+                                >
+                                  <Play className="w-4 h-4 mr-2" />
+                                  {resumeMutation.isPending ? "Resuming..." : "Resume Deliveries"}
+                                </Button>
                               </div>
                             )}
                           </CardContent>

@@ -47,7 +47,7 @@ export function SubscriptionCard({ plan, onSubscribe, isSubscribed }: Subscripti
           </div>
           <div className="flex items-center gap-2 text-sm">
             <Check className="w-4 h-4 text-primary" />
-            <span>Pause or cancel anytime</span>
+            <span>Flexible - Pause and resume anytime</span>
           </div>
           <div className="flex items-center gap-2 text-sm">
             <Check className="w-4 h-4 text-primary" />

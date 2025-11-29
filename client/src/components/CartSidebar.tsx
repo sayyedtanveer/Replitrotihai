@@ -7,6 +7,7 @@ import { X, ShoppingBag } from "lucide-react";
 import CartCard from "@/components/CartCard";
 import { useCart } from "@/hooks/use-cart";
 import { getUserLocation } from "@/lib/locationUtils";
+import { useCustomerNotifications } from "@/hooks/useCustomerNotifications";
 
 interface CartItem {
   id: string;
@@ -49,6 +50,16 @@ export default function CartSidebar({
 }: CartSidebarProps) {
   const { getAllCartsWithDelivery, updateQuantity, fetchDeliverySettings, setUserLocation, fetchChefStatuses, updateChefStatus } = useCart();
   const cartsWithDelivery = getAllCartsWithDelivery();
+
+  // Use WebSocket for real-time chef status and product availability updates
+  const { chefStatuses, productAvailability } = useCustomerNotifications();
+
+  // Sync WebSocket chef statuses to cart store for real-time updates
+  useEffect(() => {
+    Object.entries(chefStatuses).forEach(([chefId, isActive]) => {
+      updateChefStatus(chefId, isActive);
+    });
+  }, [chefStatuses, updateChefStatus]);
 
   // Fetch delivery settings, chef statuses, and user location on mount
   React.useEffect(() => {

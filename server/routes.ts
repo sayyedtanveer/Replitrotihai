@@ -9,6 +9,8 @@ import { setupWebSocket, broadcastNewOrder } from "./websocket";
 import { hashPassword, verifyPassword, generateAccessToken, generateRefreshToken, requireUser, type AuthenticatedUserRequest } from "./userAuth";
 import { verifyToken as verifyUserToken } from "./userAuth";
 import { sendEmail, createWelcomeEmail, createPasswordResetEmail, createPasswordChangeConfirmationEmail } from "./emailService";
+import { db, subscriptions } from "@shared/db";
+import { eq } from "drizzle-orm";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   registerAdminRoutes(app);
@@ -95,9 +97,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      res.json({ 
-        message: emailSent 
-          ? "Password reset successful! Check your email for the new password." 
+      res.json({
+        message: emailSent
+          ? "Password reset successful! Check your email for the new password."
           : "Password reset successful. Your new password is the last 6 digits of your phone number.",
         newPassword: !emailSent ? newPassword : undefined,
         emailSent,
@@ -153,7 +155,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      res.json({ 
+      res.json({
         message: "Password changed successfully",
         success: true
       });
@@ -497,41 +499,65 @@ app.post("/api/user/logout", async (req, res) => {
 
   // User confirms they made payment (similar to order payment confirmation)
   app.post("/api/subscriptions/:id/payment-confirmed", requireUser(), async (req: AuthenticatedUserRequest, res) => {
+    // Set JSON response header at the start
+    res.setHeader("Content-Type", "application/json");
+    
     try {
-      const userId = req.authenticatedUser!.userId;
+      const { id } = req.params;
       const { paymentTransactionId } = req.body;
-      const subscription = await storage.getSubscription(req.params.id);
 
-      if (!subscription) {
-        res.status(404).json({ message: "Subscription not found" });
-        return;
+      console.log(`📋 Subscription payment confirmation request - ID: ${id}, TxnID: ${paymentTransactionId}`);
+
+      if (!req.authenticatedUser) {
+        return res.status(401).json({ message: "Authentication required" });
       }
 
-      if (subscription.userId !== userId) {
-        res.status(403).json({ message: "Unauthorized" });
-        return;
+      if (!paymentTransactionId || paymentTransactionId.trim() === "") {
+        return res.status(400).json({ message: "Payment transaction ID is required" });
+      }
+
+      const subscription = await db.query.subscriptions.findFirst({
+        where: eq(subscriptions.id, id),
+      });
+
+      if (!subscription) {
+        console.log(`❌ Subscription not found: ${id}`);
+        return res.status(404).json({ message: "Subscription not found" });
+      }
+
+      if (subscription.userId !== req.authenticatedUser.userId) {
+        console.log(`❌ Unauthorized access attempt for subscription: ${id}`);
+        return res.status(403).json({ message: "Unauthorized - This subscription belongs to another user" });
       }
 
       if (subscription.isPaid) {
-        res.status(400).json({ message: "Payment already confirmed" });
-        return;
+        return res.status(400).json({ message: "Subscription already paid" });
       }
 
-      // Mark payment as user-confirmed (pending admin verification)
-      const updated = await storage.updateSubscription(req.params.id, { 
-        paymentTransactionId: paymentTransactionId || `USER_CONFIRMED_${Date.now()}`,
-        status: "pending" // Explicitly set to pending while waiting for admin confirmation
-      });
+      await db.update(subscriptions)
+        .set({ 
+          paymentTransactionId: paymentTransactionId.trim(),
+          updatedAt: new Date()
+        })
+        .where(eq(subscriptions.id, id));
 
-      console.log(`✅ User confirmed payment for subscription ${req.params.id} - Waiting for admin verification`);
+      console.log(`✅ Subscription payment confirmed: ${id} - TxnID: ${paymentTransactionId.trim()}`);
 
-      res.json({ 
-        message: "Payment confirmation received. Admin will verify and activate your subscription.", 
-        subscription: updated 
+      return res.status(200).json({ 
+        message: "Payment confirmation submitted. Admin will verify shortly.",
+        subscription: {
+          ...subscription,
+          paymentTransactionId: paymentTransactionId.trim()
+        }
       });
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error confirming subscription payment:", error);
-      res.status(500).json({ message: error.message || "Failed to confirm payment" });
+      // Ensure we always return JSON even on error
+      res.setHeader("Content-Type", "application/json");
+      return res.status(500).json({ 
+        message: "Failed to confirm payment",
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
     }
   });
 
@@ -673,7 +699,7 @@ app.post("/api/user/logout", async (req, res) => {
 
       // Get all orders and filter by user's phone number
       const allOrders = await storage.getAllOrders();
-      const userOrders = allOrders.filter(order => 
+      const userOrders = allOrders.filter(order =>
         order.phone === user.phone || order.userId === userId
       );
 
@@ -789,9 +815,9 @@ app.post("/api/orders", async (req: any, res) => {
         // Double-check phone doesn't exist (security measure)
         const existingUser = await storage.getUserByPhone(sanitized.phone);
         if (existingUser) {
-          return res.status(400).json({ 
+          return res.status(400).json({
             message: "Phone number already registered. Please login to continue.",
-            requiresLogin: true 
+            requiresLogin: true
           });
         }
 
@@ -886,8 +912,8 @@ app.post("/api/orders", async (req: any, res) => {
 
             // Mark referral as completed
             await tx.update(referralsTable)
-              .set({ 
-                status: "completed", 
+              .set({
+                status: "completed",
                 referredOrderCompleted: true,
                 completedAt: new Date()
               })
@@ -949,11 +975,11 @@ app.post("/api/orders", async (req: any, res) => {
         }
 
         const allOrders = await storage.getAllOrders();
-        const userOrders = allOrders.filter(order => 
+        const userOrders = allOrders.filter(order =>
           order.email === user.email || order.phone === user.email
         );
         res.json(userOrders);
-      } 
+      }
       // Check if user is authenticated via phone auth (JWT)
       else if (req.headers.authorization?.startsWith("Bearer ")) {
         const token = req.headers.authorization.substring(7);
@@ -1021,9 +1047,9 @@ app.post("/api/orders", async (req: any, res) => {
 
       console.log(`✅ Payment confirmed for order ${id} - Status: ${updatedOrder?.paymentStatus}`);
 
-      res.json({ 
-        message: "Payment confirmation received", 
-        order: updatedOrder 
+      res.json({
+        message: "Payment confirmation received",
+        order: updatedOrder
       });
     } catch (error: any) {
       console.error("Error confirming payment:", error);
@@ -1064,7 +1090,7 @@ app.post("/api/orders", async (req: any, res) => {
 
       if (chefId) {
         const chef = await storage.getChefById(chefId);
-        if (chef && chef.latitude !== null && chef.longitude !== null && 
+        if (chef && chef.latitude !== null && chef.longitude !== null &&
             chef.latitude !== undefined && chef.longitude !== undefined) {
           chefLat = chef.latitude;
           chefLon = chef.longitude;
@@ -1241,29 +1267,8 @@ app.post("/api/orders", async (req: any, res) => {
     }
   });
 
-  // Cancel a subscription
-  app.delete("/api/subscriptions/:id", requireUser(), async (req: AuthenticatedUserRequest, res) => {
-    try {
-      const userId = req.authenticatedUser!.userId;
-      const subscription = await storage.getSubscription(req.params.id);
-
-      if (!subscription) {
-        res.status(404).json({ message: "Subscription not found" });
-        return;
-      }
-
-      if (subscription.userId !== userId) {
-        res.status(403).json({ message: "Unauthorized" });
-        return;
-      }
-
-      await storage.deleteSubscription(req.params.id);
-      res.json({ message: "Subscription cancelled" });
-    } catch (error: any) {
-      console.error("Error cancelling subscription:", error);
-      res.status(500).json({ message: error.message || "Failed to cancel subscription" });
-    }
-  });
+  // Cancel subscription route removed - users can only pause/resume
+  // Admin can manage subscriptions through admin routes if needed
 
   // Public delivery settings endpoint (no auth required for cart calculations)
   app.get("/api/delivery-settings", async (req, res) => {
