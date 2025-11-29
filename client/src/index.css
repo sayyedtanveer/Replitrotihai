@@ -260,6 +260,15 @@
     display: none;
   }
 
+  /* Ensure categories are visible on all screen sizes */
+  @media (max-width: 640px) {
+    .flex.gap-6 {
+      justify-content: flex-start;
+      padding-left: 1rem;
+      padding-right: 1rem;
+    }
+  }
+
   /* Smooth category hover effects */
   .category-hover-effect {
     @apply transition-all duration-300 ease-out;
@@ -267,6 +276,128 @@
 
   .category-hover-effect:hover {
     @apply -translate-y-1 shadow-xl;
+  }
+
+  /* Circular category hover effects for mobile and desktop */
+  @keyframes bounce-subtle {
+    0%, 100% {
+      transform: translateY(0) scale(1);
+    }
+    50% {
+      transform: translateY(-8px) scale(1.05);
+    }
+  }
+
+  @keyframes pop-out {
+    0% {
+      transform: translateY(0) scale(1);
+    }
+    50% {
+      transform: translateY(-4px) scale(1.08);
+    }
+    100% {
+      transform: translateY(-2px) scale(1.05);
+    }
+  }
+
+  @keyframes shine-sweep {
+    0% {
+      transform: translateX(-100%) skewX(-15deg);
+    }
+    100% {
+      transform: translateX(200%) skewX(-15deg);
+    }
+  }
+
+  /* Desktop hover effects for sticky category bar */
+  @media (hover: hover) {
+    [data-testid^="button-category-"]:hover {
+      animation: pop-out 0.3s ease-out forwards;
+    }
+    
+    /* Desktop hover effects for circular categories */
+    [data-testid^="circle-category-"]:hover > div > div:first-child {
+      animation: bounce-subtle 0.6s ease-in-out;
+    }
+  }
+
+  /* Mobile tap effects */
+  @media (hover: none) {
+    /* Sticky bar mobile tap effect */
+    [data-testid^="button-category-"]:active {
+      transform: scale(0.97) translateY(-1px);
+      transition: transform 0.1s ease-out;
+    }
+    
+    /* Mobile tap effects for circular categories */
+    [data-testid^="circle-category-"]:active > div > div:first-child {
+      transform: scale(0.95);
+      transition: transform 0.1s ease-out;
+    }
+  }
+
+  /* Ensure smooth scrolling on mobile for category bar */
+  .scrollbar-hide {
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Enhanced animations for mobile interactions */
+  @keyframes shimmer {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(100%);
+    }
+  }
+
+  @keyframes float {
+    0%, 100% {
+      transform: translateY(0px);
+    }
+    50% {
+      transform: translateY(-10px);
+    }
+  }
+
+  @keyframes pulse-glow {
+    0%, 100% {
+      opacity: 0.5;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.8;
+      transform: scale(1.05);
+    }
+  }
+
+  @keyframes spin-slow {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .animate-float {
+    animation: float 3s ease-in-out infinite;
+  }
+
+  .animate-shimmer {
+    animation: shimmer 2s infinite;
+  }
+
+  .animate-spin-slow {
+    animation: spin-slow 8s linear infinite;
+  }
+
+  /* Smooth touch interactions for mobile */
+  @media (hover: none) {
+    .touch-feedback:active {
+      transform: scale(0.98);
+    }
   }
 }
 

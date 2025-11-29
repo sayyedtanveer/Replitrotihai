@@ -17,20 +17,7 @@ import { fromZodError } from "zod-validation-error";
 import { broadcastOrderUpdate, broadcastNewOrder, notifyDeliveryAssignment, cancelPreparedOrderTimeout, broadcastProductAvailabilityUpdate, broadcastChefStatusUpdate } from "./websocket";
 import { hashPassword as hashDeliveryPassword } from "./deliveryAuth";
 import { eq } from "drizzle-orm";
-import { subscriptions } from "@shared/schema"; // Assuming 'subscriptions' schema is defined here
-
-// Mock requireAdminAuth for the changes to be syntactically correct, as it's not provided in the original code.
-// In a real scenario, this would be imported or defined elsewhere.
-const requireAdminAuth = (req: any, res: any, next: any) => {
-  // Dummy implementation for demonstration
-  if (req.headers['authorization'] === 'admin-token') {
-    req.admin = { adminId: 'admin123' }; // Mock admin ID
-    next();
-  } else {
-    res.status(401).json({ message: 'Unauthorized' });
-  }
-};
-
+import { subscriptions } from "@shared/schema";
 
 export function registerAdminRoutes(app: Express) {
   // TEMPORARY TEST ENDPOINT - REMOVE IN PRODUCTION
@@ -970,7 +957,7 @@ export function registerAdminRoutes(app: Express) {
   });
 
   // Verify subscription payment (admin action) - added error handling and logging
-  app.post("/api/admin/subscriptions/:id/verify-payment", requireAdminAuth, async (req, res) => {
+  app.post("/api/admin/subscriptions/:id/verify-payment", requireAdmin(), async (req: AuthenticatedAdminRequest, res) => {
     try {
       const { id } = req.params;
 

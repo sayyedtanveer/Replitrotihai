@@ -1,8 +1,14 @@
-import { Facebook, Instagram, Twitter } from "lucide-react";
+import { Facebook, Instagram, Twitter, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 export default function Footer() {
+  const handleWhatsAppSupport = () => {
+    const message = "Hi! I need help with my order from RotiHai.";
+    const whatsappUrl = `https://wa.me/918169020290?text=${encodeURIComponent(message)}`;
+    window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
+  };
+
   return (
     <footer className="bg-card border-t mt-16">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -23,6 +29,16 @@ export default function Footer() {
               </Button>
               <Button size="icon" variant="ghost" data-testid="button-twitter">
                 <Twitter className="h-5 w-5" />
+              </Button>
+              <Button 
+                size="icon" 
+                variant="ghost" 
+                data-testid="button-whatsapp"
+                onClick={handleWhatsAppSupport}
+                className="text-green-600 hover:text-green-700"
+                title="Chat with us on WhatsApp"
+              >
+                <MessageCircle className="h-5 w-5" />
               </Button>
             </div>
           </div>

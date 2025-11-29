@@ -37,6 +37,7 @@ import {
   MapPin,
   Phone,
   CreditCard,
+  MessageCircle,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { format } from "date-fns";
@@ -298,6 +299,18 @@ export default function MyOrders() {
   const activeOrder = orders.find(
     (order) => !["delivered", "completed", "cancelled"].includes(order.status)
   );
+
+  const handleWhatsAppSupport = (order?: Order) => {
+    if (order) {
+      const message = `Hi! I need help with my order.\n\nOrder ID: #${order.id.slice(0, 8)}\nStatus: ${order.status.toUpperCase().replace(/_/g, " ")}\nTotal: ₹${order.total}\n\nCan you please assist me?`;
+      const whatsappUrl = `https://wa.me/918169020290?text=${encodeURIComponent(message)}`;
+      window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
+    } else {
+      const message = "Hi! I need help with my RotiHai orders.";
+      const whatsappUrl = `https://wa.me/918169020290?text=${encodeURIComponent(message)}`;
+      window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
+    }
+  };
 
   // 🧩 UI rendering
   return (
@@ -566,13 +579,24 @@ export default function MyOrders() {
                             </Badge>
                           </TableCell>
                           <TableCell>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setLocation(`/track/${order.id}`)}
-                            >
-                              Track
-                            </Button>
+                            <div className="flex gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setLocation(`/track/${order.id}`)}
+                              >
+                                Track
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleWhatsAppSupport(order)}
+                                className="text-green-600 hover:text-green-700"
+                                title="Chat about this order"
+                              >
+                                <MessageCircle className="h-4 w-4" />
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}

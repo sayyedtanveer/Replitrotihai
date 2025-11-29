@@ -14,7 +14,7 @@ import { useState, useEffect } from "react";
   import LoginDialog from "@/components/LoginDialog";
   import Footer from "@/components/Footer";
   import { Button } from "@/components/ui/button";
-  import { UtensilsCrossed, ChefHat, Hotel } from "lucide-react";
+  import { UtensilsCrossed, ChefHat, Hotel, MessageCircle } from "lucide-react";
   import type { Category, Chef, Product } from "@shared/schema";
   import { useCart } from "@/hooks/use-cart";
   import { toast } from "@/hooks/use-toast";
@@ -211,17 +211,13 @@ import { useState, useEffect } from "react";
   };
 
     const handleBrowseCategory = (categoryId: string) => {
-      const category = categories.find(c => c.id === categoryId);
-      if (category) {
-        setSelectedCategoryTab(categoryId);
-        setIsMenuOpen(false);
-        setTimeout(() => {
-          const productsSection = document.getElementById("products-section");
-          if (productsSection) {
-            productsSection.scrollIntoView({ behavior: "smooth", block: "start" });
-          }
-        }, 100);
-      }
+      // setLocation(`/?category=${categoryId}`);
+    };
+
+    const handleWhatsAppSupport = () => {
+      const message = "Hi! I need help with ordering from RotiHai.";
+      const whatsappUrl = `https://wa.me/918169020290?text=${encodeURIComponent(message)}`;
+      window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
     };
 
     const filteredProducts = products.filter(product => {
@@ -321,40 +317,35 @@ import { useState, useEffect } from "react";
         <main className="flex-1">
           <Hero />
 
-          {/* Sticky Category Navigation Bar */}
-          <div className="sticky top-0 z-40 bg-background/95 backdrop-blur-sm border-b shadow-sm">
-            <div className="w-full px-2 sm:px-4">
-              <div className="flex items-center justify-start sm:justify-center gap-2 sm:gap-3 overflow-x-auto py-3 sm:py-4 scrollbar-hide max-w-7xl mx-auto">
+          {/* Sticky Category Navigation Bar - Enhanced with Pop-out Effect */}
+          <div className="sticky top-14 sm:top-16 z-40 bg-background/95 backdrop-blur-md border-b shadow-sm">
+            <div className="max-w-7xl mx-auto">
+              <div className="flex items-center gap-2 overflow-x-auto py-3 px-3 sm:px-4 scrollbar-hide">
                 {/* All Categories Button */}
                 <button
                   onClick={() => handleCategoryTabChange("all")}
-                  className={`group flex-shrink-0 flex flex-col items-center gap-1.5 sm:gap-2 p-2 sm:p-3 rounded-lg sm:rounded-xl transition-all duration-300 min-w-[70px] sm:min-w-[85px] ${
+                  data-testid="button-category-all"
+                  className={`group flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-full transition-all duration-300 ease-out ${
                     selectedCategoryTab === "all"
                       ? "bg-primary text-primary-foreground shadow-lg scale-105"
-                      : "bg-card hover:shadow-xl hover:-translate-y-1"
+                      : "bg-muted/50 hover:bg-muted hover:shadow-md hover:-translate-y-1 active:scale-95"
                   }`}
                 >
-                  <div className={`w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all duration-300 ${
+                  <div className={`w-9 h-9 rounded-full flex items-center justify-center transition-all duration-300 ${
                     selectedCategoryTab === "all"
                       ? "bg-primary-foreground/20 scale-110"
-                      : "bg-background/50 group-hover:bg-primary/10 group-hover:scale-110 group-hover:shadow-lg"
+                      : "bg-background group-hover:scale-110 group-hover:rotate-6"
                   }`}>
-                    <UtensilsCrossed className={`h-5 w-5 sm:h-5.5 sm:w-5.5 transition-transform duration-300 ${
-                      selectedCategoryTab === "all" ? "" : "group-hover:scale-110"
-                    }`} />
+                    <UtensilsCrossed className="h-5 w-5" />
                   </div>
-                  <span className={`text-[10px] sm:text-xs font-medium text-center leading-tight transition-all duration-300 ${
-                    selectedCategoryTab === "all"
-                      ? ""
-                      : "group-hover:text-primary group-hover:font-semibold"
-                  }`}>All</span>
+                  <span className="text-sm font-semibold whitespace-nowrap">All</span>
                 </button>
 
                 {/* Category Buttons */}
                 {categoriesLoading ? (
-                  <div className="flex gap-2 sm:gap-3">
-                    {[...Array(3)].map((_, i) => (
-                      <div key={i} className="flex-shrink-0 w-[70px] sm:w-[85px] h-[72px] sm:h-[84px] bg-muted/50 rounded-lg sm:rounded-xl animate-pulse" />
+                  <div className="flex gap-2">
+                    {[...Array(4)].map((_, i) => (
+                      <div key={i} className="flex-shrink-0 w-28 h-12 bg-muted/50 rounded-full animate-pulse" />
                     ))}
                   </div>
                 ) : (
@@ -362,28 +353,27 @@ import { useState, useEffect } from "react";
                     <button
                       key={category.id}
                       onClick={() => handleBrowseCategory(category.id)}
-                      className={`group flex-shrink-0 flex flex-col items-center gap-1.5 sm:gap-2 p-2 sm:p-3 rounded-lg sm:rounded-xl transition-all duration-300 min-w-[70px] sm:min-w-[85px] ${
+                      data-testid={`button-category-${category.id}`}
+                      className={`group flex-shrink-0 flex items-center gap-2.5 px-4 py-2.5 rounded-full transition-all duration-300 ease-out ${
                         selectedCategoryTab === category.id
                           ? "bg-primary text-primary-foreground shadow-lg scale-105"
-                          : "bg-card hover:shadow-xl hover:-translate-y-1"
+                          : "bg-muted/50 hover:bg-muted hover:shadow-md hover:-translate-y-1 active:scale-95"
                       }`}
                     >
-                      <div className={`w-10 h-10 sm:w-11 sm:h-11 rounded-full overflow-hidden transition-all duration-300 ${
+                      <div className={`relative w-9 h-9 rounded-full overflow-hidden flex-shrink-0 transition-all duration-300 ${
                         selectedCategoryTab === category.id
-                          ? "ring-2 ring-primary-foreground scale-110"
-                          : "ring-2 ring-background group-hover:ring-primary/30 group-hover:scale-110 group-hover:shadow-lg"
+                          ? "ring-2 ring-primary-foreground/50 scale-110"
+                          : "ring-1 ring-border group-hover:ring-2 group-hover:ring-primary/40 group-hover:scale-110 group-hover:rotate-6"
                       }`}>
                         <img
                           src={category.image}
                           alt={category.name}
-                          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-125"
                         />
+                        {/* Shine effect on hover */}
+                        <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 transform -translate-x-full group-hover:translate-x-full" />
                       </div>
-                      <span className={`text-[10px] sm:text-xs font-medium text-center line-clamp-2 leading-tight px-1 transition-all duration-300 ${
-                        selectedCategoryTab === category.id
-                          ? ""
-                          : "group-hover:text-primary group-hover:font-semibold"
-                      }`}>
+                      <span className="text-sm font-semibold whitespace-nowrap max-w-[90px] truncate">
                         {category.name}
                       </span>
                     </button>
@@ -393,15 +383,30 @@ import { useState, useEffect } from "react";
             </div>
           </div>
 
-          <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+          {/* Promotional Banner Section */}
+          <section className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4">
+            <div className="bg-gradient-to-r from-primary/10 via-primary/5 to-primary/10 rounded-2xl p-6 sm:p-8 text-center">
+              <h3 className="text-lg sm:text-xl font-bold mb-2">🎉 Special Offer Today!</h3>
+              <p className="text-sm sm:text-base text-muted-foreground mb-4">
+                Get 20% off on your first subscription order
+              </p>
+              <Button onClick={() => setIsSubscriptionOpen(true)} className="gap-2">
+                View Subscriptions
+              </Button>
+            </div>
+          </section>
+
+          <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-16">
 
             <div id="products-section">
               {selectedCategoryTab === "all" ? (
                 <>
-                  <div className="text-center mb-8">
-                    <h2 className="text-3xl sm:text-4xl font-bold mb-4">Popular Items</h2>
-                    <p className="text-lg text-muted-foreground">
-                      Most loved by our customers
+                  <div className="mb-6">
+                    <h2 className="text-2xl sm:text-3xl font-bold mb-2">
+                      Popular Dishes Near You
+                    </h2>
+                    <p className="text-sm sm:text-base text-muted-foreground">
+                      Fresh, homemade meals from local chefs
                     </p>
                   </div>
 
@@ -592,6 +597,16 @@ import { useState, useEffect } from "react";
         </main>
 
         <Footer />
+
+        {/* Floating WhatsApp Support Button */}
+        <Button
+          onClick={handleWhatsAppSupport}
+          className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg bg-green-600 hover:bg-green-700 text-white z-50"
+          size="icon"
+          title="Chat with us on WhatsApp"
+        >
+          <MessageCircle className="h-6 w-6" />
+        </Button>
 
         {/* Drawers */}
         <MenuDrawer

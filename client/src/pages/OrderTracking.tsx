@@ -18,7 +18,8 @@ import {
   ShoppingBag,
   CreditCard,
   ArrowLeft,
-  User, // Import User icon
+  User,
+  MessageCircle,
 } from "lucide-react";
 import { queryClient } from "@/lib/queryClient";
 import { Link } from "wouter";
@@ -117,6 +118,14 @@ export default function OrderTracking() {
       default:
         return "bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-200";
     }
+  };
+
+  const handleWhatsAppSupport = () => {
+    if (!order) return;
+    
+    const message = `Hi! I need help with my order.\n\nOrder ID: #${order.id.slice(0, 8)}\nStatus: ${order.status.toUpperCase().replace(/_/g, " ")}\nTotal: ₹${order.total}\n\nCan you please assist me?`;
+    const whatsappUrl = `https://wa.me/918169020290?text=${encodeURIComponent(message)}`;
+    window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
   };
 
   const getOrderProgress = (order: Order) => {
@@ -255,7 +264,15 @@ export default function OrderTracking() {
               </Button>
             </Link>
             <h1 className="text-xl font-bold">Track Order</h1>
-            <div className="w-20"></div>
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={handleWhatsAppSupport}
+              className="text-green-600 hover:text-green-700 border-green-600 hover:border-green-700"
+            >
+              <MessageCircle className="h-4 w-4 mr-2" />
+              Chat Support
+            </Button>
           </div>
         </div>
       </header>

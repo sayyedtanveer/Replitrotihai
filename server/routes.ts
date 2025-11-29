@@ -499,21 +499,23 @@ app.post("/api/user/logout", async (req, res) => {
 
   // User confirms they made payment (similar to order payment confirmation)
   app.post("/api/subscriptions/:id/payment-confirmed", requireUser(), async (req: AuthenticatedUserRequest, res) => {
-    // Set JSON response header at the start
-    res.setHeader("Content-Type", "application/json");
-    
     try {
+      // Ensure JSON response header is set first
+      res.setHeader("Content-Type", "application/json");
+      
       const { id } = req.params;
       const { paymentTransactionId } = req.body;
 
       console.log(`📋 Subscription payment confirmation request - ID: ${id}, TxnID: ${paymentTransactionId}`);
 
       if (!req.authenticatedUser) {
-        return res.status(401).json({ message: "Authentication required" });
+        res.status(401).json({ message: "Authentication required" });
+        return;
       }
 
       if (!paymentTransactionId || paymentTransactionId.trim() === "") {
-        return res.status(400).json({ message: "Payment transaction ID is required" });
+        res.status(400).json({ message: "Payment transaction ID is required" });
+        return;
       }
 
       const subscription = await db.query.subscriptions.findFirst({
@@ -522,16 +524,19 @@ app.post("/api/user/logout", async (req, res) => {
 
       if (!subscription) {
         console.log(`❌ Subscription not found: ${id}`);
-        return res.status(404).json({ message: "Subscription not found" });
+        res.status(404).json({ message: "Subscription not found" });
+        return;
       }
 
       if (subscription.userId !== req.authenticatedUser.userId) {
         console.log(`❌ Unauthorized access attempt for subscription: ${id}`);
-        return res.status(403).json({ message: "Unauthorized - This subscription belongs to another user" });
+        res.status(403).json({ message: "Unauthorized - This subscription belongs to another user" });
+        return;
       }
 
       if (subscription.isPaid) {
-        return res.status(400).json({ message: "Subscription already paid" });
+        res.status(400).json({ message: "Subscription already paid" });
+        return;
       }
 
       await db.update(subscriptions)
@@ -543,7 +548,7 @@ app.post("/api/user/logout", async (req, res) => {
 
       console.log(`✅ Subscription payment confirmed: ${id} - TxnID: ${paymentTransactionId.trim()}`);
 
-      return res.status(200).json({ 
+      res.status(200).json({ 
         message: "Payment confirmation submitted. Admin will verify shortly.",
         subscription: {
           ...subscription,
@@ -554,7 +559,7 @@ app.post("/api/user/logout", async (req, res) => {
       console.error("Error confirming subscription payment:", error);
       // Ensure we always return JSON even on error
       res.setHeader("Content-Type", "application/json");
-      return res.status(500).json({ 
+      res.status(500).json({ 
         message: "Failed to confirm payment",
         error: error instanceof Error ? error.message : "Unknown error"
       });
