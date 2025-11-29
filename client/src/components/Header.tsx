@@ -33,9 +33,10 @@ interface HeaderProps {
   onChefListClick: () => void;
   onSubscriptionClick: () => void;
   onLoginClick?: () => void;
+  onOffersClick: () => void; // Added onOffersClick prop
 }
 
-export default function Header({ cartItemCount = 0, onCartClick, onMenuClick, searchQuery = "", onSearchChange, onChefListClick, onSubscriptionClick, onLoginClick }: HeaderProps) {
+export default function Header({ cartItemCount = 0, onCartClick, onMenuClick, searchQuery = "", onSearchChange, onChefListClick, onSubscriptionClick, onLoginClick, onOffersClick }: HeaderProps) {
   const { user } = useAuth();
   const isAuthenticated = !!user;
   const { toast } = useToast();
@@ -48,13 +49,13 @@ export default function Header({ cartItemCount = 0, onCartClick, onMenuClick, se
   useEffect(() => {
     const savedLat = localStorage.getItem('userLatitude');
     const savedLng = localStorage.getItem('userLongitude');
-    
+
     if (savedLat && savedLng) {
       const lat = parseFloat(savedLat);
       const lng = parseFloat(savedLng);
       const deliveryCheck = getDeliveryMessage(lat, lng);
       setIsServiceable(deliveryCheck.available);
-      
+
       if (deliveryCheck.available) {
         setCurrentLocation("Kurla West, Mumbai");
       } else {
@@ -115,7 +116,7 @@ export default function Header({ cartItemCount = 0, onCartClick, onMenuClick, se
 
   const handleManualAddress = () => {
     const addressLower = manualAddress.toLowerCase().trim();
-    
+
     if (!addressLower) {
       toast({
         title: "Address Required",
@@ -125,10 +126,11 @@ export default function Header({ cartItemCount = 0, onCartClick, onMenuClick, se
       return;
     }
 
-    const isKurlaArea = addressLower.includes("kurla") || 
-                        addressLower.includes("chunabhatti") ||
-                        addressLower.includes("sion") ||
-                        addressLower.includes("bkc");
+    const isKurlaArea = addressLower.includes("kurla") 
+    // || 
+    //                     addressLower.includes("chunabhatti") ||
+    //                     addressLower.includes("sion") ||
+    //                     addressLower.includes("bkc");
 
     if (isKurlaArea) {
       setCurrentLocation(manualAddress);
@@ -154,7 +156,7 @@ export default function Header({ cartItemCount = 0, onCartClick, onMenuClick, se
   const handleLogout = () => {
     window.location.href = "/api/logout";
   };
-  
+
   return (
     <header className="sticky top-0 z-50 bg-background border-b">
       <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8">
@@ -177,7 +179,7 @@ export default function Header({ cartItemCount = 0, onCartClick, onMenuClick, se
                 घर की रोटी
               </span>
             </div>
-            
+
             <Sheet open={isLocationOpen} onOpenChange={setIsLocationOpen}>
               <SheetTrigger asChild>
                 <Button
@@ -197,7 +199,7 @@ export default function Header({ cartItemCount = 0, onCartClick, onMenuClick, se
                     Change Delivery Location
                   </SheetTitle>
                 </SheetHeader>
-                
+
                 <div className="space-y-4">
                   <Button
                     variant="outline"
@@ -215,7 +217,7 @@ export default function Header({ cartItemCount = 0, onCartClick, onMenuClick, se
                       <p className="text-xs text-muted-foreground">Using GPS</p>
                     </div>
                   </Button>
-                  
+
                   <div className="relative">
                     <div className="absolute inset-0 flex items-center">
                       <span className="w-full border-t" />
@@ -224,7 +226,7 @@ export default function Header({ cartItemCount = 0, onCartClick, onMenuClick, se
                       <span className="bg-background px-2 text-muted-foreground">Or enter address</span>
                     </div>
                   </div>
-                  
+
                   <div className="flex gap-2">
                     <Input
                       placeholder="Enter Kurla area address..."
@@ -237,15 +239,36 @@ export default function Header({ cartItemCount = 0, onCartClick, onMenuClick, se
                       Confirm
                     </Button>
                   </div>
-                  
+
                   <div className="bg-muted/50 rounded-lg p-3">
                     <p className="text-xs text-muted-foreground">
-                      Currently serving: <span className="font-medium text-foreground">Kurla West, Kurla East, Chunabhatti, Sion, BKC</span>
+                      Currently serving: <span className="font-medium text-foreground">Kurla West</span>
                     </p>
                   </div>
                 </div>
               </SheetContent>
             </Sheet>
+          </div>
+
+          <div className="hidden md:flex items-center gap-1 sm:gap-2"> {/* Adjusted to include Offers button */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onMenuClick}
+              className="flex items-center gap-2"
+            >
+              <Menu className="h-5 w-5" />
+              <span>Menu</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onOffersClick}
+              className="flex items-center gap-2 text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+            >
+              <span className="text-lg">🔥</span>
+              <span className="font-semibold">Offers</span>
+            </Button>
           </div>
 
           <div className="hidden md:flex flex-1 max-w-xl">
@@ -303,7 +326,7 @@ export default function Header({ cartItemCount = 0, onCartClick, onMenuClick, se
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
-            
+
             <Sheet open={isLocationOpen} onOpenChange={setIsLocationOpen}>
               <SheetTrigger asChild>
                 <Button
@@ -316,7 +339,7 @@ export default function Header({ cartItemCount = 0, onCartClick, onMenuClick, se
                 </Button>
               </SheetTrigger>
             </Sheet>
-            
+
             <Button
               variant="ghost"
               size="icon"

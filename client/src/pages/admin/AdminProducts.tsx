@@ -4,7 +4,7 @@ import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -75,6 +75,7 @@ export default function AdminProducts() {
       isAvailable: true,
       stockQuantity: 100,
       lowStockThreshold: 20,
+      offerPercentage: 0, // Added default for offerPercentage
     },
   });
 
@@ -169,6 +170,7 @@ export default function AdminProducts() {
       chefId: product.chefId || "none", // Handle null/undefined chefId
       stockQuantity: product.stockQuantity || 100,
       lowStockThreshold: product.lowStockThreshold || 20,
+      offerPercentage: product.offerPercentage || 0, // Ensure offerPercentage is reset
     });
     setIsDialogOpen(true);
   };
@@ -359,6 +361,49 @@ export default function AdminProducts() {
                         )}
                       />
                     </div>
+                    <div className="flex flex-col gap-4">
+                      <FormField
+                        control={form.control}
+                        name="isCustomizable"
+                        render={({ field }) => (
+                          <FormItem className="flex items-center justify-between rounded-lg border p-4">
+                            <div className="space-y-0.5">
+                              <FormLabel className="text-base">Customizable</FormLabel>
+                              <FormDescription>
+                                Allow customers to customize this product
+                              </FormDescription>
+                            </div>
+                            <FormControl>
+                              <Switch checked={field.value} onCheckedChange={field.onChange} />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name="offerPercentage"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Offer Percentage (0-100%)</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                min="0"
+                                max="100"
+                                placeholder="Enter discount percentage"
+                                {...field}
+                                onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
+                              />
+                            </FormControl>
+                            <FormDescription>
+                              Set a discount percentage for this product (0 = no offer)
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
                     <div className="flex gap-4">
                       <FormField
                         control={form.control}
@@ -431,14 +476,14 @@ export default function AdminProducts() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Product</TableHead>
+                      <TableHead>Name</TableHead>
                       <TableHead>Category</TableHead>
                       <TableHead>Chef</TableHead>
                       <TableHead>Price</TableHead>
+                      <TableHead>Offer</TableHead>
                       <TableHead>Stock</TableHead>
                       <TableHead>Type</TableHead>
-                      <TableHead>Customizable</TableHead>
-                      <TableHead>Available</TableHead>
+                      <TableHead>Status</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -467,7 +512,23 @@ export default function AdminProducts() {
                           <span className="text-sm">{getChefName(product.chefId)}</span>
                         </TableCell>
                         <TableCell>
-                          <span className="font-semibold">₹{product.price}</span>
+                          {product.offerPercentage > 0 ? (
+                            <div className="flex flex-col">
+                              <span className="line-through text-slate-500 text-sm">₹{product.price}</span>
+                              <span className="font-semibold text-green-600">₹{Math.round(product.price * (1 - product.offerPercentage / 100))}</span>
+                            </div>
+                          ) : (
+                            <span>₹{product.price}</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {product.offerPercentage > 0 ? (
+                            <Badge variant="destructive" className="bg-green-600">
+                              {product.offerPercentage}% OFF
+                            </Badge>
+                          ) : (
+                            <span className="text-slate-400">-</span>
+                          )}
                         </TableCell>
                         <TableCell>
                           <span className={product.stockQuantity && product.stockQuantity < (product.lowStockThreshold || 20) ? "text-yellow-600" : ""}>
@@ -477,11 +538,6 @@ export default function AdminProducts() {
                         <TableCell>
                           <Badge variant={product.isVeg ? "default" : "destructive"} className="text-xs">
                             {product.isVeg ? "Veg" : "Non-Veg"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={product.isCustomizable ? "secondary" : "outline"} className="text-xs">
-                            {product.isCustomizable ? "Yes" : "No"}
                           </Badge>
                         </TableCell>
                         <TableCell>
@@ -568,10 +624,21 @@ export default function AdminProducts() {
                       <Badge variant={product.isAvailable !== false ? "default" : "destructive"} className="text-xs">
                         {product.isAvailable !== false ? "Available" : "Unavailable"}
                       </Badge>
+                      {product.offerPercentage > 0 && (
+                        <Badge variant="destructive" className="bg-green-600 text-xs">
+                          {product.offerPercentage}% OFF
+                        </Badge>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-lg font-bold text-slate-900 dark:text-slate-100">₹{product.price}</span>
+                    <span className="text-lg font-bold text-slate-900 dark:text-slate-100">
+                      {product.offerPercentage > 0 ? (
+                        <span>₹{Math.round(product.price * (1 - product.offerPercentage / 100))}</span>
+                      ) : (
+                        <span>₹{product.price}</span>
+                      )}
+                    </span>
                     <div className="flex gap-1">
                       <Button size="sm" variant="outline" onClick={() => handleEdit(product)} data-testid={`button-edit-${product.id}`}>
                         <Pencil className="w-4 h-4" />

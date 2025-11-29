@@ -37,5 +37,6 @@ export const {
   referrals,
   walletTransactions,
   walletSettings,
-  referralRewards
+  referralRewards,
+  promotionalBanners
 } = schema;

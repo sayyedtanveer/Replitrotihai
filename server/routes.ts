@@ -502,7 +502,7 @@ app.post("/api/user/logout", async (req, res) => {
     try {
       // Ensure JSON response header is set first
       res.setHeader("Content-Type", "application/json");
-      
+
       const { id } = req.params;
       const { paymentTransactionId } = req.body;
 
@@ -540,7 +540,7 @@ app.post("/api/user/logout", async (req, res) => {
       }
 
       await db.update(subscriptions)
-        .set({ 
+        .set({
           paymentTransactionId: paymentTransactionId.trim(),
           updatedAt: new Date()
         })
@@ -548,7 +548,7 @@ app.post("/api/user/logout", async (req, res) => {
 
       console.log(`✅ Subscription payment confirmed: ${id} - TxnID: ${paymentTransactionId.trim()}`);
 
-      res.status(200).json({ 
+      res.status(200).json({
         message: "Payment confirmation submitted. Admin will verify shortly.",
         subscription: {
           ...subscription,
@@ -559,7 +559,7 @@ app.post("/api/user/logout", async (req, res) => {
       console.error("Error confirming subscription payment:", error);
       // Ensure we always return JSON even on error
       res.setHeader("Content-Type", "application/json");
-      res.status(500).json({ 
+      res.status(500).json({
         message: "Failed to confirm payment",
         error: error instanceof Error ? error.message : "Unknown error"
       });
@@ -722,6 +722,7 @@ app.post("/api/user/logout", async (req, res) => {
       const categories = await storage.getAllCategories();
       res.json(categories);
     } catch (error) {
+      console.error("Error fetching categories:", error);
       res.status(500).json({ message: "Failed to fetch categories" });
     }
   });
@@ -739,6 +740,7 @@ app.post("/api/user/logout", async (req, res) => {
         res.json(products);
       }
     } catch (error) {
+      console.error("Error fetching products:", error);
       res.status(500).json({ message: "Failed to fetch products" });
     }
   });
@@ -1136,6 +1138,17 @@ app.post("/api/orders", async (req: any, res) => {
     } catch (error) {
       console.error("Error fetching subscription plans:", error);
       res.status(500).json({ message: "Failed to fetch subscription plans" });
+    }
+  });
+
+  // Public route to fetch active promotional banners
+  app.get("/api/promotional-banners", async (_req, res) => {
+    try {
+      const banners = await storage.getActivePromotionalBanners();
+      res.json(banners);
+    } catch (error) {
+      console.error("Error fetching promotional banners:", error);
+      res.status(500).json({ message: "Failed to fetch promotional banners" });
     }
   });
 

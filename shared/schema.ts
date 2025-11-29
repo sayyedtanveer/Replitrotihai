@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, integer, decimal, boolean, timestamp, jsonb, index, pgEnum, real } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import * as crypto from "crypto";
 
 export const adminRoleEnum = pgEnum("admin_role", ["super_admin", "manager", "viewer"]);
 
@@ -56,7 +57,7 @@ export const categories = pgTable("categories", {
   description: text("description").notNull(),
   image: text("image").notNull(),
   iconName: text("icon_name").notNull(),
-  itemCount: text("item_count").notNull() 
+  itemCount: text("item_count").notNull()
 });
 
 export const chefs = pgTable("chefs", {
@@ -83,11 +84,12 @@ export const products = pgTable("products", {
   reviewCount: integer("review_count").notNull().default(0),
   isVeg: boolean("is_veg").notNull().default(true),
   isCustomizable: boolean("is_customizable").notNull().default(false),
-  categoryId: varchar("category_id").notNull(),
-  chefId: text("chef_id"),
   stockQuantity: integer("stock_quantity").notNull().default(100),
   lowStockThreshold: integer("low_stock_threshold").notNull().default(20),
   isAvailable: boolean("is_available").notNull().default(true),
+  categoryId: varchar("category_id").notNull(),
+  chefId: text("chef_id"),
+  offerPercentage: integer("offer_percentage").notNull().default(0), // Added offerPercentage field
 });
 
 export const paymentStatusEnum = pgEnum("payment_status", ["pending", "paid", "confirmed"]);
@@ -287,6 +289,11 @@ export const insertCategorySchema = createInsertSchema(categories).omit({
 
 export const insertProductSchema = createInsertSchema(products).omit({
   id: true,
+}).extend({
+  isCustomizable: z.boolean().default(false).optional(),
+  offerPercentage: z.number().min(0).max(100).optional(), // Added offerPercentage to Zod schema
+  createdAt: z.date().or(z.string()).optional(),
+  updatedAt: z.date().or(z.string()).optional(),
 });
 
 export const insertChefSchema = createInsertSchema(chefs).omit({
@@ -349,14 +356,17 @@ export type Order = typeof orders.$inferSelect;
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
 
-export const insertUserSchema = createInsertSchema(users).omit({
+export const insertUserSchema = createInsertSchema(users, {
+  name: z.string().min(1, { message: "Name must be at least 1 character long" }),
+  phone: z.string().min(10, { message: "Phone number must be at least 10 digits long" }),
+  passwordHash: z.string().min(6, { message: "Password must be at least 6 characters long" }),
+  referralCode: z.string().optional(),
+  walletBalance: z.number().int().default(0),
+}).omit({
   id: true,
-  passwordHash: true,
   lastLoginAt: true,
   createdAt: true,
   updatedAt: true,
-}).extend({
-  password: z.string().min(6),
 });
 
 export const userLoginSchema = z.object({
@@ -367,9 +377,13 @@ export const userLoginSchema = z.object({
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type UserLogin = z.infer<typeof userLoginSchema>;
 
-export const insertAdminUserSchema = createInsertSchema(adminUsers).omit({
+export const insertAdminUserSchema = createInsertSchema(adminUsers, {
+  username: z.string().min(3, { message: "Username must be at least 3 characters long" }),
+  email: z.string().email({ message: "Invalid email address" }),
+  passwordHash: z.string().min(8, { message: "Password must be at least 8 characters long" }),
+  role: z.enum(["super_admin", "manager", "viewer"]).default("viewer"),
+}).omit({
   id: true,
-  passwordHash: true,
   lastLoginAt: true,
   createdAt: true,
 }).extend({
@@ -385,9 +399,13 @@ export type InsertAdminUser = z.infer<typeof insertAdminUserSchema>;
 export type AdminUser = typeof adminUsers.$inferSelect;
 export type AdminLogin = z.infer<typeof adminLoginSchema>;
 
-export const insertPartnerUserSchema = createInsertSchema(partnerUsers).omit({
+export const insertPartnerUserSchema = createInsertSchema(partnerUsers, {
+  chefId: z.string().min(1, { message: "Chef ID is required" }),
+  username: z.string().min(3, { message: "Username must be at least 3 characters long" }),
+  email: z.string().email({ message: "Invalid email address" }),
+  passwordHash: z.string().min(8, { message: "Password must be at least 8 characters long" }),
+}).omit({
   id: true,
-  passwordHash: true,
   lastLoginAt: true,
   createdAt: true,
 }).extend({
@@ -403,19 +421,63 @@ export type InsertPartnerUser = z.infer<typeof insertPartnerUserSchema>;
 export type PartnerUser = typeof partnerUsers.$inferSelect;
 export type PartnerLogin = z.infer<typeof partnerLoginSchema>;
 
-export const insertSubscriptionPlanSchema = createInsertSchema(subscriptionPlans).omit({
+export const insertSubscriptionPlanSchema = createInsertSchema(subscriptionPlans);
+
+// Promotional Banner Table
+export const promotionalBanners = pgTable("promotional_banners", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  title: text("title").notNull(),
+  subtitle: text("subtitle").notNull(),
+  buttonText: text("button_text").notNull(),
+  gradientFrom: varchar("gradient_from", { length: 50 }).notNull().default("orange-600"),
+  gradientVia: varchar("gradient_via", { length: 50 }).notNull().default("amber-600"),
+  gradientTo: varchar("gradient_to", { length: 50 }).notNull().default("yellow-600"),
+  emoji1: varchar("emoji_1", { length: 10 }).notNull().default("🍽️"),
+  emoji2: varchar("emoji_2", { length: 10 }).notNull().default("🥘"),
+  emoji3: varchar("emoji_3", { length: 10 }).notNull().default("🍛"),
+  actionType: varchar("action_type", { length: 50 }).notNull().default("subscription"), // subscription, category, url
+  actionValue: text("action_value"), // category id or url
+  isActive: boolean("is_active").notNull().default(true),
+  displayOrder: integer("display_order").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type PromotionalBanner = typeof promotionalBanners.$inferSelect;
+export type InsertPromotionalBanner = typeof promotionalBanners.$inferInsert;
+export const insertPromotionalBannerSchema = createInsertSchema(promotionalBanners);
+
+export const insertSubscriptionSchema = createInsertSchema(subscriptions, {
+  userId: z.string().min(1, { message: "User ID is required" }),
+  planId: z.string().min(1, { message: "Plan ID is required" }),
+  customerName: z.string().min(1, { message: "Customer name is required" }),
+  phone: z.string().min(10, { message: "Phone number must be at least 10 digits long" }),
+  address: z.string().min(1, { message: "Address is required" }),
+  status: z.enum(["pending", "active", "paused", "cancelled", "expired"]).default("active"),
+  startDate: z.preprocess((arg) => new Date(arg as string), z.date()),
+  endDate: z.preprocess((arg) => new Date(arg as string), z.date()).optional(),
+  nextDeliveryDate: z.preprocess((arg) => new Date(arg as string), z.date()),
+  nextDeliveryTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, { message: "Invalid time format. Use HH:mm." }).default("09:00"),
+  customItems: z.array(z.object({ id: z.string(), name: z.string(), quantity: z.number() })).optional(),
+  remainingDeliveries: z.number().int().min(0).default(30),
+  totalDeliveries: z.number().int().min(0).default(30),
+  isPaid: z.boolean().default(false),
+  paymentTransactionId: z.string().optional(),
+  lastDeliveryDate: z.preprocess((arg) => new Date(arg as string), z.date()).optional(),
+  deliveryHistory: z.array(z.object({ deliveryDate: z.preprocess((arg) => new Date(arg as string), z.date()), status: z.string() })).default([]),
+}).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
 });
 
-export const insertSubscriptionSchema = createInsertSchema(subscriptions).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
-
-export const insertDeliverySettingSchema = createInsertSchema(deliverySettings).omit({
+export const insertDeliverySettingSchema = createInsertSchema(deliverySettings, {
+  name: z.string().min(1, { message: "Setting name is required" }),
+  minDistance: z.number({ message: "Minimum distance is required" }),
+  maxDistance: z.number({ message: "Maximum distance is required" }),
+  price: z.number({ message: "Price is required" }),
+  isActive: z.boolean().default(true),
+}).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
@@ -429,7 +491,12 @@ export type Subscription = typeof subscriptions.$inferSelect;
 export type InsertDeliverySetting = z.infer<typeof insertDeliverySettingSchema>;
 export type DeliverySetting = typeof deliverySettings.$inferSelect;
 
-export const insertCartSettingSchema = createInsertSchema(cartSettings).omit({
+export const insertCartSettingSchema = createInsertSchema(cartSettings, {
+  categoryId: z.string().min(1, { message: "Category ID is required" }),
+  categoryName: z.string().min(1, { message: "Category name is required" }),
+  minOrderAmount: z.number().int().default(100),
+  isActive: z.boolean().default(true),
+}).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
@@ -438,11 +505,16 @@ export const insertCartSettingSchema = createInsertSchema(cartSettings).omit({
 export type InsertCartSetting = z.infer<typeof insertCartSettingSchema>;
 export type CartSetting = typeof cartSettings.$inferSelect;
 
-export const insertDeliveryPersonnelSchema = createInsertSchema(deliveryPersonnel).omit({
+export const insertDeliveryPersonnelSchema = createInsertSchema(deliveryPersonnel, {
+  name: z.string().min(1, { message: "Name is required" }),
+  phone: z.string().min(10, { message: "Phone number must be at least 10 digits long" }),
+  passwordHash: z.string().min(8, { message: "Password must be at least 8 characters long" }),
+  status: z.enum(["available", "busy", "offline"]).default("available"),
+  isActive: z.boolean().default(true),
+  totalDeliveries: z.number().int().default(0),
+  rating: z.number().min(0).max(5).default(5.0),
+}).omit({
   id: true,
-  passwordHash: true,
-  totalDeliveries: true,
-  rating: true,
   createdAt: true,
   lastLoginAt: true,
 }).extend({
@@ -458,7 +530,18 @@ export type InsertDeliveryPersonnel = z.infer<typeof insertDeliveryPersonnelSche
 export type DeliveryPersonnel = typeof deliveryPersonnel.$inferSelect;
 export type DeliveryPersonnelLogin = z.infer<typeof deliveryPersonnelLoginSchema>;
 
-export const insertCouponSchema = createInsertSchema(coupons).omit({
+export const insertCouponSchema = createInsertSchema(coupons, {
+  code: z.string().min(1, { message: "Coupon code is required" }),
+  description: z.string().min(1, { message: "Description is required" }),
+  discountType: z.enum(["percentage", "fixed"]),
+  discountValue: z.number().int().min(0, { message: "Discount value must be a non-negative integer" }),
+  minOrderAmount: z.number().int().default(0),
+  maxDiscount: z.number().int().optional(),
+  usageLimit: z.number().int().optional(),
+  validFrom: z.preprocess((arg) => new Date(arg as string), z.date()),
+  validUntil: z.preprocess((arg) => new Date(arg as string), z.date()),
+  isActive: z.boolean().default(true),
+}).omit({
   id: true,
   usedCount: true,
   createdAt: true,
@@ -467,7 +550,15 @@ export const insertCouponSchema = createInsertSchema(coupons).omit({
 export type InsertCoupon = z.infer<typeof insertCouponSchema>;
 export type Coupon = typeof coupons.$inferSelect;
 
-export const insertReferralSchema = createInsertSchema(referrals).omit({
+export const insertReferralSchema = createInsertSchema(referrals, {
+  referrerId: z.string().min(1, { message: "Referrer ID is required" }),
+  referredId: z.string().min(1, { message: "Referred ID is required" }),
+  referralCode: z.string().min(1, { message: "Referral code is required" }),
+  status: z.enum(["pending", "completed", "expired"]).default("pending"),
+  referrerBonus: z.number().int().default(0),
+  referredBonus: z.number().int().default(0),
+  referredOrderCompleted: z.boolean().default(false),
+}).omit({
   id: true,
   createdAt: true,
   completedAt: true,
@@ -476,7 +567,16 @@ export const insertReferralSchema = createInsertSchema(referrals).omit({
 export type InsertReferral = z.infer<typeof insertReferralSchema>;
 export type Referral = typeof referrals.$inferSelect;
 
-export const insertWalletTransactionSchema = createInsertSchema(walletTransactions).omit({
+export const insertWalletTransactionSchema = createInsertSchema(walletTransactions, {
+  userId: z.string().min(1, { message: "User ID is required" }),
+  amount: z.number({ message: "Amount is required" }),
+  type: z.enum(["credit", "debit", "referral_bonus", "order_discount"]),
+  description: z.string().min(1, { message: "Description is required" }),
+  referenceId: z.string().optional(),
+  referenceType: z.string().optional(),
+  balanceBefore: z.number({ message: "Balance before is required" }),
+  balanceAfter: z.number({ message: "Balance after is required" }),
+}).omit({
   id: true,
   createdAt: true,
 });
@@ -484,7 +584,16 @@ export const insertWalletTransactionSchema = createInsertSchema(walletTransactio
 export type InsertWalletTransaction = z.infer<typeof insertWalletTransactionSchema>;
 export type WalletTransaction = typeof walletTransactions.$inferSelect;
 
-export const insertReferralRewardSchema = createInsertSchema(referralRewards).omit({
+export const insertReferralRewardSchema = createInsertSchema(referralRewards, {
+  name: z.string().min(1, { message: "Reward name is required" }),
+  referrerBonus: z.number().int().default(50),
+  referredBonus: z.number().int().default(50),
+  minOrderAmount: z.number().int().default(0),
+  maxReferralsPerMonth: z.number().int().default(10),
+  maxEarningsPerMonth: z.number().int().default(500),
+  expiryDays: z.number().int().default(30),
+  isActive: z.boolean().default(true),
+}).omit({
   id: true,
   createdAt: true,
   updatedAt: true,

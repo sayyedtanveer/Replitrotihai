@@ -21,6 +21,7 @@ import {
   Truck,
   Wallet, // Import Wallet icon
   ShoppingCart, // Import ShoppingCart icon
+  Megaphone, // Import Megaphone icon
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -147,6 +148,13 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               <div className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors cursor-pointer ${location === "/admin/subscriptions" ? "bg-primary text-primary-foreground" : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"}`}>
                 <Calendar className="w-5 h-5" />
                 <span>Subscriptions</span>
+              </div>
+            </Link>
+            {/* Promotional Banners Link */}
+            <Link href="/admin/promotional-banners">
+              <div className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors cursor-pointer ${location === "/admin/promotional-banners" ? "bg-primary text-primary-foreground" : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"}`}>
+                <Megaphone className="w-5 h-5" />
+                <span>Promotional Banners</span>
               </div>
             </Link>
             <Link href="/admin/delivery-settings">
