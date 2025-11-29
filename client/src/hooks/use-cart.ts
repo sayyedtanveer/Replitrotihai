@@ -48,7 +48,7 @@ interface CartStore {
   setChefStatuses: (statuses: ChefStatus[]) => void;
   fetchChefStatuses: () => Promise<void>;
   addToCart: (
-    item: Omit<CartItem, "quantity">, 
+    item: Omit<CartItem, "quantity">,
     categoryName: string,
     chefLatitude?: number,
     chefLongitude?: number
@@ -306,10 +306,10 @@ export const useCart = create<CartStore>()(
       // ✅ Get all carts with delivery fee calculation
       getAllCartsWithDelivery: () => {
         const { carts, userLatitude, userLongitude, deliverySettings, chefStatuses } = get();
-        
+
         return carts.map((cart) => {
           const subtotal = cart.items.reduce((total, item) => total + item.price * item.quantity, 0);
-          
+
           // Calculate distance and delivery fee (all dynamic from admin settings)
           let distance: number | undefined;
           let deliveryFee = 0; // Will be calculated from admin settings

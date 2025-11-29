@@ -1,9 +1,9 @@
-import { type Category, type InsertCategory, type Product, type InsertProduct, type Order, type InsertOrder, type User, type UpsertUser, type Chef, type AdminUser, type InsertAdminUser, type PartnerUser, type Subscription, type SubscriptionPlan, type DeliverySetting, type InsertDeliverySetting, type CartSetting, type InsertCartSetting, type DeliveryPersonnel, type InsertDeliveryPersonnel, type WalletTransaction, type ReferralReward } from "@shared/schema";
+import { type Category, type InsertCategory, type Product, type InsertProduct, type Order, type InsertOrder, type User, type UpsertUser, type Chef, type AdminUser, type InsertAdminUser, type PartnerUser, type Subscription, type SubscriptionPlan, type DeliverySetting, type InsertDeliverySetting, type CartSetting, type InsertCartSetting, type DeliveryPersonnel, type InsertDeliveryPersonnel, type WalletTransaction, type ReferralReward, type PromotionalBanner, type InsertPromotionalBanner } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { nanoid } from "nanoid";
-import { eq, and, gte, lte, desc, or, isNull, sql } from "drizzle-orm";
-import { db, users, categories, products, orders, chefs, adminUsers, partnerUsers, subscriptions, 
-  subscriptionPlans, deliverySettings, cartSettings, deliveryPersonnel, coupons, referrals, walletTransactions, referralRewards } from "@shared/db";
+import { eq, and, gte, lte, desc, asc, or, isNull, sql } from "drizzle-orm";
+import { db, users, categories, products, orders, chefs, adminUsers, partnerUsers, subscriptions,
+  subscriptionPlans, deliverySettings, cartSettings, deliveryPersonnel, coupons, referrals, walletTransactions, referralRewards, promotionalBanners } from "@shared/db";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -57,6 +57,8 @@ export interface IStorage {
   updatePartnerLastLogin(id: string): Promise<void>;
   getOrdersByChefId(chefId: string): Promise<Order[]>;
   getPartnerDashboardMetrics(chefId: string): Promise<any>;
+  getAllPartners(): Promise<PartnerUser[]>;
+  deletePartner(id: string): Promise<boolean>;
 
   getDashboardMetrics(): Promise<{
     userCount: number;
@@ -138,7 +140,7 @@ export interface IStorage {
     description: string;
     referenceId?: string;
     referenceType?: string;
-  }): Promise<void>;
+  }, txClient?: any): Promise<void>;
   getWalletTransactions(userId: string, limit?: number): Promise<any[]>;
   getReferralStats(userId: string): Promise<{
     totalReferrals: number;
@@ -150,6 +152,13 @@ export interface IStorage {
   getUserReferralCode(userId: string): Promise<string | null>;
   markReferralComplete(referralId: string): Promise<void>;
   checkReferralEligibility(userId: string): Promise<{ eligible: boolean; reason?: string }>;
+
+  // Promotional Banner methods
+  getAllPromotionalBanners(): Promise<PromotionalBanner[]>;
+  getActivePromotionalBanners(): Promise<PromotionalBanner[]>;
+  createPromotionalBanner(data: InsertPromotionalBanner): Promise<PromotionalBanner>;
+  updatePromotionalBanner(id: string, data: Partial<InsertPromotionalBanner>): Promise<PromotionalBanner | null>;
+  deletePromotionalBanner(id: string): Promise<boolean>;
 }
 
 export class MemStorage implements IStorage {
@@ -250,6 +259,9 @@ export class MemStorage implements IStorage {
   }
 
   async getProductsByCategoryId(categoryId: string): Promise<Product[]> {
+    // This filter should apply to products within a category.
+    // If the intention is to show restaurants/partners, this logic might need adjustment
+    // to filter chefs/partners based on category, not products.
     return db.query.products.findMany({ where: (p, { eq }) => eq(p.categoryId, categoryId) });
   }
 
@@ -336,6 +348,9 @@ export class MemStorage implements IStorage {
   }
 
    async getChefs(): Promise<Chef[]> {
+    // If filtering by category is intended to show partners/restaurants,
+    // this query should select from `partnerUsers` or `chefs` based on context.
+    // For now, returning all chefs as per original implementation.
     const result = await db.select().from(chefs);
     return result.map(chef => ({
       ...chef,
@@ -351,6 +366,8 @@ export class MemStorage implements IStorage {
   }
 
   async getChefsByCategory(categoryId: string): Promise<Chef[]> {
+    // This method, when called with a category, should return chefs/partners
+    // associated with that category. The current implementation does this.
     return db.query.chefs.findMany({ where: (c, { eq }) => eq(c.categoryId, categoryId) });
   }
 
@@ -943,7 +960,7 @@ export class MemStorage implements IStorage {
 
       const [updatedOrder] = await db
         .update(orders)
-        .set({ 
+        .set({
           assignedTo: deliveryPersonId,
           assignedAt: new Date(),
           deliveryPersonName: deliveryPerson.name,
@@ -961,7 +978,7 @@ export class MemStorage implements IStorage {
 
       console.log(`✅ Order ${orderId} assigned successfully. Delivery person: ${deliveryPerson.name} (${deliveryPerson.phone})`);
       console.log(`✅ Updated order fields - deliveryPersonName: ${updatedOrder.deliveryPersonName}, deliveryPersonPhone: ${updatedOrder.deliveryPersonPhone}`);
-      
+
       // Return the mapped order to ensure all fields are properly formatted
       return this.mapOrder(updatedOrder);
     } catch (error) {
@@ -1260,6 +1277,56 @@ export class MemStorage implements IStorage {
     }
 
     return { eligible: true };
+  }
+
+  // Promotional Banners
+  async getAllPromotionalBanners(): Promise<PromotionalBanner[]> {
+    return db.query.promotionalBanners.findMany({ orderBy: [desc(promotionalBanners.displayOrder)] });
+  }
+
+  async getActivePromotionalBanners(): Promise<PromotionalBanner[]> {
+    return db.query.promotionalBanners.findMany({
+      where: eq(promotionalBanners.isActive, true),
+      orderBy: [asc(promotionalBanners.displayOrder)], // Ensure they display in order
+    });
+  }
+
+  async createPromotionalBanner(data: InsertPromotionalBanner): Promise<PromotionalBanner> {
+    const id = randomUUID();
+    const banner: PromotionalBanner = {
+      id,
+      title: data.title,
+      subtitle: data.subtitle,
+      buttonText: data.buttonText,
+      gradientFrom: data.gradientFrom ?? "orange-600",
+      gradientVia: data.gradientVia ?? "amber-600",
+      gradientTo: data.gradientTo ?? "yellow-600",
+      emoji1: data.emoji1 ?? "🍽️",
+      emoji2: data.emoji2 ?? "🥘",
+      emoji3: data.emoji3 ?? "🍛",
+      actionType: data.actionType ?? "subscription",
+      actionValue: data.actionValue ?? null,
+      isActive: data.isActive ?? true,
+      displayOrder: data.displayOrder ?? 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    const [createdBanner] = await db.insert(promotionalBanners).values(banner).returning();
+    return createdBanner;
+  }
+
+  async updatePromotionalBanner(id: string, data: Partial<InsertPromotionalBanner>): Promise<PromotionalBanner | null> {
+    const [updated] = await db.update(promotionalBanners)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(promotionalBanners.id, id))
+      .returning();
+    return updated || null;
+  }
+
+  async deletePromotionalBanner(id: string): Promise<boolean> {
+    const result = await db.delete(promotionalBanners)
+      .where(eq(promotionalBanners.id, id));
+    return result.rowCount > 0;
   }
 
   private mapOrder(order: any): Order {

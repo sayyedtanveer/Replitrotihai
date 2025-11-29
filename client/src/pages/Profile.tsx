@@ -192,6 +192,7 @@ export default function Profile() {
         onChefListClick={() => setIsChefListOpen(true)}
         onSubscriptionClick={() => setIsSubscriptionOpen(true)}
         onLoginClick={() => setIsLoginOpen(true)}
+        onOffersClick={() => setLocation("/")}
       />
 
       <main className="flex-1 bg-muted/30">
@@ -233,13 +234,13 @@ export default function Profile() {
                   <div className="flex items-center gap-6">
                     <Avatar className="h-20 w-20">
                       <AvatarFallback className="text-2xl">
-                        {(user.name?.[0] || user.phone?.[0] || "U").toUpperCase()}
+                        {(user?.name?.[0] || user?.phone?.[0] || "U").toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
                     <div>
-                      <h3 className="text-xl font-semibold">{user.name || "User"}</h3>
-                      {user.phone && <p className="text-muted-foreground">{user.phone}</p>}
-                      {user.email && (
+                      <h3 className="text-xl font-semibold">{user?.name || "User"}</h3>
+                      {user?.phone && <p className="text-muted-foreground">{user.phone}</p>}
+                      {user?.email && (
                         <p className="text-sm text-muted-foreground">{user.email}</p>
                       )}
                     </div>

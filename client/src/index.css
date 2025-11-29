@@ -239,6 +239,16 @@
   body {
     @apply bg-background text-foreground;
   }
+  
+  /* Safe area for mobile devices with notches */
+  .safe-area-inset-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+  
+  /* Prevent pull-to-refresh on mobile */
+  html {
+    overscroll-behavior: none;
+  }
 }
 
 @layer utilities {

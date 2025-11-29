@@ -20,6 +20,7 @@ interface ProductCardProps {
   chefName?: string;
   isAvailable?: boolean; // Added for availability check
   stock?: number; // Added for stock check
+  offerPercentage?: number; // Added for offer percentage
 }
 
 export default function ProductCard({
@@ -38,6 +39,7 @@ export default function ProductCard({
   chefName,
   isAvailable = true, // Default to available
   stock = 0, // Default to 0 stock
+  offerPercentage = 0, // Default to 0 offer
 }: ProductCardProps) {
   const [quantity, setQuantity] = useState(0);
 
@@ -90,6 +92,11 @@ export default function ProductCard({
             Customizable
           </Badge>
         )}
+        {offerPercentage > 0 && (
+          <div className="absolute top-3 right-3 bg-gradient-to-r from-red-600 to-orange-500 text-white px-3 py-1 rounded-full text-sm font-bold shadow-lg animate-pulse">
+            {offerPercentage}% OFF
+          </div>
+        )}
       </div>
 
       <div className="p-4">
@@ -97,9 +104,20 @@ export default function ProductCard({
           <h3 className="font-semibold text-lg" data-testid={`text-product-name-${id}`}>
             {name}
           </h3>
-          <span className="font-bold text-primary" data-testid={`text-price-${id}`}>
-            ₹{price}
-          </span>
+          {offerPercentage > 0 ? (
+            <div className="flex flex-col items-end">
+              <span className="text-base line-through text-muted-foreground">
+                ₹{price}
+              </span>
+              <span className="font-bold text-green-600" data-testid={`text-price-${id}`}>
+                ₹{Math.round(price * (1 - offerPercentage / 100))}
+              </span>
+            </div>
+          ) : (
+            <span className="font-bold text-primary" data-testid={`text-price-${id}`}>
+              ₹{price}
+            </span>
+          )}
         </div>
 
         <p className="text-sm text-muted-foreground mb-3 line-clamp-2" data-testid={`text-description-${id}`}>

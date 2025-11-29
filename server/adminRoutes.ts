@@ -862,6 +862,57 @@ export function registerAdminRoutes(app: Express) {
   });
 
   // Subscription Plans
+  // Promotional Banners Management
+  app.get("/api/admin/promotional-banners", requireAdmin(), async (req, res) => {
+    try {
+      const banners = await storage.getAllPromotionalBanners();
+      res.json(banners);
+    } catch (error) {
+      console.error("Error fetching promotional banners:", error);
+      res.status(500).json({ message: "Failed to fetch promotional banners" });
+    }
+  });
+
+  app.post("/api/admin/promotional-banners", requireAdmin(), async (req, res) => {
+    try {
+      const banner = await storage.createPromotionalBanner(req.body);
+      res.status(201).json(banner);
+    } catch (error) {
+      console.error("Error creating promotional banner:", error);
+      res.status(500).json({ message: "Failed to create promotional banner" });
+    }
+  });
+
+  app.patch("/api/admin/promotional-banners/:id", requireAdmin(), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const banner = await storage.updatePromotionalBanner(id, req.body);
+      if (!banner) {
+        res.status(404).json({ message: "Banner not found" });
+        return;
+      }
+      res.json(banner);
+    } catch (error) {
+      console.error("Error updating promotional banner:", error);
+      res.status(500).json({ message: "Failed to update promotional banner" });
+    }
+  });
+
+  app.delete("/api/admin/promotional-banners/:id", requireAdmin(), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const deleted = await storage.deletePromotionalBanner(id);
+      if (!deleted) {
+        res.status(404).json({ message: "Banner not found" });
+        return;
+      }
+      res.json({ message: "Banner deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting promotional banner:", error);
+      res.status(500).json({ message: "Failed to delete promotional banner" });
+    }
+  });
+
   app.get("/api/admin/subscription-plans", requireAdmin(), async (req, res) => {
     try {
       const plans = await storage.getSubscriptionPlans();

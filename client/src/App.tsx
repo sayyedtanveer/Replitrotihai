@@ -35,6 +35,8 @@ import AdminWalletSettings from "./pages/admin/AdminWalletSettings";
 // Add AdminCartSettings import here
 const AdminCartSettings = lazy(() => import("@/pages/admin/AdminCartSettings"));
 
+// Import AdminPromotionalBanners component
+const AdminPromotionalBanners = lazy(() => import("@/pages/admin/AdminPromotionalBanners"));
 
 // ✅ Simple Auth Guard for customer routes
 function ProtectedRoute({ component: Component }: { component: any }) {
@@ -70,6 +72,7 @@ function Router() {
       <Route path="/admin/notifications" component={AdminNotifications} />
       <Route path="/admin/categories" component={AdminCategories} />
       <Route path="/admin/subscriptions" component={AdminSubscriptions} />
+      <Route path="/admin/promotional-banners" component={AdminPromotionalBanners} />
       <Route path="/admin/reports" component={AdminReports} />
       <Route path="/admin/chefs" component={AdminChefs} />
       <Route path="/admin/partners" component={AdminPartners} />
