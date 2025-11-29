@@ -259,6 +259,15 @@
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
+
+  /* Smooth category hover effects */
+  .category-hover-effect {
+    @apply transition-all duration-300 ease-out;
+  }
+
+  .category-hover-effect:hover {
+    @apply -translate-y-1 shadow-xl;
+  }
 }
 
 /**

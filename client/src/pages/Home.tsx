@@ -328,16 +328,26 @@ import { useState, useEffect } from "react";
                 {/* All Categories Button */}
                 <button
                   onClick={() => handleCategoryTabChange("all")}
-                  className={`flex-shrink-0 flex flex-col items-center gap-1.5 sm:gap-2 p-2 sm:p-3 rounded-lg sm:rounded-xl transition-all duration-300 min-w-[70px] sm:min-w-[85px] ${
+                  className={`group flex-shrink-0 flex flex-col items-center gap-1.5 sm:gap-2 p-2 sm:p-3 rounded-lg sm:rounded-xl transition-all duration-300 min-w-[70px] sm:min-w-[85px] ${
                     selectedCategoryTab === "all"
-                      ? "bg-primary text-primary-foreground shadow-md scale-105"
-                      : "bg-card hover:bg-accent"
+                      ? "bg-primary text-primary-foreground shadow-lg scale-105"
+                      : "bg-card hover:shadow-xl hover:-translate-y-1"
                   }`}
                 >
-                  <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-background/50 flex items-center justify-center">
-                    <UtensilsCrossed className="h-5 w-5 sm:h-5.5 sm:w-5.5" />
+                  <div className={`w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all duration-300 ${
+                    selectedCategoryTab === "all"
+                      ? "bg-primary-foreground/20 scale-110"
+                      : "bg-background/50 group-hover:bg-primary/10 group-hover:scale-110 group-hover:shadow-lg"
+                  }`}>
+                    <UtensilsCrossed className={`h-5 w-5 sm:h-5.5 sm:w-5.5 transition-transform duration-300 ${
+                      selectedCategoryTab === "all" ? "" : "group-hover:scale-110"
+                    }`} />
                   </div>
-                  <span className="text-[10px] sm:text-xs font-medium text-center leading-tight">All</span>
+                  <span className={`text-[10px] sm:text-xs font-medium text-center leading-tight transition-all duration-300 ${
+                    selectedCategoryTab === "all"
+                      ? ""
+                      : "group-hover:text-primary group-hover:font-semibold"
+                  }`}>All</span>
                 </button>
 
                 {/* Category Buttons */}
@@ -352,20 +362,28 @@ import { useState, useEffect } from "react";
                     <button
                       key={category.id}
                       onClick={() => handleBrowseCategory(category.id)}
-                      className={`flex-shrink-0 flex flex-col items-center gap-1.5 sm:gap-2 p-2 sm:p-3 rounded-lg sm:rounded-xl transition-all duration-300 min-w-[70px] sm:min-w-[85px] ${
+                      className={`group flex-shrink-0 flex flex-col items-center gap-1.5 sm:gap-2 p-2 sm:p-3 rounded-lg sm:rounded-xl transition-all duration-300 min-w-[70px] sm:min-w-[85px] ${
                         selectedCategoryTab === category.id
-                          ? "bg-primary text-primary-foreground shadow-md scale-105"
-                          : "bg-card hover:bg-accent"
+                          ? "bg-primary text-primary-foreground shadow-lg scale-105"
+                          : "bg-card hover:shadow-xl hover:-translate-y-1"
                       }`}
                     >
-                      <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-full overflow-hidden ring-2 ring-background">
+                      <div className={`w-10 h-10 sm:w-11 sm:h-11 rounded-full overflow-hidden transition-all duration-300 ${
+                        selectedCategoryTab === category.id
+                          ? "ring-2 ring-primary-foreground scale-110"
+                          : "ring-2 ring-background group-hover:ring-primary/30 group-hover:scale-110 group-hover:shadow-lg"
+                      }`}>
                         <img
                           src={category.image}
                           alt={category.name}
-                          className="w-full h-full object-cover"
+                          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
                         />
                       </div>
-                      <span className="text-[10px] sm:text-xs font-medium text-center line-clamp-2 leading-tight px-1">
+                      <span className={`text-[10px] sm:text-xs font-medium text-center line-clamp-2 leading-tight px-1 transition-all duration-300 ${
+                        selectedCategoryTab === category.id
+                          ? ""
+                          : "group-hover:text-primary group-hover:font-semibold"
+                      }`}>
                         {category.name}
                       </span>
                     </button>
