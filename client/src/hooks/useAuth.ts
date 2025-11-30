@@ -1,6 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { useEffect } from "react";
 
 // Centralized 401 error handler for all user types
 export function handle401Error(userType: "user" | "admin" | "partner" | "delivery" = "user") {
@@ -38,7 +37,16 @@ interface User {
   referralCode?: string;
 }
 
-export function useAuth() {
+interface UseAuthReturn {
+  user: User | undefined;
+  isLoading: boolean;
+  error: Error | null;
+  isAuthenticated: boolean;
+  login: (phone: string, password: string) => Promise<any>;
+  logout: () => void;
+}
+
+export function useAuth(): UseAuthReturn {
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
 
@@ -73,10 +81,51 @@ export function useAuth() {
 
   const isAuthenticated = !!user && !!localStorage.getItem('userToken');
 
+  const login = async (phone: string, password: string) => {
+    const response = await fetch('/api/user/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ phone, password }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'Invalid phone number or password');
+    }
+
+    const data = await response.json();
+    
+    // Store the access token (backend returns accessToken, not token)
+    localStorage.setItem('userToken', data.accessToken);
+    if (data.refreshToken) {
+      localStorage.setItem('refreshToken', data.refreshToken);
+    }
+    if (data.user) {
+      localStorage.setItem('userData', JSON.stringify(data.user));
+    }
+
+    // Invalidate and refetch the user profile
+    await queryClient.invalidateQueries({ queryKey: ['/api/user/profile'] });
+
+    return data;
+  };
+
+  const logout = () => {
+    localStorage.removeItem('userToken');
+    localStorage.removeItem('refreshToken');
+    localStorage.removeItem('userData');
+    queryClient.invalidateQueries({ queryKey: ['/api/user/profile'] });
+    setLocation('/');
+  };
+
   return { 
     user, 
     isLoading, 
     error, 
-    isAuthenticated 
+    isAuthenticated,
+    login,
+    logout
   };
 }

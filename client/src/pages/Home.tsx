@@ -247,10 +247,49 @@ import { useState, useEffect } from "react";
 
     const [showOffersOnly, setShowOffersOnly] = useState(false);
 
-    // Filter chefs when a category is selected (Zomato-style)
-  const filteredChefs = chefs.filter(chef => {
+    // Compute chef data with best offers and menu info
+  const chefsWithOffers = chefs.map(chef => {
+    const chefProducts = products.filter(p => p.chefId === chef.id);
+    const bestOffer = chefProducts.reduce((max, p) => Math.max(max, p.offerPercentage || 0), 0);
+    const hasVegItems = chefProducts.some(p => p.isVeg);
+    const hasNonVegItems = chefProducts.some(p => !p.isVeg);
+    const isVegOnly = hasVegItems && !hasNonVegItems;
+    const lowestPrice = chefProducts.length > 0 ? Math.min(...chefProducts.map(p => p.price)) : 0;
+    
+    // Sort products deterministically: by best offer first, then by lowest price
+    const sortedProducts = [...chefProducts].sort((a, b) => {
+      const aOffer = a.offerPercentage || 0;
+      const bOffer = b.offerPercentage || 0;
+      if (bOffer !== aOffer) return bOffer - aOffer;
+      return a.price - b.price;
+    });
+    const highlightDish = sortedProducts.length > 0 ? sortedProducts[0].name : "";
+    
+    return {
+      ...chef,
+      bestOfferPercentage: bestOffer,
+      hasVegItems,
+      isVegOnly,
+      lowestPrice,
+      highlightDish,
+      productCount: chefProducts.length,
+    };
+  });
+
+  // Filter chefs when a category is selected (Zomato-style)
+  const filteredChefs = chefsWithOffers.filter(chef => {
     // Filter by selected category
     if (selectedCategoryTab !== "all" && chef.categoryId !== selectedCategoryTab) {
+      return false;
+    }
+
+    // Apply veg only filter - only when products are loaded
+    if (vegOnly && !productsLoading && !chef.hasVegItems) {
+      return false;
+    }
+
+    // Apply offers filter - only filter out when products are loaded (avoid race condition)
+    if ((activeFilters.includes("offers") || showOffersOnly) && !productsLoading && chef.bestOfferPercentage === 0) {
       return false;
     }
 
@@ -558,14 +597,14 @@ import { useState, useEffect } from "react";
             {selectedCategoryTab === "all" ? (
               <>
                 {/* Section Header */}
-                <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
                   <div>
                     <h2 className="text-lg sm:text-xl font-bold flex items-center gap-2">
                       <TrendingUp className="h-5 w-5 text-primary" />
                       Recommended For You
                     </h2>
                     <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-                      Fresh, homemade meals from local chefs
+                      Top-rated restaurants and home chefs near you
                     </p>
                   </div>
                   {/* Filters for Search */}
@@ -577,6 +616,7 @@ import { useState, useEffect } from "react";
                         checked={vegOnly}
                         onChange={(e) => setVegOnly(e.target.checked)}
                         className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
+                        data-testid="checkbox-veg-only"
                       />
                       <label htmlFor="veg-filter" className="text-sm font-medium text-slate-700 dark:text-slate-300">
                         Veg Only
@@ -589,94 +629,164 @@ import { useState, useEffect } from "react";
                         checked={showOffersOnly}
                         onChange={(e) => setShowOffersOnly(e.target.checked)}
                         className="w-4 h-4 text-orange-600 rounded focus:ring-orange-500"
+                        data-testid="checkbox-offers-only"
                       />
                       <label htmlFor="offers-filter" className="text-sm font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                        🔥 Offers Only
+                        <Percent className="h-3 w-3" /> Offers Only
                       </label>
                     </div>
                   </div>
                 </div>
 
-                {/* Products Grid - Zomato Style Cards */}
-                <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-                  {productsLoading ? (
-                    [...Array(8)].map((_, i) => (
+                {/* Partners/Restaurants Grid - Zomato Style Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {chefsLoading ? (
+                    [...Array(6)].map((_, i) => (
                       <Card key={i} className="overflow-hidden animate-pulse">
-                        <div className="h-32 sm:h-40 bg-muted" />
-                        <div className="p-3 space-y-2">
-                          <div className="h-4 bg-muted rounded w-3/4" />
+                        <div className="h-40 bg-muted" />
+                        <div className="p-4 space-y-2">
+                          <div className="h-5 bg-muted rounded w-3/4" />
                           <div className="h-3 bg-muted rounded w-1/2" />
                         </div>
                       </Card>
                     ))
-                  ) : filteredProducts.length === 0 ? (
+                  ) : filteredChefs.length === 0 ? (
                     <div className="col-span-full text-center py-12">
-                      <div className="text-4xl mb-3">🔍</div>
+                      <ChefHat className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
                       <p className="text-muted-foreground">
-                        No products found matching "{searchQuery}"
+                        {searchQuery ? `No restaurants found matching "${searchQuery}"` : "No restaurants match your filters"}
                       </p>
+                      <Button 
+                        variant="outline" 
+                        className="mt-4"
+                        onClick={() => {
+                          setVegOnly(false);
+                          setShowOffersOnly(false);
+                          setActiveFilters([]);
+                        }}
+                        data-testid="button-clear-filters"
+                      >
+                        Clear All Filters
+                      </Button>
                     </div>
                   ) : (
-                    filteredProducts.map((product, index) => {
-                      const realtimeAvailability = productAvailability[product.id];
-                      const chef = product.chefId ? chefs.find(c => c.id === product.chefId) : null;
-                      // Simulate offer badge based on index for demonstration if no actual offer data
-                      const offerBadge = product.offerPercentage > 0 ? `FLAT ${product.offerPercentage}% OFF` : (index % 3 === 0 ? "FLAT 50% OFF" : index % 3 === 1 ? "FLAT ₹175 OFF" : null);
+                    filteredChefs.map(chef => {
+                      const realtimeStatus = chefStatuses[chef.id];
+                      const isChefActive = realtimeStatus !== undefined ? realtimeStatus : (chef.isActive !== false);
+                      let distance: number | null = null;
 
+                      if (userLatitude && userLongitude && chef.latitude && chef.longitude) {
+                        const R = 6371;
+                        const toRad = (deg: number) => deg * (Math.PI / 180);
+                        const dLat = toRad(chef.latitude - userLatitude);
+                        const dLon = toRad(chef.longitude - userLongitude);
+                        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                                Math.cos(toRad(userLatitude)) * Math.cos(toRad(chef.latitude)) *
+                                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+                        const c = 2 * Math.asin(Math.sqrt(a));
+                        distance = Math.round(R * c * 10) / 10;
+                      }
 
                       return (
                         <Card
-                          key={product.id}
-                          className="overflow-hidden group cursor-pointer hover:shadow-lg transition-all"
-                          onClick={() => handleAddToCart(product)}
-                          data-testid={`card-product-${product.id}`}
+                          key={chef.id}
+                          className={`overflow-hidden transition-all ${
+                            isChefActive
+                              ? "cursor-pointer hover:shadow-lg"
+                              : "opacity-60 cursor-not-allowed"
+                          }`}
+                          onClick={() => {
+                            if (!isChefActive) {
+                              toast({
+                                title: "Currently Unavailable",
+                                description: `${chef.name} is not accepting orders right now`,
+                                variant: "destructive",
+                              });
+                              return;
+                            }
+                            const category = categories.find(c => c.id === chef.categoryId);
+                            setSelectedChefForMenu({ ...chef, isActive: isChefActive });
+                            setSelectedCategoryForMenu(category || null);
+                            setIsCategoryMenuOpen(true);
+                          }}
+                          data-testid={`card-partner-${chef.id}`}
                         >
-                          <div className="relative h-28 sm:h-36 overflow-hidden">
+                          <div className="relative h-36 sm:h-44 overflow-hidden">
                             <img
-                              src={product.image}
-                              alt={product.name}
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                              src={chef.image}
+                              alt={chef.name}
+                              className={`w-full h-full object-cover transition-transform duration-300 ${
+                                isChefActive ? "group-hover:scale-105" : "grayscale"
+                              }`}
                             />
-                            {/* Offer Badge */}
-                            {offerBadge && (
-                              <div className="absolute top-2 left-2 bg-blue-600 text-white text-[10px] sm:text-xs font-bold px-2 py-0.5 rounded">
-                                {offerBadge}
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+                            
+                            {/* Offer Badge - only show if there's a real offer */}
+                            {chef.bestOfferPercentage > 0 && (
+                              <div className="absolute top-2 left-2 bg-blue-600 text-white text-xs font-bold px-2 py-1 rounded">
+                                {chef.bestOfferPercentage}% OFF
                               </div>
                             )}
-                            {/* Rating Badge */}
-                            <div className="absolute bottom-2 left-2 bg-green-600 text-white text-[10px] sm:text-xs font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5">
-                              <Star className="h-2.5 w-2.5 fill-current" />
-                              {parseFloat(product.rating).toFixed(1)}
-                            </div>
-                            {/* Veg/Non-veg indicator */}
-                            <div className="absolute top-2 right-2">
-                              <div className={`w-4 h-4 border-2 rounded-sm flex items-center justify-center ${
-                                product.isVeg ? 'border-green-600 bg-white' : 'border-red-600 bg-white'
-                              }`}>
-                                <div className={`w-2 h-2 rounded-full ${
-                                  product.isVeg ? 'bg-green-600' : 'bg-red-600'
-                                }`} />
+
+                            {/* Veg indicator */}
+                            {chef.isVegOnly && (
+                              <div className="absolute top-2 right-2">
+                                <div className="w-5 h-5 border-2 border-green-600 bg-white rounded-sm flex items-center justify-center">
+                                  <div className="w-2.5 h-2.5 rounded-full bg-green-600" />
+                                </div>
                               </div>
+                            )}
+
+                            {/* Rating and delivery info */}
+                            <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <Badge className="bg-green-600 text-white border-0 text-xs">
+                                  <Star className="h-3 w-3 fill-current mr-0.5" />
+                                  {parseFloat(chef.rating).toFixed(1)}
+                                </Badge>
+                                <span className="text-white text-xs">
+                                  ({chef.reviewCount} reviews)
+                                </span>
+                              </div>
+                              {distance !== null && (
+                                <span className="text-white text-xs">
+                                  {distance} km
+                                </span>
+                              )}
                             </div>
+
+                            {/* Unavailable overlay */}
+                            {!isChefActive && (
+                              <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                                <Badge variant="destructive" className="text-sm">
+                                  Currently Unavailable
+                                </Badge>
+                              </div>
+                            )}
                           </div>
-                          <div className="p-2 sm:p-3">
-                            <h3 className="font-semibold text-sm sm:text-base line-clamp-1" data-testid={`text-product-name-${product.id}`}>
-                              {product.name}
+                          <div className="p-3">
+                            <h3 className="font-bold text-base line-clamp-1" data-testid={`text-partner-name-${chef.id}`}>
+                              {chef.name}
                             </h3>
-                            {chef && (
-                              <p className="text-xs text-muted-foreground line-clamp-1">
-                                {chef.name}
+                            <p className="text-sm text-muted-foreground line-clamp-1 mt-0.5">
+                              {chef.description}
+                            </p>
+                            <div className="flex items-center justify-between mt-2 gap-2">
+                              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                <Clock className="h-3.5 w-3.5" />
+                                <span>30-40 mins</span>
+                              </div>
+                              {chef.lowestPrice > 0 && (
+                                <span className="text-xs text-muted-foreground">
+                                  From ₹{chef.lowestPrice}
+                                </span>
+                              )}
+                            </div>
+                            {chef.highlightDish && (
+                              <p className="text-xs text-primary mt-1.5 font-medium line-clamp-1">
+                                Try: {chef.highlightDish}
                               </p>
                             )}
-                            <div className="flex items-center justify-between mt-1.5 gap-1">
-                              <span className="text-xs text-muted-foreground flex items-center gap-1">
-                                <Clock className="h-3 w-3" />
-                                30-35 mins
-                              </span>
-                              <span className="font-bold text-sm text-primary">
-                                ₹{product.price}
-                              </span>
-                            </div>
                           </div>
                         </Card>
                       );

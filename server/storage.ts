@@ -278,6 +278,7 @@ export class MemStorage implements IStorage {
       stockQuantity: insertProduct.stockQuantity !== undefined ? insertProduct.stockQuantity : 100,
       lowStockThreshold: insertProduct.lowStockThreshold !== undefined ? insertProduct.lowStockThreshold : 20,
       isAvailable: insertProduct.isAvailable !== undefined ? insertProduct.isAvailable : true,
+      offerPercentage: insertProduct.offerPercentage ?? 0,
     };
     await db.insert(products).values(product);
     return product;
@@ -1326,7 +1327,7 @@ export class MemStorage implements IStorage {
   async deletePromotionalBanner(id: string): Promise<boolean> {
     const result = await db.delete(promotionalBanners)
       .where(eq(promotionalBanners.id, id));
-    return result.rowCount > 0;
+    return (result.rowCount ?? 0) > 0;
   }
 
   private mapOrder(order: any): Order {

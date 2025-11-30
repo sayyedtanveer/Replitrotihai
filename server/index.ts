@@ -73,8 +73,6 @@ app.use((req, res, next) => {
     log("Failed to create default admin user:", error?.message || error);
   }
 
-  const server = await registerRoutes(app);
-
   // Partner auth routes
   app.post("/api/partner/auth/login", async (req, res) => {
     try {
@@ -275,12 +273,24 @@ app.use((req, res, next) => {
     }
   });
 
+  const server = await registerRoutes(app);
+
+  // Global error handler - MUST set JSON content-type
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+    console.error("Global error handler caught:", err);
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
 
+    // Force JSON content-type
+    res.setHeader('Content-Type', 'application/json');
     res.status(status).json({ message });
-    throw err;
+  });
+
+  // 404 handler for API routes - ensures JSON response instead of HTML fallback
+  // IMPORTANT: This must come AFTER all route registrations
+  app.use('/api', (_req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.status(404).json({ message: "API endpoint not found" });
   });
 
   // importantly only setup vite in development and after

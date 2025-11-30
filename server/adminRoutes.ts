@@ -865,26 +865,32 @@ export function registerAdminRoutes(app: Express) {
   // Promotional Banners Management
   app.get("/api/admin/promotional-banners", requireAdmin(), async (req, res) => {
     try {
+      res.setHeader('Content-Type', 'application/json');
       const banners = await storage.getAllPromotionalBanners();
       res.json(banners);
     } catch (error) {
       console.error("Error fetching promotional banners:", error);
+      res.setHeader('Content-Type', 'application/json');
       res.status(500).json({ message: "Failed to fetch promotional banners" });
     }
   });
 
   app.post("/api/admin/promotional-banners", requireAdmin(), async (req, res) => {
     try {
+      res.setHeader('Content-Type', 'application/json');
+      debugger;
       const banner = await storage.createPromotionalBanner(req.body);
       res.status(201).json(banner);
     } catch (error) {
       console.error("Error creating promotional banner:", error);
+      res.setHeader('Content-Type', 'application/json');
       res.status(500).json({ message: "Failed to create promotional banner" });
     }
   });
 
   app.patch("/api/admin/promotional-banners/:id", requireAdmin(), async (req, res) => {
     try {
+      res.setHeader('Content-Type', 'application/json');
       const { id } = req.params;
       const banner = await storage.updatePromotionalBanner(id, req.body);
       if (!banner) {
@@ -894,12 +900,14 @@ export function registerAdminRoutes(app: Express) {
       res.json(banner);
     } catch (error) {
       console.error("Error updating promotional banner:", error);
+      res.setHeader('Content-Type', 'application/json');
       res.status(500).json({ message: "Failed to update promotional banner" });
     }
   });
 
   app.delete("/api/admin/promotional-banners/:id", requireAdmin(), async (req, res) => {
     try {
+      res.setHeader('Content-Type', 'application/json');
       const { id } = req.params;
       const deleted = await storage.deletePromotionalBanner(id);
       if (!deleted) {
@@ -909,6 +917,7 @@ export function registerAdminRoutes(app: Express) {
       res.json({ message: "Banner deleted successfully" });
     } catch (error) {
       console.error("Error deleting promotional banner:", error);
+      res.setHeader('Content-Type', 'application/json');
       res.status(500).json({ message: "Failed to delete promotional banner" });
     }
   });

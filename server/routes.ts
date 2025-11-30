@@ -67,6 +67,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Reset password endpoint (Forgot Password)
   app.post("/api/user/reset-password", async (req, res) => {
     try {
+      res.setHeader('Content-Type', 'application/json');
       const { phone } = req.body;
 
       if (!phone) {
@@ -107,6 +108,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       console.error("Password reset error:", error);
+      res.setHeader('Content-Type', 'application/json');
       res.status(500).json({ message: "Failed to reset password" });
     }
   });
@@ -211,22 +213,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ✅ User login
   app.post("/api/user/login", async (req, res) => {
     try {
-      const result = userLoginSchema.safeParse(req.body);
-      if (!result.success) {
-        res.status(400).json({ message: "Invalid login data" });
+      const { phone, password } = req.body;
+
+      if (!phone || !password) {
+        res.status(400).json({ message: "Phone and password are required" });
         return;
       }
 
-      const user = await storage.getUserByPhone(result.data.phone);
+      const user = await storage.getUserByPhone(phone);
       if (!user) {
         res.status(401).json({ message: "Invalid phone number or password" });
         return;
       }
 
-      const isValid = await verifyPassword(result.data.password, user.passwordHash);
-      if (!isValid) {
+      const passwordMatch = await verifyPassword(password, user.passwordHash);
+      if (!passwordMatch) {
         res.status(401).json({ message: "Invalid phone number or password" });
         return;
       }
@@ -252,11 +256,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ✅ Forgot password - send new password via email
+  app.post("/api/user/forgot-password", async (req, res) => {
+    try {
+      res.setHeader('Content-Type', 'application/json');
+      const { phone } = req.body;
+
+      if (!phone || phone.length !== 10) {
+        res.status(400).json({ message: "Valid 10-digit phone number is required" });
+        return;
+      }
+
+      const user = await storage.getUserByPhone(phone);
+      if (!user) {
+        res.status(404).json({ message: "No account found with this phone number" });
+        return;
+      }
+
+      if (!user.email) {
+        res.status(400).json({
+          message: "No email address registered for this account. Please contact support."
+        });
+        return;
+      }
+
+      // Generate a new temporary password (8 characters)
+      const tempPassword = Math.random().toString(36).slice(-8).toUpperCase();
+      const hashedPassword = await hashPassword(tempPassword);
+
+      // Update user password
+      await storage.updateUser(user.id, { passwordHash: hashedPassword });
+
+      // Send email with new password
+      await sendEmail({
+        to: user.email,
+        subject: '🔐 Password Reset - RotiHai',
+        html: createPasswordResetEmail(user.name, user.phone, tempPassword),
+      });
+
+      res.json({
+        message: "A new password has been sent to your registered email address",
+      });
+    } catch (error) {
+      console.error("Forgot password error:", error);
+      res.setHeader('Content-Type', 'application/json');
+      res.status(500).json({
+        message: "Failed to reset password. Please try again later."
+      });
+    }
+  });
+
   // User logout (JWT-based)
 app.post("/api/user/logout", async (req, res) => {
   try {
+    res.setHeader('Content-Type', 'application/json');
     // For JWT, logout simply means the client deletes the token.
-    // (Tokens are stateless — there’s nothing to invalidate on the server)
+    // (Tokens are stateless — there's nothing to invalidate on the server)
     // However, we could later add refresh token blacklisting here if needed.
 
     console.log("User logout requested");
@@ -264,6 +319,7 @@ app.post("/api/user/logout", async (req, res) => {
     res.json({ message: "Logged out successfully" });
   } catch (error: any) {
     console.error("Logout error:", error);
+    res.setHeader('Content-Type', 'application/json');
     res.status(500).json({ message: error.message || "Failed to logout" });
   }
 });
@@ -364,6 +420,54 @@ app.post("/api/user/logout", async (req, res) => {
     } catch (error) {
       console.error("Error fetching profile:", error);
       res.status(500).json({ message: "Failed to fetch profile" });
+    }
+  });
+
+  // Update user profile
+  app.put("/api/user/profile", requireUser(), async (req: AuthenticatedUserRequest, res) => {
+    try {
+      res.setHeader('Content-Type', 'application/json');
+      const userId = req.authenticatedUser!.userId;
+      const { name, email, address } = req.body;
+
+      // Validate email if provided
+      if (email && (typeof email !== 'string' || !email.includes('@'))) {
+        res.status(400).json({ message: "Valid email is required" });
+        return;
+      }
+
+      const user = await storage.getUser(userId);
+      if (!user) {
+        res.status(404).json({ message: "User not found" });
+        return;
+      }
+
+      const updateData: any = {};
+      if (name && typeof name === 'string') updateData.name = name.trim();
+      if (email && typeof email === 'string') updateData.email = email.trim();
+      if (address && typeof address === 'string') updateData.address = address.trim();
+
+      if (Object.keys(updateData).length === 0) {
+        res.status(400).json({ message: "No valid fields to update" });
+        return;
+      }
+
+      await storage.updateUser(userId, updateData);
+
+      const updatedUser = await storage.getUser(userId);
+      res.json({
+        id: updatedUser!.id,
+        name: updatedUser!.name,
+        phone: updatedUser!.phone,
+        email: updatedUser!.email,
+        address: updatedUser!.address,
+        referralCode: updatedUser!.referralCode,
+        walletBalance: updatedUser!.walletBalance || 0,
+      });
+    } catch (error) {
+      console.error("Error updating profile:", error);
+      res.setHeader('Content-Type', 'application/json');
+      res.status(500).json({ message: "Failed to update profile" });
     }
   });
 

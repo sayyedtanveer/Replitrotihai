@@ -367,6 +367,8 @@ export const insertUserSchema = createInsertSchema(users, {
   lastLoginAt: true,
   createdAt: true,
   updatedAt: true,
+}).extend({
+  password: z.string().min(6, { message: "Password must be at least 6 characters long" }),
 });
 
 export const userLoginSchema = z.object({

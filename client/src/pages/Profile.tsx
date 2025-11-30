@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { Redirect, useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
@@ -24,7 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { User, Mail, MapPin, Phone, LogOut, Lock, Gift } from "lucide-react";
+import { User, Mail, MapPin, Phone, LogOut, Lock, Gift, Edit2, Loader2 } from "lucide-react";
 import type { Category, Chef as BaseChef } from "@shared/schema";
 
 // ✅ Frontend-safe version of Chef (adds optional lat/long if Drizzle didn’t generate them yet)
@@ -134,6 +134,12 @@ export default function Profile() {
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
   const [referralCodeInput, setReferralCodeInput] = useState("");
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [profileFormData, setProfileFormData] = useState({
+    name: "",
+    email: "",
+    address: "",
+  });
 
   // 🎁 Check referral eligibility - MUST be before conditional returns
   const { data: referralEligibility } = useQuery<{ eligible: boolean; reason?: string }>({
@@ -150,6 +156,40 @@ export default function Profile() {
 
   // 🎁 Apply referral mutation
   const applyReferralMutation = useApplyReferral();
+
+  // Profile update mutation
+  const updateProfileMutation = useMutation({
+    mutationFn: async (data: { name?: string; email?: string; address?: string }) => {
+      const response = await fetch("/api/user/profile", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${userToken}`,
+        },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to update profile");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
+      toast({
+        title: "Success",
+        description: "Profile updated successfully",
+      });
+      setIsEditingProfile(false);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update profile",
+        variant: "destructive",
+      });
+    },
+  });
 
   const user: ProfileUser | null = replitUser || phoneUser || null;
   const isLoading = phoneUserLoading || authLoading;
@@ -182,6 +222,56 @@ export default function Profile() {
     } else {
       window.location.href = "/api/logout";
     }
+  };
+
+  const handleEditProfile = () => {
+    if (user) {
+      setProfileFormData({
+        name: user.name || "",
+        email: user.email || "",
+        address: user.address || "",
+      });
+      setIsEditingProfile(true);
+    }
+  };
+
+  const handleUpdateProfile = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    const updateData: { name?: string; email?: string; address?: string } = {};
+    
+    if (profileFormData.name.trim() && profileFormData.name !== user?.name) {
+      updateData.name = profileFormData.name.trim();
+    }
+    
+    if (profileFormData.email.trim()) {
+      if (!profileFormData.email.includes("@")) {
+        toast({
+          title: "Error",
+          description: "Please enter a valid email address",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (profileFormData.email !== user?.email) {
+        updateData.email = profileFormData.email.trim();
+      }
+    }
+    
+    if (profileFormData.address.trim() && profileFormData.address !== user?.address) {
+      updateData.address = profileFormData.address.trim();
+    }
+    
+    if (Object.keys(updateData).length === 0) {
+      toast({
+        title: "No changes",
+        description: "No changes detected in profile",
+      });
+      setIsEditingProfile(false);
+      return;
+    }
+    
+    updateProfileMutation.mutate(updateData);
   };
 
   return (
@@ -227,8 +317,23 @@ export default function Profile() {
             <>
               <Card>
                 <CardHeader>
-                  <CardTitle>Profile Information</CardTitle>
-                  <CardDescription>Your account details</CardDescription>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle>Profile Information</CardTitle>
+                      <CardDescription>Your account details</CardDescription>
+                    </div>
+                    {!isEditingProfile && userToken && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleEditProfile}
+                        data-testid="button-edit-profile"
+                      >
+                        <Edit2 className="h-4 w-4 mr-2" />
+                        Edit Profile
+                      </Button>
+                    )}
+                  </div>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="flex items-center gap-6">
@@ -248,22 +353,117 @@ export default function Profile() {
 
                   <Separator />
 
-                  <div className="grid gap-4">
-                    {user.address && (
+                  {isEditingProfile ? (
+                    <form onSubmit={handleUpdateProfile} className="space-y-4">
                       <div className="grid gap-2">
-                        <Label htmlFor="address">Address</Label>
+                        <Label htmlFor="edit-name">Name</Label>
+                        <Input
+                          id="edit-name"
+                          value={profileFormData.name}
+                          onChange={(e) => setProfileFormData({ ...profileFormData, name: e.target.value })}
+                          placeholder="Enter your name"
+                          data-testid="input-edit-name"
+                        />
+                      </div>
+
+                      <div className="grid gap-2">
+                        <Label htmlFor="edit-email">Email</Label>
+                        <div className="flex gap-2">
+                          <Mail className="h-4 w-4 mt-3 text-muted-foreground" />
+                          <Input
+                            id="edit-email"
+                            type="email"
+                            value={profileFormData.email}
+                            onChange={(e) => setProfileFormData({ ...profileFormData, email: e.target.value })}
+                            placeholder="Enter your email"
+                            data-testid="input-edit-email"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid gap-2">
+                        <Label htmlFor="edit-address">Address</Label>
                         <div className="flex gap-2">
                           <MapPin className="h-4 w-4 mt-3 text-muted-foreground" />
                           <Input
-                            id="address"
-                            defaultValue={user.address}
+                            id="edit-address"
+                            value={profileFormData.address}
+                            onChange={(e) => setProfileFormData({ ...profileFormData, address: e.target.value })}
+                            placeholder="Enter your address"
+                            data-testid="input-edit-address"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <Button
+                          type="submit"
+                          disabled={updateProfileMutation.isPending}
+                          data-testid="button-save-profile"
+                        >
+                          {updateProfileMutation.isPending ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Saving...
+                            </>
+                          ) : (
+                            "Save Changes"
+                          )}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setIsEditingProfile(false)}
+                          disabled={updateProfileMutation.isPending}
+                          data-testid="button-cancel-edit"
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </form>
+                  ) : (
+                    <div className="grid gap-4">
+                      <div className="grid gap-2">
+                        <Label>Phone</Label>
+                        <div className="flex gap-2">
+                          <Phone className="h-4 w-4 mt-3 text-muted-foreground" />
+                          <Input
+                            value={user?.phone || ""}
                             readOnly
                             className="bg-muted"
                           />
                         </div>
                       </div>
-                    )}
-                  </div>
+
+                      {user?.email && (
+                        <div className="grid gap-2">
+                          <Label>Email</Label>
+                          <div className="flex gap-2">
+                            <Mail className="h-4 w-4 mt-3 text-muted-foreground" />
+                            <Input
+                              value={user.email}
+                              readOnly
+                              className="bg-muted"
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {user?.address && (
+                        <div className="grid gap-2">
+                          <Label>Address</Label>
+                          <div className="flex gap-2">
+                            <MapPin className="h-4 w-4 mt-3 text-muted-foreground" />
+                            <Input
+                              value={user.address}
+                              readOnly
+                              className="bg-muted"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
