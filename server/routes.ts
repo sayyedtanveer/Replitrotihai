@@ -5,9 +5,10 @@ import { insertOrderSchema, userLoginSchema, insertUserSchema } from "@shared/sc
 import { registerAdminRoutes } from "./adminRoutes";
 import { registerPartnerRoutes } from "./partnerRoutes";
 import { registerDeliveryRoutes } from "./deliveryRoutes";
-import { setupWebSocket, broadcastNewOrder } from "./websocket";
+import { setupWebSocket, broadcastNewOrder, broadcastSubscriptionDelivery } from "./websocket";
 import { hashPassword, verifyPassword, generateAccessToken, generateRefreshToken, requireUser, type AuthenticatedUserRequest } from "./userAuth";
 import { verifyToken as verifyUserToken } from "./userAuth";
+import { requireAdmin } from "./adminAuth";
 import { sendEmail, createWelcomeEmail, createPasswordResetEmail, createPasswordChangeConfirmationEmail } from "./emailService";
 import { db, subscriptions } from "@shared/db";
 import { eq } from "drizzle-orm";
@@ -43,6 +44,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Coupon verification error:", error);
       res.status(400).json({ message: error.message || "Failed to verify coupon" });
+    }
+  });
+
+  // Get available delivery time slots (public endpoint)
+  app.get("/api/delivery-slots", async (req, res) => {
+    try {
+      const slots = await storage.getActiveDeliveryTimeSlots();
+      res.json(slots);
+    } catch (error) {
+      console.error("Error fetching delivery slots:", error);
+      res.status(500).json({ message: "Failed to fetch delivery slots" });
     }
   });
 
@@ -784,6 +796,15 @@ app.post("/api/user/logout", async (req, res) => {
       }
 
       const updated = await storage.updateSubscription(req.params.id, updateData);
+      if (!updated) {
+        res.status(500).json({ message: "Failed to update subscription" });
+        return;
+      }
+
+      // Broadcast subscription delivery update to assigned chef
+      if (updated.chefId) {
+        broadcastSubscriptionDelivery(updated);
+      }
 
       res.json({ message: "Delivery completed", subscription: updated });
     } catch (error: any) {
@@ -1273,7 +1294,7 @@ app.post("/api/orders", async (req: any, res) => {
   app.post("/api/subscriptions", requireUser(), async (req: AuthenticatedUserRequest, res) => {
     try {
       const userId = req.authenticatedUser!.userId;
-      const { planId, deliveryTime = "09:00", durationDays = 30 } = req.body;
+      const { planId, deliveryTime = "09:00", deliverySlotId, durationDays = 30 } = req.body;
 
       if (!planId) {
         res.status(400).json({ message: "Plan ID is required" });
@@ -1314,6 +1335,9 @@ app.post("/api/orders", async (req: any, res) => {
       const subscription = await storage.createSubscription({
         userId,
         planId,
+        chefId: null,
+        chefAssignedAt: null,
+        deliverySlotId: deliverySlotId || null,
         customerName: user.name || "",
         phone: user.phone || "",
         email: user.email || "",
@@ -1330,6 +1354,8 @@ app.post("/api/orders", async (req: any, res) => {
         paymentTransactionId: null,
         lastDeliveryDate: null,
         deliveryHistory: [],
+        pauseStartDate: null,
+        pauseResumeDate: null,
       });
 
       console.log(`📋 Subscription created: ${subscription.id} - Status: pending (awaiting payment)`);
@@ -1341,7 +1367,7 @@ app.post("/api/orders", async (req: any, res) => {
     }
   });
 
-  // Pause a subscription
+  // Pause a subscription with optional date range
   app.post("/api/subscriptions/:id/pause", requireUser(), async (req: AuthenticatedUserRequest, res) => {
     try {
       const userId = req.authenticatedUser!.userId;
@@ -1357,7 +1383,25 @@ app.post("/api/orders", async (req: any, res) => {
         return;
       }
 
-      const updated = await storage.updateSubscription(req.params.id, { status: "paused" });
+      const { pauseStartDate, pauseResumeDate } = req.body;
+      
+      // Prepare update data
+      const updateData: any = { status: "paused" };
+      
+      if (pauseStartDate) {
+        updateData.pauseStartDate = new Date(pauseStartDate);
+      } else {
+        updateData.pauseStartDate = new Date();
+      }
+      
+      if (pauseResumeDate) {
+        updateData.pauseResumeDate = new Date(pauseResumeDate);
+      }
+
+      const updated = await storage.updateSubscription(req.params.id, updateData);
+      
+      console.log(`⏸️ Subscription ${req.params.id} paused from ${updateData.pauseStartDate} to ${updateData.pauseResumeDate || 'indefinite'}`);
+      
       res.json(updated);
     } catch (error: any) {
       console.error("Error pausing subscription:", error);
@@ -1381,11 +1425,265 @@ app.post("/api/orders", async (req: any, res) => {
         return;
       }
 
-      const updated = await storage.updateSubscription(req.params.id, { status: "active" });
+      const updated = await storage.updateSubscription(req.params.id, { 
+        status: "active",
+        pauseStartDate: null,
+        pauseResumeDate: null
+      });
+      
+      console.log(`▶️ Subscription ${req.params.id} resumed`);
+      
       res.json(updated);
     } catch (error: any) {
       console.error("Error resuming subscription:", error);
       res.status(500).json({ message: error.message || "Failed to resume subscription" });
+    }
+  });
+
+  // Update delivery time preference
+  app.patch("/api/subscriptions/:id/delivery-time", requireUser(), async (req: AuthenticatedUserRequest, res) => {
+    try {
+      const userId = req.authenticatedUser!.userId;
+      const subscription = await storage.getSubscription(req.params.id);
+
+      if (!subscription) {
+        res.status(404).json({ message: "Subscription not found" });
+        return;
+      }
+
+      if (subscription.userId !== userId) {
+        res.status(403).json({ message: "Unauthorized" });
+        return;
+      }
+
+      const { deliveryTime } = req.body;
+      if (!deliveryTime) {
+        res.status(400).json({ message: "Delivery time is required" });
+        return;
+      }
+
+      const updated = await storage.updateSubscription(req.params.id, { 
+        nextDeliveryTime: deliveryTime 
+      });
+      
+      console.log(`🕐 Subscription ${req.params.id} delivery time updated to ${deliveryTime}`);
+      
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error updating delivery time:", error);
+      res.status(500).json({ message: error.message || "Failed to update delivery time" });
+    }
+  });
+
+  // Get delivery logs for a subscription
+  app.get("/api/subscriptions/:id/delivery-logs", requireUser(), async (req: AuthenticatedUserRequest, res) => {
+    try {
+      const userId = req.authenticatedUser!.userId;
+      const subscription = await storage.getSubscription(req.params.id);
+
+      if (!subscription) {
+        res.status(404).json({ message: "Subscription not found" });
+        return;
+      }
+
+      if (subscription.userId !== userId) {
+        res.status(403).json({ message: "Unauthorized" });
+        return;
+      }
+
+      const logs = await storage.getSubscriptionDeliveryLogs(req.params.id);
+      res.json(logs);
+    } catch (error: any) {
+      console.error("Error fetching delivery logs:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch delivery logs" });
+    }
+  });
+
+  // Confirm subscription payment (user confirms after paying via QR)
+  app.post("/api/subscriptions/:id/payment-confirmed", requireUser(), async (req: AuthenticatedUserRequest, res) => {
+    try {
+      const userId = req.authenticatedUser!.userId;
+      const subscription = await storage.getSubscription(req.params.id);
+
+      if (!subscription) {
+        res.status(404).json({ message: "Subscription not found" });
+        return;
+      }
+
+      if (subscription.userId !== userId) {
+        res.status(403).json({ message: "Unauthorized" });
+        return;
+      }
+
+      const { paymentTransactionId } = req.body;
+      if (!paymentTransactionId) {
+        res.status(400).json({ message: "Payment transaction ID is required" });
+        return;
+      }
+
+      const updated = await storage.updateSubscription(req.params.id, {
+        paymentTransactionId,
+      });
+
+      console.log(`💳 Subscription ${req.params.id} payment submitted with transaction: ${paymentTransactionId}`);
+
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error confirming subscription payment:", error);
+      res.status(500).json({ message: error.message || "Failed to confirm payment" });
+    }
+  });
+
+  // Renew subscription (creates a new subscription for the same plan)
+  app.post("/api/subscriptions/:id/renew", requireUser(), async (req: AuthenticatedUserRequest, res) => {
+    try {
+      const userId = req.authenticatedUser!.userId;
+      const oldSubscription = await storage.getSubscription(req.params.id);
+
+      if (!oldSubscription) {
+        res.status(404).json({ message: "Subscription not found" });
+        return;
+      }
+
+      if (oldSubscription.userId !== userId) {
+        res.status(403).json({ message: "Unauthorized" });
+        return;
+      }
+
+      const plan = await storage.getSubscriptionPlan(oldSubscription.planId);
+      if (!plan) {
+        res.status(404).json({ message: "Subscription plan not found" });
+        return;
+      }
+
+      const user = await storage.getUser(userId);
+      if (!user) {
+        res.status(404).json({ message: "User not found" });
+        return;
+      }
+
+      const now = new Date();
+      const nextDelivery = new Date(now);
+      nextDelivery.setDate(nextDelivery.getDate() + 1);
+
+      const endDate = new Date(now);
+      endDate.setDate(endDate.getDate() + 30);
+
+      const deliveryDays = plan.deliveryDays as string[];
+      let totalDeliveries = Math.floor(30 / 7) * deliveryDays.length;
+
+      const newSubscription = await storage.createSubscription({
+        userId,
+        planId: oldSubscription.planId,
+        chefId: oldSubscription.chefId || null,
+        chefAssignedAt: null,
+        deliverySlotId: oldSubscription.deliverySlotId || null,
+        customerName: user.name || "",
+        phone: user.phone || "",
+        email: user.email || "",
+        address: user.address || "",
+        status: "pending",
+        startDate: now,
+        endDate,
+        nextDeliveryDate: nextDelivery,
+        nextDeliveryTime: oldSubscription.nextDeliveryTime || "09:00",
+        customItems: null,
+        remainingDeliveries: totalDeliveries,
+        totalDeliveries,
+        isPaid: false,
+        paymentTransactionId: null,
+        lastDeliveryDate: null,
+        deliveryHistory: [],
+        pauseStartDate: null,
+        pauseResumeDate: null,
+      });
+
+      console.log(`🔄 Subscription renewed for user ${userId} - New subscription ID: ${newSubscription.id}`);
+
+      res.status(201).json(newSubscription);
+    } catch (error: any) {
+      console.error("Error renewing subscription:", error);
+      res.status(500).json({ message: error.message || "Failed to renew subscription" });
+    }
+  });
+
+  // Update delivery time for a subscription
+  app.patch("/api/subscriptions/:subscriptionId/delivery-time", requireUser(), async (req: AuthenticatedUserRequest, res) => {
+    try {
+      const userId = req.authenticatedUser!.userId;
+      const { subscriptionId } = req.params;
+      const { deliveryTime } = req.body;
+
+      if (!deliveryTime || typeof deliveryTime !== "string") {
+        res.status(400).json({ message: "Valid delivery time is required" });
+        return;
+      }
+
+      const subscription = await storage.getSubscription(subscriptionId);
+      if (!subscription) {
+        res.status(404).json({ message: "Subscription not found" });
+        return;
+      }
+
+      if (subscription.userId !== userId) {
+        res.status(403).json({ message: "Unauthorized" });
+        return;
+      }
+
+      const updated = await storage.updateSubscription(subscriptionId, {
+        nextDeliveryTime: deliveryTime,
+      });
+
+      console.log(`⏰ Updated subscription ${subscriptionId} delivery time to: ${deliveryTime}`);
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error updating delivery time:", error);
+      res.status(500).json({ message: error.message || "Failed to update delivery time" });
+    }
+  });
+
+  // Get subscription schedule with delivery history
+  app.get("/api/subscriptions/:id/schedule", requireUser(), async (req: AuthenticatedUserRequest, res) => {
+    try {
+      const userId = req.authenticatedUser!.userId;
+      const subscription = await storage.getSubscription(req.params.id);
+
+      if (!subscription) {
+        res.status(404).json({ message: "Subscription not found" });
+        return;
+      }
+
+      if (subscription.userId !== userId) {
+        res.status(403).json({ message: "Unauthorized" });
+        return;
+      }
+
+      const plan = await storage.getSubscriptionPlan(subscription.planId);
+      if (!plan) {
+        res.status(404).json({ message: "Subscription plan not found" });
+        return;
+      }
+
+      const logs = await storage.getSubscriptionDeliveryLogs(req.params.id);
+      
+      const scheduleItems = logs.map(log => ({
+        date: log.date,
+        time: log.time,
+        items: plan.items,
+        status: log.status === "delivered" ? "delivered" : "pending"
+      }));
+
+      res.json({
+        subscription,
+        plan,
+        schedule: scheduleItems,
+        remainingDeliveries: subscription.remainingDeliveries,
+        totalDeliveries: subscription.totalDeliveries,
+        deliveryHistory: logs
+      });
+    } catch (error: any) {
+      console.error("Error fetching subscription schedule:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch schedule" });
     }
   });
 
@@ -1425,6 +1723,121 @@ app.post("/api/orders", async (req: any, res) => {
     } catch (error: any) {
       console.error("Error fetching cart setting:", error);
       res.status(500).json({ message: error.message || "Failed to fetch cart setting" });
+    }
+  });
+
+  // Admin: Assign a chef/partner to a subscription
+  app.patch("/api/admin/subscriptions/:id/assign-chef", requireAdmin(), async (req: any, res) => {
+    try {
+      const { chefId } = req.body;
+      if (!chefId) {
+        res.status(400).json({ message: "Chef ID is required" });
+        return;
+      }
+
+      const subscription = await storage.getSubscription(req.params.id);
+      if (!subscription) {
+        res.status(404).json({ message: "Subscription not found" });
+        return;
+      }
+
+      const chef = await storage.getChefById(chefId);
+      if (!chef) {
+        res.status(404).json({ message: "Chef not found" });
+        return;
+      }
+
+      const updated = await storage.updateSubscription(req.params.id, { chefId, chefAssignedAt: new Date() });
+      console.log(`👨‍🍳 Subscription ${req.params.id} assigned to chef ${chefId}`);
+      
+      // Broadcast the subscription update
+      const { broadcastSubscriptionUpdate } = await import("./websocket");
+      if (updated) {
+        broadcastSubscriptionUpdate(updated);
+      }
+      
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error assigning chef to subscription:", error);
+      res.status(500).json({ message: error.message || "Failed to assign chef" });
+    }
+  });
+
+  // Admin: Get subscriptions needing reassignment (assigned but not delivered for 1-2 days)
+  app.get("/api/admin/subscriptions/reassignment-pending", requireAdmin(), async (req: any, res) => {
+    try {
+      const allSubscriptions = await storage.getSubscriptions();
+      const now = new Date();
+      const reassignmentThresholdDays = 2; // Reassign if no delivery in 2 days
+      
+      const pendingReassignments = allSubscriptions.filter(sub => {
+        // Must have a chef assigned
+        if (!sub.chefId || !sub.chefAssignedAt) return false;
+        
+        // Must be active and paid
+        if (sub.status !== "active" || !sub.isPaid) return false;
+        
+        // Check if assigned more than threshold days ago AND no recent delivery
+        const daysSinceAssignment = Math.floor((now.getTime() - new Date(sub.chefAssignedAt).getTime()) / (1000 * 60 * 60 * 24));
+        const daysSinceLastDelivery = sub.lastDeliveryDate ? Math.floor((now.getTime() - new Date(sub.lastDeliveryDate).getTime()) / (1000 * 60 * 60 * 24)) : daysSinceAssignment;
+        
+        // Flag for reassignment if assigned 2+ days ago with no delivery
+        return daysSinceAssignment >= reassignmentThresholdDays && daysSinceLastDelivery >= reassignmentThresholdDays;
+      });
+
+      // Fetch chef details for each subscription
+      const enrichedReassignments = await Promise.all(pendingReassignments.map(async (sub) => {
+        const chef = sub.chefId ? await storage.getChefById(sub.chefId) : null;
+        const plan = await storage.getSubscriptionPlan(sub.planId);
+        return {
+          ...sub,
+          currentChefName: chef?.name,
+          planName: plan?.name,
+        };
+      }));
+
+      console.log(`⚠️ Found ${enrichedReassignments.length} subscriptions pending reassignment`);
+      res.json(enrichedReassignments);
+    } catch (error: any) {
+      console.error("Error fetching pending reassignments:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch pending reassignments" });
+    }
+  });
+
+  // Admin: Reassign subscription to a different chef
+  app.patch("/api/admin/subscriptions/:id/reassign-chef", requireAdmin(), async (req: any, res) => {
+    try {
+      const { newChefId } = req.body;
+      if (!newChefId) {
+        res.status(400).json({ message: "New chef ID is required" });
+        return;
+      }
+
+      const subscription = await storage.getSubscription(req.params.id);
+      if (!subscription) {
+        res.status(404).json({ message: "Subscription not found" });
+        return;
+      }
+
+      const newChef = await storage.getChefById(newChefId);
+      if (!newChef) {
+        res.status(404).json({ message: "Chef not found" });
+        return;
+      }
+
+      const oldChefId = subscription.chefId;
+      const updated = await storage.updateSubscription(req.params.id, { chefId: newChefId, chefAssignedAt: new Date() });
+      
+      console.log(`🔄 Subscription ${req.params.id} reassigned from chef ${oldChefId} to ${newChefId}`);
+      res.json({ 
+        message: "Subscription reassigned successfully", 
+        subscription: updated,
+        previousChefId: oldChefId,
+        newChefId: newChefId
+      });
+    } catch (error: any) {
+      console.error("Error reassigning subscription:", error);
+      res.status(500).json({ message: error.message || "Failed to reassign subscription" });
     }
   });
 

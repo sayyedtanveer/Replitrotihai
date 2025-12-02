@@ -11,6 +11,7 @@ interface ConnectedClient {
   id: string;
   chefId?: string;
   orderId?: string;
+  userId?: string; // Added for customer identification in subscription updates
 }
 
 const clients: Map<string, ConnectedClient> = new Map();
@@ -30,6 +31,7 @@ export function setupWebSocket(server: Server) {
     const token = url.searchParams.get("token");
     const type = url.searchParams.get("type") as "admin" | "chef" | "delivery" | "customer" | "browser";
     const orderId = url.searchParams.get("orderId");
+    const userId = url.searchParams.get("userId"); // Added for customer identification
 
     if (!type) {
       ws.close(1008, "Missing client type");
@@ -39,18 +41,20 @@ export function setupWebSocket(server: Server) {
     let clientId: string;
     let chefId: string | undefined;
     let customerOrderId: string | undefined;
+    let customerUserId: string | undefined; // Added for customer userId
 
     try {
       if (type === "browser") {
         // Browser connections don't need authentication - they receive broadcast updates
         clientId = `browser_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       } else if (type === "customer") {
-        if (!orderId) {
-          ws.close(1008, "Order ID required for customer connection");
+        if (!orderId && !userId) { // Allow connection with userId only as well
+          ws.close(1008, "Order ID or User ID required for customer connection");
           return;
         }
-        clientId = `customer_${orderId}_${Date.now()}`;
-        customerOrderId = orderId;
+        clientId = `customer_${orderId || userId}_${Date.now()}`;
+        customerOrderId = orderId || undefined;
+        customerUserId = userId || undefined; // Assign userId
       } else if (type === "admin") {
         if (!token) {
           ws.close(1008, "Token required");
@@ -96,10 +100,10 @@ export function setupWebSocket(server: Server) {
       return;
     }
 
-    const client: ConnectedClient = { ws, type, id: clientId, chefId, orderId: customerOrderId };
+    const client: ConnectedClient = { ws, type, id: clientId, chefId, orderId: customerOrderId, userId: customerUserId }; // Include userId
     clients.set(clientId, client);
 
-    console.log(`WebSocket client connected: ${type} ${clientId}${chefId ? ` (chef: ${chefId})` : ""}${customerOrderId ? ` (order: ${customerOrderId})` : ""}`);
+    console.log(`WebSocket client connected: ${type} ${clientId}${chefId ? ` (chef: ${chefId})` : ""}${customerOrderId ? ` (order: ${customerOrderId})` : ""}${customerUserId ? ` (user: ${customerUserId})` : ""}`); // Log userId
 
     ws.on("close", () => {
       clients.delete(clientId);
@@ -131,6 +135,64 @@ export function broadcastNewOrder(order: Order) {
     }
   });
 }
+
+// Broadcast subscription delivery to admins and assigned chef
+export function broadcastSubscriptionDelivery(subscription: any) {
+  const message = JSON.stringify({
+    type: "subscription_delivery",
+    data: subscription
+  });
+
+  clients.forEach((client) => {
+    if (client.type === "admin") {
+      client.ws.send(message);
+    } else if (client.type === "chef" && subscription.chefId && client.chefId === subscription.chefId) {
+      client.ws.send(message);
+      console.log(`  ✅ Sent subscription delivery to chef ${client.id} (chefId: ${client.chefId})`);
+    }
+  });
+}
+
+// Broadcast subscription update (assignment, status changes, etc.)
+export function broadcastSubscriptionUpdate(subscription: any) {
+  const message = JSON.stringify({
+    type: "subscription_update",
+    data: subscription
+  });
+
+  console.log(`\n📡 ========== BROADCASTING SUBSCRIPTION UPDATE ==========`);
+  console.log(`Subscription ID: ${subscription.id}`);
+  console.log(`Customer: ${subscription.customerName}`);
+  console.log(`Chef ID: ${subscription.chefId || 'None'}`);
+  console.log(`Status: ${subscription.status}`);
+
+  let adminNotified = 0;
+  let chefNotified = false;
+  let customerNotified = false;
+
+  clients.forEach((client, clientId) => {
+    if (client.type === "admin" && client.ws.readyState === WebSocket.OPEN) {
+      client.ws.send(message);
+      adminNotified++;
+      console.log(`  ✅ Sent to admin ${clientId}`);
+    } else if (client.type === "chef" && subscription.chefId && client.chefId === subscription.chefId && client.ws.readyState === WebSocket.OPEN) {
+      client.ws.send(message);
+      chefNotified = true;
+      console.log(`  ✅ Sent to partner ${clientId} (chefId: ${client.chefId})`);
+    } else if (client.type === "customer" && client.userId === subscription.userId && client.ws.readyState === WebSocket.OPEN) {
+      client.ws.send(message);
+      customerNotified = true;
+      console.log(`  ✅ Sent to customer ${clientId}`);
+    }
+  });
+
+  console.log(`\n📊 Broadcast Summary:`);
+  console.log(`  - Admins notified: ${adminNotified}`);
+  console.log(`  - Chef notified: ${chefNotified ? 'YES' : 'NO'}`);
+  console.log(`  - Customer notified: ${customerNotified ? 'YES' : 'NO'}`);
+  console.log(`================================================\n`);
+}
+
 
 export function broadcastOrderUpdate(order: Order) {
   const message = JSON.stringify({
@@ -191,7 +253,7 @@ export function broadcastOrderUpdate(order: Order) {
       chefId: c.chefId,
     })));
   }
-  
+
   console.log(`================================================\n`);
 }
 
@@ -210,16 +272,16 @@ export function notifyDeliveryAssignment(order: Order, deliveryPersonId: string)
 }
 
 export async function broadcastPreparedOrderToAvailableDelivery(order: any) {
-  const notificationStage = order.status === "accepted_by_chef" ? "CHEF_ACCEPTED" : 
+  const notificationStage = order.status === "accepted_by_chef" ? "CHEF_ACCEPTED" :
                            order.status === "prepared" ? "FOOD_READY" : "ORDER_UPDATE";
-  
+
   console.log(`📣 Broadcasting order ${order.id} (status: ${order.status}, stage: ${notificationStage}) to all active delivery personnel`);
 
   // Import storage to check delivery personnel status
   const { storage } = await import("./storage");
-  
+
   let deliveryPersonnelNotified = 0;
-  
+
   // Broadcast to all connected delivery personnel (they can self-filter based on availability)
   for (const [deliveryPersonId, client] of Array.from(clients.entries())) {
     if (client.type === "delivery" && client.ws.readyState === WebSocket.OPEN) {
@@ -230,11 +292,11 @@ export async function broadcastPreparedOrderToAvailableDelivery(order: any) {
           type: "new_prepared_order",
           order: order,
           notificationStage: notificationStage,
-          message: notificationStage === "CHEF_ACCEPTED" 
+          message: notificationStage === "CHEF_ACCEPTED"
             ? `🔔 New order alert! Chef accepted order #${order.id.slice(0, 8)} - start preparing to head out`
             : `🍽️ Order #${order.id.slice(0, 8)} is ready for pickup!`
         };
-        
+
         client.ws.send(JSON.stringify(message));
         console.log(`✅ [${notificationStage}] Sent to delivery person: ${deliveryPersonId} (${deliveryPerson.name})`);
         deliveryPersonnelNotified++;
@@ -274,10 +336,10 @@ export async function broadcastPreparedOrderToAvailableDelivery(order: any) {
 async function notifyAdminForManualAssignment(orderId: string) {
   // Import storage dynamically to avoid circular dependencies
   const { storage } = await import("./storage");
-  
+
   // Re-fetch current order status to ensure we don't send stale notifications
   const currentOrder = await storage.getOrderById(orderId);
-  
+
   if (!currentOrder) {
     console.log(`⚠️ Order ${orderId} not found when trying to send manual assignment notification`);
     return;

@@ -278,6 +278,21 @@ import { useState, useEffect } from "react";
 
   // Filter chefs when a category is selected (Zomato-style)
   const filteredChefs = chefsWithOffers.filter(chef => {
+    // Filter by search query first - show chefs that have matching products
+    if (searchQuery.trim()) {
+      const searchLower = searchQuery.trim().toLowerCase();
+      const chefProducts = products.filter(p => p.chefId === chef.id);
+      const hasMatchingProduct = chefProducts.some(p =>
+        p.name.toLowerCase().includes(searchLower) ||
+        p.description.toLowerCase().includes(searchLower)
+      );
+      // Also match chef name
+      const chefNameMatches = chef.name.toLowerCase().includes(searchLower);
+      if (!hasMatchingProduct && !chefNameMatches) {
+        return false;
+      }
+    }
+
     // Filter by selected category
     if (selectedCategoryTab !== "all" && chef.categoryId !== selectedCategoryTab) {
       return false;
@@ -479,35 +494,16 @@ import { useState, useEffect } from "react";
           {/* Zomato-style Category Tabs - Circular Icons */}
           <section className="bg-background py-4 border-b">
             <div className="max-w-7xl mx-auto px-3">
-              <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-2">
-                {/* Special Offers Tab */}
-                <button
-                  onClick={() => setIsSubscriptionOpen(true)}
-                  className="flex flex-col items-center gap-2 min-w-[70px] group"
-                  data-testid="button-offers-tab"
-                >
-                  <div className="relative w-16 h-16 sm:w-18 sm:h-18 rounded-full bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center shadow-md group-hover:shadow-lg transition-all group-hover:scale-105">
-                    <div className="text-center text-white">
-                      <div className="text-[10px] font-bold leading-none">MEALS</div>
-                      <div className="text-[10px] font-bold leading-none">UNDER</div>
-                      <div className="text-sm font-bold leading-none">₹200</div>
-                    </div>
-                    <div className="absolute -bottom-1 -right-1 bg-primary text-primary-foreground text-[8px] px-1.5 py-0.5 rounded-full font-semibold">
-                      Explore
-                    </div>
-                  </div>
-                  <span className="text-xs font-medium text-center whitespace-nowrap"></span>
-                </button>
-
+              <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-2 -mx-3 px-3">
                 {/* All Category */}
                 <button
                   onClick={() => handleCategoryTabChange("all")}
-                  className={`flex flex-col items-center gap-2 min-w-[70px] group transition-all ${
+                  className={`flex flex-col items-center gap-2 min-w-[70px] group transition-all justify-start pt-1 ${
                     selectedCategoryTab === "all" ? "scale-105" : ""
                   }`}
                   data-testid="button-category-all"
                 >
-                  <div className={`relative w-16 h-16 sm:w-18 sm:h-18 rounded-full overflow-hidden shadow-md group-hover:shadow-lg transition-all group-hover:scale-105 ${
+                  <div className={`relative w-16 h-16 sm:w-18 sm:h-18 rounded-full overflow-hidden shadow-md group-hover:shadow-lg transition-all group-hover:scale-105 flex-shrink-0 ${
                     selectedCategoryTab === "all" ? "ring-2 ring-primary ring-offset-2" : ""
                   }`}>
                     <div className="w-full h-full bg-gradient-to-br from-orange-100 to-orange-200 dark:from-orange-900 dark:to-orange-800 flex items-center justify-center">
@@ -521,7 +517,7 @@ import { useState, useEffect } from "react";
 
                 {/* Dynamic Categories */}
                 {categoriesLoading ? (
-                  [...Array(4)].map((_, i) => (
+                  [...Array(3)].map((_, i) => (
                     <div key={i} className="flex flex-col items-center gap-2 min-w-[70px]">
                       <div className="w-16 h-16 rounded-full bg-muted animate-pulse" />
                       <div className="w-12 h-3 bg-muted rounded animate-pulse" />

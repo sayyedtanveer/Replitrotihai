@@ -402,7 +402,7 @@ export default function OrderTracking() {
                 {order.chefName && (
                   <div className="mb-3 pb-2 border-b">
                     <p className="text-xs text-muted-foreground">Prepared by</p>
-                    <p className="font-medium flex items-center gap-1">
+                    <p className="text-sm md:text-base font-medium flex items-center gap-1">
                       <ChefHat className="h-4 w-4" />
                       {order.chefName}
                     </p>
@@ -410,22 +410,22 @@ export default function OrderTracking() {
                 )}
                 {(order.items as any[]).map((item, idx) => (
                   <div key={idx} className="flex justify-between text-sm">
-                    <span>
+                    <span className="text-muted-foreground">
                       {item.name} x{item.quantity}
                     </span>
                     <span className="font-medium">₹{item.price * item.quantity}</span>
                   </div>
                 ))}
                 <div className="border-t pt-2 mt-2">
-                  <div className="flex justify-between text-sm text-muted-foreground">
+                  <div className="flex justify-between text-xs md:text-sm text-muted-foreground">
                     <span>Subtotal</span>
                     <span>₹{order.subtotal}</span>
                   </div>
-                  <div className="flex justify-between text-sm text-muted-foreground">
+                  <div className="flex justify-between text-xs md:text-sm text-muted-foreground">
                     <span>Delivery Fee</span>
                     <span>₹{order.deliveryFee}</span>
                   </div>
-                  <div className="flex justify-between font-semibold text-base mt-1">
+                  <div className="flex justify-between font-semibold text-sm md:text-base mt-1">
                     <span>Total</span>
                     <span>₹{order.total}</span>
                   </div>

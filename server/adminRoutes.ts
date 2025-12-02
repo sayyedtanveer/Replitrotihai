@@ -12,7 +12,7 @@ import {
   type AuthenticatedAdminRequest,
 } from "./adminAuth";
 import { db, walletSettings } from "@shared/db";
-import { adminLoginSchema, insertAdminUserSchema, insertCategorySchema, insertProductSchema, insertDeliveryPersonnelSchema } from "@shared/schema";
+import { adminLoginSchema, insertAdminUserSchema, insertCategorySchema, insertProductSchema, insertDeliveryPersonnelSchema, insertDeliveryTimeSlotsSchema } from "@shared/schema";
 import { fromZodError } from "zod-validation-error";
 import { broadcastOrderUpdate, broadcastNewOrder, notifyDeliveryAssignment, cancelPreparedOrderTimeout, broadcastProductAvailabilityUpdate, broadcastChefStatusUpdate } from "./websocket";
 import { hashPassword as hashDeliveryPassword } from "./deliveryAuth";
@@ -650,6 +650,7 @@ export function registerAdminRoutes(app: Express) {
         username: admin.username,
         email: admin.email,
         role: admin.role,
+        password: validation.data.password,
         createdAt: admin.createdAt,
       });
     } catch (error) {
@@ -878,7 +879,6 @@ export function registerAdminRoutes(app: Express) {
   app.post("/api/admin/promotional-banners", requireAdmin(), async (req, res) => {
     try {
       res.setHeader('Content-Type', 'application/json');
-      debugger;
       const banner = await storage.createPromotionalBanner(req.body);
       res.status(201).json(banner);
     } catch (error) {
@@ -1063,6 +1063,472 @@ export function registerAdminRoutes(app: Express) {
     }
   });
 
+  // Get today's subscription deliveries (used by admin dashboard) - MUST be before :id route
+  app.get("/api/admin/subscriptions/today-deliveries", requireAdmin(), async (req: AuthenticatedAdminRequest, res) => {
+    try {
+      const allSubscriptions = await storage.getSubscriptions();
+      const subscriptions = allSubscriptions.filter(s => s.isPaid && s.status !== "cancelled");
+      
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todayStr = today.toISOString().split('T')[0];
+      
+      const todaysLogs = await storage.getSubscriptionDeliveryLogsByDate(today);
+      
+      const deliveries: any[] = [];
+      let preparing = 0;
+      let outForDelivery = 0;
+      let delivered = 0;
+      let scheduled = 0;
+
+      for (const sub of subscriptions) {
+        const nextDelivery = new Date(sub.nextDeliveryDate);
+        nextDelivery.setHours(0, 0, 0, 0);
+        const nextDeliveryStr = nextDelivery.toISOString().split('T')[0];
+        
+        if (nextDeliveryStr === todayStr && sub.status !== "paused" && sub.status !== "cancelled") {
+          const plan = await storage.getSubscriptionPlan(sub.planId);
+          const deliveryLog = todaysLogs.find(log => log.subscriptionId === sub.id);
+          
+          const currentStatus = deliveryLog?.status || "scheduled";
+          
+          if (currentStatus === "preparing") preparing++;
+          else if (currentStatus === "out_for_delivery") outForDelivery++;
+          else if (currentStatus === "delivered") delivered++;
+          else scheduled++;
+          
+          deliveries.push({
+            id: deliveryLog?.id || sub.id,
+            subscriptionId: sub.id,
+            customerName: sub.customerName,
+            phone: sub.phone,
+            address: sub.address,
+            planName: plan?.name || "Unknown Plan",
+            time: sub.nextDeliveryTime || "09:00",
+            status: currentStatus,
+          });
+        }
+      }
+
+      res.json({
+        totalToday: deliveries.length,
+        scheduled,
+        preparing,
+        outForDelivery,
+        delivered,
+        deliveries,
+      });
+    } catch (error) {
+      console.error("Error fetching today's deliveries:", error);
+      res.status(500).json({ message: "Failed to fetch today's deliveries" });
+    }
+  });
+
+  // Get subscription by ID
+  app.get("/api/admin/subscriptions/:id", requireAdmin(), async (req: AuthenticatedAdminRequest, res) => {
+    try {
+      const subscription = await storage.getSubscription(req.params.id);
+      if (!subscription) {
+        res.status(404).json({ message: "Subscription not found" });
+        return;
+      }
+      res.json(subscription);
+    } catch (error) {
+      console.error("Error fetching subscription:", error);
+      res.status(500).json({ message: "Failed to fetch subscription" });
+    }
+  });
+
+  // Get delivery logs for a subscription
+  app.get("/api/admin/subscriptions/:id/delivery-logs", requireAdmin(), async (req: AuthenticatedAdminRequest, res) => {
+    try {
+      const subscription = await storage.getSubscription(req.params.id);
+      if (!subscription) {
+        res.status(404).json({ message: "Subscription not found" });
+        return;
+      }
+      const logs = await storage.getSubscriptionDeliveryLogs(req.params.id);
+      res.json(logs);
+    } catch (error) {
+      console.error("Error fetching delivery logs:", error);
+      res.status(500).json({ message: "Failed to fetch delivery logs" });
+    }
+  });
+
+  // Create a delivery log for a subscription
+  app.post("/api/admin/subscriptions/:id/delivery-logs", requireAdmin(), async (req: AuthenticatedAdminRequest, res) => {
+    try {
+      const subscription = await storage.getSubscription(req.params.id);
+      if (!subscription) {
+        res.status(404).json({ message: "Subscription not found" });
+        return;
+      }
+
+      const { date, status, notes, deliveryPersonId, deliveryTime } = req.body;
+      
+      const log = await storage.createSubscriptionDeliveryLog({
+        subscriptionId: req.params.id,
+        date: new Date(date),
+        status: status || "scheduled",
+        notes: notes || null,
+        deliveryPersonId: deliveryPersonId || null,
+        time: deliveryTime || subscription.nextDeliveryTime || "09:00",
+      });
+
+      console.log(`📝 Admin created delivery log for subscription ${req.params.id}: ${status}`);
+      res.status(201).json(log);
+    } catch (error) {
+      console.error("Error creating delivery log:", error);
+      res.status(500).json({ message: "Failed to create delivery log" });
+    }
+  });
+
+  // Update delivery status
+  app.patch("/api/admin/subscriptions/:subscriptionId/delivery-logs/:logId", requireAdmin(), async (req: AuthenticatedAdminRequest, res) => {
+    try {
+      const { subscriptionId, logId } = req.params;
+      const { status, notes, deliveryPersonId, deliveryTime } = req.body;
+
+      const subscription = await storage.getSubscription(subscriptionId);
+      if (!subscription) {
+        res.status(404).json({ message: "Subscription not found" });
+        return;
+      }
+
+      const existingLog = await storage.getSubscriptionDeliveryLog(logId);
+      if (!existingLog || existingLog.subscriptionId !== subscriptionId) {
+        res.status(404).json({ message: "Delivery log not found" });
+        return;
+      }
+
+      const updateData: any = {};
+      if (status) updateData.status = status;
+      if (notes !== undefined) updateData.notes = notes;
+      if (deliveryPersonId !== undefined) updateData.deliveryPersonId = deliveryPersonId;
+      if (deliveryTime !== undefined) updateData.time = deliveryTime;
+
+      const updatedLog = await storage.updateSubscriptionDeliveryLog(logId, updateData);
+
+      // If delivery is marked as delivered, update subscription
+      if (status === "delivered" && existingLog.date) {
+        await storage.updateSubscription(subscriptionId, {
+          lastDeliveryDate: new Date(existingLog.date),
+          remainingDeliveries: Math.max(0, subscription.remainingDeliveries - 1),
+        });
+      }
+
+      console.log(`✏️ Admin updated delivery log ${logId} status to: ${status}`);
+      res.json(updatedLog);
+    } catch (error) {
+      console.error("Error updating delivery log:", error);
+      res.status(500).json({ message: "Failed to update delivery log" });
+    }
+  });
+
+  // Bulk update delivery status for today's deliveries
+  app.post("/api/admin/subscriptions/delivery-logs/today", requireAdmin(), async (req: AuthenticatedAdminRequest, res) => {
+    try {
+      const today = new Date();
+      const logs = await storage.getSubscriptionDeliveryLogsByDate(today);
+      res.json(logs);
+    } catch (error) {
+      console.error("Error fetching today's delivery logs:", error);
+      res.status(500).json({ message: "Failed to fetch today's delivery logs" });
+    }
+  });
+
+  // Update delivery status for a specific subscription (admin dashboard)
+  app.patch("/api/admin/subscriptions/:subscriptionId/delivery-status", requireAdmin(), async (req: AuthenticatedAdminRequest, res) => {
+    try {
+      const { subscriptionId } = req.params;
+      const { status } = req.body;
+      const adminId = req.admin?.adminId || "system";
+
+      if (!status || !["scheduled", "preparing", "out_for_delivery", "delivered", "missed"].includes(status)) {
+        res.status(400).json({ message: "Invalid status" });
+        return;
+      }
+
+      const subscription = await storage.getSubscription(subscriptionId);
+      if (!subscription) {
+        res.status(404).json({ message: "Subscription not found" });
+        return;
+      }
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const time = new Date().toTimeString().slice(0, 5);
+      
+      const todaysLogs = await storage.getSubscriptionDeliveryLogsByDate(today);
+      let deliveryLog = todaysLogs.find(log => log.subscriptionId === subscriptionId);
+      
+      if (!deliveryLog) {
+        deliveryLog = await storage.createSubscriptionDeliveryLog({
+          subscriptionId,
+          date: today,
+          time,
+          status: status as any,
+          deliveryPersonId: null,
+          notes: `Status set to ${status} by admin`,
+        });
+      } else {
+        deliveryLog = await storage.updateSubscriptionDeliveryLog(deliveryLog.id, {
+          status: status as any,
+          notes: `Status updated to ${status} by admin`,
+        });
+      }
+
+      if (status === "delivered" && subscription.remainingDeliveries > 0) {
+        const nextDate = new Date(subscription.nextDeliveryDate);
+        nextDate.setDate(nextDate.getDate() + 1);
+        
+        await storage.updateSubscription(subscriptionId, {
+          remainingDeliveries: subscription.remainingDeliveries - 1,
+          nextDeliveryDate: nextDate,
+          lastDeliveryDate: today,
+        });
+      }
+
+      console.log(`✅ Admin updated subscription ${subscriptionId} delivery status to: ${status}`);
+      res.json(deliveryLog);
+    } catch (error) {
+      console.error("Error updating delivery status:", error);
+      res.status(500).json({ message: "Failed to update delivery status" });
+    }
+  });
+
+  // Change subscription status (active/paused/cancelled)
+  app.patch("/api/admin/subscriptions/:subscriptionId/status", requireAdmin(), async (req: AuthenticatedAdminRequest, res) => {
+    try {
+      const { subscriptionId } = req.params;
+      const { status } = req.body;
+
+      if (!status || !["active", "paused", "cancelled"].includes(status)) {
+        res.status(400).json({ message: "Invalid status" });
+        return;
+      }
+
+      const subscription = await storage.getSubscription(subscriptionId);
+      if (!subscription) {
+        res.status(404).json({ message: "Subscription not found" });
+        return;
+      }
+
+      const updateData: any = { status };
+      
+      if (status === "paused") {
+        updateData.pauseStartDate = new Date();
+      } else if (status === "active") {
+        updateData.pauseStartDate = null;
+        updateData.pauseResumeDate = null;
+      }
+
+      const updated = await storage.updateSubscription(subscriptionId, updateData);
+      console.log(`📋 Admin changed subscription ${subscriptionId} status to: ${status}`);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error changing subscription status:", error);
+      res.status(500).json({ message: "Failed to change subscription status" });
+    }
+  });
+
+  // Delivery Time Slots Management
+  app.get("/api/admin/delivery-slots", requireAdmin(), async (req: AuthenticatedAdminRequest, res) => {
+    try {
+      const slots = await storage.getAllDeliveryTimeSlots();
+      res.json(slots);
+    } catch (error) {
+      console.error("Error fetching delivery slots:", error);
+      res.status(500).json({ message: "Failed to fetch delivery slots" });
+    }
+  });
+
+  app.post("/api/admin/delivery-slots", requireAdmin(), async (req: AuthenticatedAdminRequest, res) => {
+    try {
+      const validation = insertDeliveryTimeSlotsSchema.safeParse(req.body);
+      if (!validation.success) {
+        res.status(400).json({ message: fromZodError(validation.error).toString() });
+        return;
+      }
+      const slot = await storage.createDeliveryTimeSlot(validation.data);
+      res.status(201).json(slot);
+    } catch (error) {
+      console.error("Error creating delivery slot:", error);
+      res.status(500).json({ message: "Failed to create delivery slot" });
+    }
+  });
+
+  app.patch("/api/admin/delivery-slots/:id", requireAdmin(), async (req: AuthenticatedAdminRequest, res) => {
+    try {
+      const validation = insertDeliveryTimeSlotsSchema.partial().safeParse(req.body);
+      if (!validation.success) {
+        res.status(400).json({ message: fromZodError(validation.error).toString() });
+        return;
+      }
+      const slot = await storage.updateDeliveryTimeSlot(req.params.id, validation.data);
+      if (!slot) {
+        res.status(404).json({ message: "Delivery slot not found" });
+        return;
+      }
+      res.json(slot);
+    } catch (error) {
+      console.error("Error updating delivery slot:", error);
+      res.status(500).json({ message: "Failed to update delivery slot" });
+    }
+  });
+
+  app.delete("/api/admin/delivery-slots/:id", requireAdmin(), async (req: AuthenticatedAdminRequest, res) => {
+    try {
+      const deleted = await storage.deleteDeliveryTimeSlot(req.params.id);
+      if (!deleted) {
+        res.status(404).json({ message: "Delivery slot not found" });
+        return;
+      }
+      res.json({ message: "Delivery slot deleted" });
+    } catch (error) {
+      console.error("Error deleting delivery slot:", error);
+      res.status(500).json({ message: "Failed to delete delivery slot" });
+    }
+  });
+
+  // Manual subscription adjustment (add/remove deliveries)
+  app.post("/api/admin/subscriptions/:id/adjust", requireAdmin(), async (req: AuthenticatedAdminRequest, res) => {
+    try {
+      const { adjustment, deliveryAdjustment, reason, extendDays, status, nextDeliveryDate } = req.body;
+      const subscription = await storage.getSubscription(req.params.id);
+      
+      if (!subscription) {
+        res.status(404).json({ message: "Subscription not found" });
+        return;
+      }
+
+      const updateData: any = {};
+
+      // Adjust remaining deliveries (support both parameter names)
+      const deliveryChange = adjustment ?? deliveryAdjustment;
+      if (typeof deliveryChange === 'number' && deliveryChange !== 0) {
+        const newRemaining = Math.max(0, subscription.remainingDeliveries + deliveryChange);
+        updateData.remainingDeliveries = newRemaining;
+        updateData.totalDeliveries = Math.max(0, subscription.totalDeliveries + deliveryChange);
+      }
+
+      // Extend subscription end date
+      if (typeof extendDays === 'number' && extendDays > 0 && subscription.endDate) {
+        const currentEndDate = new Date(subscription.endDate);
+        currentEndDate.setDate(currentEndDate.getDate() + extendDays);
+        updateData.endDate = currentEndDate;
+      }
+
+      // Update status
+      if (status && ["active", "paused", "cancelled"].includes(status)) {
+        updateData.status = status;
+        if (status === "active") {
+          updateData.pauseStartDate = null;
+          updateData.pauseResumeDate = null;
+        }
+      }
+
+      // Update next delivery date
+      if (nextDeliveryDate) {
+        updateData.nextDeliveryDate = new Date(nextDeliveryDate);
+      }
+
+      const updated = await storage.updateSubscription(req.params.id, updateData);
+
+      console.log(`⚙️ Admin adjusted subscription ${req.params.id}: deliveryChange=${deliveryChange}, status=${status}, extendDays=${extendDays}, reason=${reason}`);
+      
+      // Broadcast the subscription update
+      if (updated) {
+        const { broadcastSubscriptionUpdate } = await import("./websocket");
+        broadcastSubscriptionUpdate(updated);
+      }
+      
+      res.json({ message: "Subscription adjusted successfully", subscription: updated });
+    } catch (error) {
+      console.error("Error adjusting subscription:", error);
+      res.status(500).json({ message: "Failed to adjust subscription" });
+    }
+  });
+
+  // Admin pause/resume subscription
+  app.post("/api/admin/subscriptions/:id/status", requireAdmin(), async (req: AuthenticatedAdminRequest, res) => {
+    try {
+      const { status, pauseStartDate, pauseResumeDate } = req.body;
+      const subscription = await storage.getSubscription(req.params.id);
+      
+      if (!subscription) {
+        res.status(404).json({ message: "Subscription not found" });
+        return;
+      }
+
+      const updateData: any = { status };
+
+      if (status === "paused") {
+        updateData.pauseStartDate = pauseStartDate ? new Date(pauseStartDate) : new Date();
+        if (pauseResumeDate) {
+          updateData.pauseResumeDate = new Date(pauseResumeDate);
+        }
+      } else if (status === "active") {
+        updateData.pauseStartDate = null;
+        updateData.pauseResumeDate = null;
+      }
+
+      const updated = await storage.updateSubscription(req.params.id, updateData);
+      console.log(`🔄 Admin updated subscription ${req.params.id} status to: ${status}`);
+      
+      // Broadcast the subscription update
+      if (updated) {
+        const { broadcastSubscriptionUpdate } = await import("./websocket");
+        broadcastSubscriptionUpdate(updated);
+      }
+      
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating subscription status:", error);
+      res.status(500).json({ message: "Failed to update subscription status" });
+    }
+  });
+
+  // Cancel subscription with optional refund
+  app.post("/api/admin/subscriptions/:id/cancel", requireAdmin(), async (req: AuthenticatedAdminRequest, res) => {
+    try {
+      const { reason, refundAmount, refundReason } = req.body;
+      const subscription = await storage.getSubscription(req.params.id);
+      
+      if (!subscription) {
+        res.status(404).json({ message: "Subscription not found" });
+        return;
+      }
+
+      // Update subscription status to cancelled
+      const updated = await storage.updateSubscription(req.params.id, { 
+        status: "cancelled",
+        pauseStartDate: null,
+        pauseResumeDate: null,
+      });
+
+      // Process refund if applicable
+      if (refundAmount && refundAmount > 0) {
+        // Add to user's wallet
+        await storage.createWalletTransaction({
+          userId: subscription.userId,
+          amount: refundAmount,
+          type: "credit",
+          description: refundReason || `Subscription cancellation refund - ${reason || 'No reason provided'}`,
+          referenceId: subscription.id,
+          referenceType: "subscription_refund",
+        });
+        
+        console.log(`💰 Refund of ${refundAmount} processed for subscription ${req.params.id}`);
+      }
+
+      console.log(`❌ Admin cancelled subscription ${req.params.id}: ${reason || 'No reason provided'}`);
+      res.json({ message: "Subscription cancelled successfully", subscription: updated, refundProcessed: !!refundAmount });
+    } catch (error) {
+      console.error("Error cancelling subscription:", error);
+      res.status(500).json({ message: "Failed to cancel subscription" });
+    }
+  });
 
   // Reports
   app.get("/api/admin/reports/sales", requireAdmin(), async (req, res) => {

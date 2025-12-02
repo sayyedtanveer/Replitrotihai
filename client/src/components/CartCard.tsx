@@ -27,6 +27,7 @@ interface CartCardProps {
   onCheckout?: () => void;
   disabled?: boolean;
   chefClosed?: boolean;
+  productAvailability?: Record<string, { isAvailable: boolean; stock?: number }>;
 }
 
 export default function CartCard({
@@ -43,9 +44,15 @@ export default function CartCard({
   onCheckout,
   disabled = false,
   chefClosed = false,
+  productAvailability = {},
 }: CartCardProps) {
   const total = subtotal + deliveryFee;
   const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);
+
+  // Check if all items are unavailable
+  const allItemsUnavailable = items.length > 0 && items.every(
+    item => productAvailability[item.id]?.isAvailable === false
+  );
 
   // Calculate progress for free delivery hint
   const progressValue = amountForFreeDelivery
@@ -110,49 +117,77 @@ export default function CartCard({
           </div>
         )}
 
+        {/* Unavailable Items Warning */}
+        {allItemsUnavailable && (
+          <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-md p-2">
+            <p className="text-xs font-semibold text-red-700 dark:text-red-400">
+              Items Unavailable
+            </p>
+            <p className="text-xs text-red-600 dark:text-red-500 mt-0.5">
+              All items in this cart are currently unavailable. Please remove them or select other items.
+            </p>
+          </div>
+        )}
+
         {/* Items List */}
         <div className="space-y-2">
-          {items.map((item) => (
-            <div key={item.id} className="flex gap-3" data-testid={`item-${item.id}`}>
-              <img
-                src={item.image}
-                alt={item.name}
-                className="w-12 h-12 object-cover rounded-md"
-                data-testid={`img-item-${item.id}`}
-              />
-              <div className="flex-1 min-w-0">
-                <h4 className="font-medium text-sm truncate" data-testid={`text-item-name-${item.id}`}>
-                  {item.name}
-                </h4>
-                <p className="text-xs font-semibold text-primary" data-testid={`text-item-price-${item.id}`}>
-                  ₹{item.price}
-                </p>
+          {items.map((item) => {
+            const isUnavailable = productAvailability[item.id]?.isAvailable === false;
+            return (
+              <div 
+                key={item.id} 
+                className={`flex gap-3 ${isUnavailable ? 'opacity-50' : ''}`}
+                data-testid={`item-${item.id}`}
+              >
+                <img
+                  src={item.image}
+                  alt={item.name}
+                  className={`w-12 h-12 object-cover rounded-md ${isUnavailable ? 'grayscale' : ''}`}
+                  data-testid={`img-item-${item.id}`}
+                />
+                <div className="flex-1 min-w-0">
+                  <h4 className={`font-medium text-sm truncate ${isUnavailable ? 'line-through text-muted-foreground' : ''}`} data-testid={`text-item-name-${item.id}`}>
+                    {item.name}
+                  </h4>
+                  <div className="flex items-center gap-2">
+                    <p className={`text-xs font-semibold ${isUnavailable ? 'text-muted-foreground' : 'text-primary'}`} data-testid={`text-item-price-${item.id}`}>
+                      ₹{item.price}
+                    </p>
+                    {isUnavailable && (
+                      <span className="text-xs px-1.5 py-0.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-sm font-medium">
+                        Out of Stock
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    className="h-6 w-6"
+                    onClick={() => onUpdateQuantity?.(item.id, item.quantity - 1)}
+                    disabled={isUnavailable}
+                    data-testid={`button-decrease-${item.id}`}
+                  >
+                    <Minus className="h-3 w-3" />
+                  </Button>
+                  <span className="w-6 text-center text-xs font-medium" data-testid={`text-quantity-${item.id}`}>
+                    {item.quantity}
+                  </span>
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    className="h-6 w-6"
+                    onClick={() => onUpdateQuantity?.(item.id, item.quantity + 1)}
+                    disabled={isUnavailable}
+                    data-testid={`button-increase-${item.id}`}
+                  >
+                    <Plus className="h-3 w-3" />
+                  </Button>
+                </div>
               </div>
-              <div className="flex items-center gap-1">
-                <Button
-                  size="icon"
-                  variant="outline"
-                  className="h-6 w-6"
-                  onClick={() => onUpdateQuantity?.(item.id, item.quantity - 1)}
-                  data-testid={`button-decrease-${item.id}`}
-                >
-                  <Minus className="h-3 w-3" />
-                </Button>
-                <span className="w-6 text-center text-xs font-medium" data-testid={`text-quantity-${item.id}`}>
-                  {item.quantity}
-                </span>
-                <Button
-                  size="icon"
-                  variant="outline"
-                  className="h-6 w-6"
-                  onClick={() => onUpdateQuantity?.(item.id, item.quantity + 1)}
-                  data-testid={`button-increase-${item.id}`}
-                >
-                  <Plus className="h-3 w-3" />
-                </Button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <Separator />
@@ -231,10 +266,10 @@ export default function CartCard({
           className="w-full"
           size="lg"
           onClick={onCheckout}
-          disabled={disabled || chefClosed}
+          disabled={disabled || chefClosed || allItemsUnavailable}
           data-testid="button-checkout"
         >
-          {chefClosed ? `${chefName} is Closed` : `Checkout from ${chefName}`}
+          {chefClosed ? `${chefName} is Closed` : allItemsUnavailable ? 'Items Unavailable' : `Checkout from ${chefName}`}
         </Button>
       </CardFooter>
     </Card>

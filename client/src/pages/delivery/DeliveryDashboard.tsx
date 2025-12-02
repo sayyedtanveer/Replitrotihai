@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Package, CheckCircle, MapPin, Clock, Bell, Wifi, WifiOff, DollarSign, TrendingUp, Calendar } from "lucide-react";
+import { Package, CheckCircle, MapPin, Clock, Bell, Wifi, WifiOff, DollarSign, TrendingUp, Calendar, LogOut, Truck } from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
@@ -150,79 +150,87 @@ export default function DeliveryDashboard() {
   const completedOrders = orders.filter((o: any) => o.status === "delivered");
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
-      <header className="bg-white dark:bg-slate-800 border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-            {deliveryPersonName} - Delivery Dashboard
-          </h1>
-          <div className="flex items-center gap-4">
+    <div className="min-h-screen bg-white dark:bg-slate-950">
+      {/* Mobile Header */}
+      <header className="bg-white dark:bg-slate-800 border-b sticky top-0 z-40">
+        <div className="px-3 md:px-6 py-3 md:py-4">
+          {/* Delivery Person Name & Actions Row */}
+          <div className="flex items-center justify-between gap-2 mb-3 md:mb-0">
+            <div className="flex-1 min-w-0">
+              <h1 className="text-sm md:text-xl font-bold text-foreground truncate">
+                {deliveryPersonName}
+              </h1>
+            </div>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleLogout}
+                className="h-8 w-8 md:h-9 md:w-9"
+                data-testid="button-logout"
+              >
+                <LogOut className="h-4 w-4 md:h-5 md:w-5" />
+              </Button>
+            </div>
+          </div>
+          
+          {/* Status Row - Hidden on md and above */}
+          <div className="md:hidden flex items-center gap-2 text-xs">
             {newAssignmentsCount > 0 && (
-              <Badge variant="destructive" className="flex items-center gap-1" onClick={clearNewAssignmentsCount}>
-                <Bell className="h-3 w-3" />
+              <Badge variant="destructive" className="text-xs flex items-center gap-1">
+                <Bell className="h-2.5 w-2.5" />
                 {newAssignmentsCount} New
               </Badge>
             )}
-            <div className="flex items-center gap-2">
-              {wsConnected ? (
-                <>
-                  <Wifi className="h-4 w-4 text-green-600" />
-                  <span className="text-sm text-green-600">Live</span>
-                </>
-              ) : (
-                <>
-                  <WifiOff className="h-4 w-4 text-red-600" />
-                  <span className="text-sm text-red-600">Offline</span>
-                </>
-              )}
+            <div className={`flex items-center gap-1 ${wsConnected ? "text-green-600" : "text-red-600"}`}>
+              {wsConnected ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
+              <span>{wsConnected ? "Live" : "Offline"}</span>
             </div>
-            <Button variant="outline" onClick={handleLogout}>
-              Logout
-            </Button>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <Tabs value={selectedTab} onValueChange={setSelectedTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="dashboard" data-testid="tab-dashboard">Dashboard</TabsTrigger>
-            <TabsTrigger value="available" data-testid="tab-available" className="relative">
-              Available
+      <main className="px-3 md:px-6 py-4 md:py-8">
+        <Tabs value={selectedTab} onValueChange={setSelectedTab} className="space-y-4 md:space-y-6">
+          <TabsList className="grid w-full grid-cols-3 md:grid-cols-4 h-auto">
+            <TabsTrigger value="dashboard" className="text-xs md:text-sm py-2" data-testid="tab-dashboard">Dashboard</TabsTrigger>
+            <TabsTrigger value="available" className="text-xs md:text-sm py-2 relative" data-testid="tab-available">
+              <span className="hidden md:inline">Available</span>
+              <span className="md:hidden">Open</span>
               {availableOrders && availableOrders.length > 0 && (
-                <Badge variant="destructive" className="ml-1 h-5 min-w-5 px-1">{availableOrders.length}</Badge>
+                <Badge variant="destructive" className="absolute -top-1 -right-1 h-4 w-4 p-0 flex items-center justify-center text-xs">{availableOrders.length}</Badge>
               )}
             </TabsTrigger>
-            <TabsTrigger value="orders" data-testid="tab-orders">My Deliveries</TabsTrigger>
-            <TabsTrigger value="earnings" data-testid="tab-earnings">Earnings</TabsTrigger>
+            <TabsTrigger value="orders" className="text-xs md:text-sm py-2" data-testid="tab-orders">Deliveries</TabsTrigger>
+            <TabsTrigger value="earnings" className="text-xs md:text-sm py-2" data-testid="tab-earnings">Earnings</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="dashboard" className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <TabsContent value="dashboard" className="space-y-4 md:space-y-6">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-4">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <CardTitle className="text-sm font-medium">Pending</CardTitle>
-                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  <CardTitle className="text-xs md:text-sm font-medium">Pending</CardTitle>
+                  <Clock className="h-3 w-3 md:h-4 md:w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold" data-testid="stat-pending">{stats?.pendingCount || 0}</div>
+                  <div className="text-lg md:text-2xl font-bold" data-testid="stat-pending">{stats?.pendingCount || 0}</div>
                 </CardContent>
               </Card>
 
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <CardTitle className="text-sm font-medium">Active</CardTitle>
-                  <Package className="h-4 w-4 text-muted-foreground" />
+                  <CardTitle className="text-xs md:text-sm font-medium">Active</CardTitle>
+                  <Package className="h-3 w-3 md:h-4 md:w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold" data-testid="stat-active">{stats?.activeCount || 0}</div>
+                  <div className="text-lg md:text-2xl font-bold" data-testid="stat-active">{stats?.activeCount || 0}</div>
                 </CardContent>
               </Card>
 
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <CardTitle className="text-sm font-medium">Completed Today</CardTitle>
-                  <CheckCircle className="h-4 w-4 text-muted-foreground" />
+                  <CardTitle className="text-xs md:text-sm font-medium">Completed</CardTitle>
+                  <CheckCircle className="h-3 w-3 md:h-4 md:w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold" data-testid="stat-completed-today">{stats?.completedToday || 0}</div>

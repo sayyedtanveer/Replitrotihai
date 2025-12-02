@@ -182,6 +182,7 @@ export default function CartSidebar({
                     }
                     onCheckout={() => handleCheckout(cart.categoryId)}
                     chefClosed={isChefClosed}
+                    productAvailability={productAvailability}
                   />
                 );
               })}

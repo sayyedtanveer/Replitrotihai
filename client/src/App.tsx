@@ -32,6 +32,7 @@ import DeliveryLogin from "./pages/delivery/DeliveryLogin";
 import DeliveryDashboard from "./pages/delivery/DeliveryDashboard";
 import OrderTracking from "@/pages/OrderTracking";
 import AdminWalletSettings from "./pages/admin/AdminWalletSettings";
+import AdminDeliveryTimeSlots from "@/pages/admin/AdminDeliveryTimeSlots";
 // Add AdminCartSettings import here
 const AdminCartSettings = lazy(() => import("@/pages/admin/AdminCartSettings"));
 
@@ -80,6 +81,7 @@ function Router() {
       <Route path="/admin/admins" component={AdminManagement} />
       <Route path="/admin/delivery-settings" component={AdminDeliverySettings} />
       <Route path="/admin/wallet-settings" component={AdminWalletSettings} />
+      <Route path="/admin/delivery-time-slots" component={AdminDeliveryTimeSlots} />
       {/* Add cart settings admin route */}
       <Route path="/admin/cart-settings" component={AdminCartSettings} />
 

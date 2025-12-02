@@ -244,6 +244,7 @@ export const referralRewards = pgTable("referral_rewards", {
 
 export const subscriptionStatusEnum = pgEnum("subscription_status", ["pending", "active", "paused", "cancelled", "expired"]);
 export const subscriptionFrequencyEnum = pgEnum("subscription_frequency", ["daily", "weekly", "monthly"]);
+export const deliveryLogStatusEnum = pgEnum("delivery_log_status", ["scheduled", "preparing", "out_for_delivery", "delivered", "missed"]);
 
 export const subscriptionPlans = pgTable("subscription_plans", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -263,6 +264,9 @@ export const subscriptions = pgTable("subscriptions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
   planId: varchar("plan_id").notNull(),
+  chefId: text("chef_id"), // Chef assigned to handle this subscription
+  chefAssignedAt: timestamp("chef_assigned_at").default(sql`null`), // When chef was assigned - used to track if reassignment needed
+  deliverySlotId: varchar("delivery_slot_id"), // Reference to delivery time slot
   customerName: text("customer_name").notNull(),
   phone: text("phone").notNull(),
   email: text("email"),
@@ -279,6 +283,21 @@ export const subscriptions = pgTable("subscriptions", {
   paymentTransactionId: text("payment_transaction_id"),
   lastDeliveryDate: timestamp("last_delivery_date"),
   deliveryHistory: jsonb("delivery_history").default([]), // Array of delivery records
+  pauseStartDate: timestamp("pause_start_date"), // Advanced pause: start date
+  pauseResumeDate: timestamp("pause_resume_date"), // Advanced pause: auto-resume date
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Subscription Delivery Logs - tracks each scheduled delivery
+export const subscriptionDeliveryLogs = pgTable("subscription_delivery_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  subscriptionId: varchar("subscription_id").notNull(),
+  date: timestamp("date").notNull(),
+  time: text("time").notNull().default("09:00"), // HH:mm format
+  status: deliveryLogStatusEnum("status").notNull().default("scheduled"),
+  deliveryPersonId: varchar("delivery_person_id"), // nullable
+  notes: text("notes"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -452,6 +471,7 @@ export const insertPromotionalBannerSchema = createInsertSchema(promotionalBanne
 export const insertSubscriptionSchema = createInsertSchema(subscriptions, {
   userId: z.string().min(1, { message: "User ID is required" }),
   planId: z.string().min(1, { message: "Plan ID is required" }),
+  chefId: z.string().optional(), // Chef/Partner assigned to subscription
   customerName: z.string().min(1, { message: "Customer name is required" }),
   phone: z.string().min(10, { message: "Phone number must be at least 10 digits long" }),
   address: z.string().min(1, { message: "Address is required" }),
@@ -467,6 +487,8 @@ export const insertSubscriptionSchema = createInsertSchema(subscriptions, {
   paymentTransactionId: z.string().optional(),
   lastDeliveryDate: z.preprocess((arg) => new Date(arg as string), z.date()).optional(),
   deliveryHistory: z.array(z.object({ deliveryDate: z.preprocess((arg) => new Date(arg as string), z.date()), status: z.string() })).default([]),
+  pauseStartDate: z.preprocess((arg) => arg ? new Date(arg as string) : null, z.date().nullable()).optional(),
+  pauseResumeDate: z.preprocess((arg) => arg ? new Date(arg as string) : null, z.date().nullable()).optional(),
 }).omit({
   id: true,
   createdAt: true,
@@ -489,6 +511,22 @@ export type InsertSubscriptionPlan = z.infer<typeof insertSubscriptionPlanSchema
 export type SubscriptionPlan = typeof subscriptionPlans.$inferSelect;
 export type InsertSubscription = z.infer<typeof insertSubscriptionSchema>;
 export type Subscription = typeof subscriptions.$inferSelect;
+
+export const insertSubscriptionDeliveryLogSchema = createInsertSchema(subscriptionDeliveryLogs, {
+  subscriptionId: z.string().min(1, { message: "Subscription ID is required" }),
+  date: z.preprocess((arg) => new Date(arg as string), z.date()),
+  time: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, { message: "Invalid time format. Use HH:mm." }).default("09:00"),
+  status: z.enum(["scheduled", "preparing", "out_for_delivery", "delivered", "missed"]).default("scheduled"),
+  deliveryPersonId: z.string().optional(),
+  notes: z.string().optional(),
+}).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertSubscriptionDeliveryLog = z.infer<typeof insertSubscriptionDeliveryLogSchema>;
+export type SubscriptionDeliveryLog = typeof subscriptionDeliveryLogs.$inferSelect;
 
 export type InsertDeliverySetting = z.infer<typeof insertDeliverySettingSchema>;
 export type DeliverySetting = typeof deliverySettings.$inferSelect;
@@ -603,3 +641,32 @@ export const insertReferralRewardSchema = createInsertSchema(referralRewards, {
 
 export type InsertReferralReward = z.infer<typeof insertReferralRewardSchema>;
 export type ReferralReward = typeof referralRewards.$inferSelect;
+
+// Delivery Time Slots for Subscriptions
+export const deliveryTimeSlots = pgTable("delivery_time_slots", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  startTime: varchar("start_time", { length: 5 }).notNull(),
+  endTime: varchar("end_time", { length: 5 }).notNull(),
+  label: varchar("label", { length: 100 }).notNull(),
+  capacity: integer("capacity").notNull().default(50),
+  currentOrders: integer("current_orders").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+  updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
+});
+
+export const insertDeliveryTimeSlotsSchema = createInsertSchema(deliveryTimeSlots, {
+  startTime: z.string().regex(/^\d{2}:\d{2}$/, "Invalid time format"),
+  endTime: z.string().regex(/^\d{2}:\d{2}$/, "Invalid time format"),
+  label: z.string().min(1, "Label is required"),
+  capacity: z.number().int().min(1, "Capacity must be at least 1"),
+  isActive: z.boolean().default(true),
+}).omit({
+  id: true,
+  currentOrders: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertDeliveryTimeSlot = z.infer<typeof insertDeliveryTimeSlotsSchema>;
+export type DeliveryTimeSlot = typeof deliveryTimeSlots.$inferSelect;

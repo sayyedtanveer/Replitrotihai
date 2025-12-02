@@ -30,6 +30,7 @@ export const {
   partnerUsers,
   subscriptions,
   subscriptionPlans,
+  subscriptionDeliveryLogs,
   deliverySettings,
   cartSettings,
   deliveryPersonnel,
@@ -38,5 +39,6 @@ export const {
   walletTransactions,
   walletSettings,
   referralRewards,
-  promotionalBanners
+  promotionalBanners,
+  deliveryTimeSlots
 } = schema;

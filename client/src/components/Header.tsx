@@ -192,7 +192,7 @@ export default function Header({ cartItemCount = 0, onCartClick, onMenuClick, se
                   <ChevronDown className="h-3 w-3 text-muted-foreground flex-shrink-0" />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="top" className="h-auto max-h-[80vh]">
+              <SheetContent side="top" className="w-full h-auto max-h-[80vh] overflow-y-auto pt-6">
                 <SheetHeader className="pb-4">
                   <SheetTitle className="flex items-center gap-2">
                     <MapPin className="h-5 w-5 text-primary" />
@@ -200,7 +200,7 @@ export default function Header({ cartItemCount = 0, onCartClick, onMenuClick, se
                   </SheetTitle>
                 </SheetHeader>
 
-                <div className="space-y-4">
+                <div className="space-y-4 pr-6 pb-4">
                   <Button
                     variant="outline"
                     className="w-full justify-start gap-3 h-12"

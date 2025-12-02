@@ -22,6 +22,7 @@ import {
   Wallet, // Import Wallet icon
   ShoppingCart, // Import ShoppingCart icon
   Megaphone, // Import Megaphone icon
+  Clock,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";

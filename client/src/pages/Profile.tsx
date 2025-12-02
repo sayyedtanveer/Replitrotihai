@@ -490,26 +490,57 @@ export default function Profile() {
                       <div>
                         <h3 className="font-semibold mb-3">Your Referral Code</h3>
                         {referralCode?.referralCode ? (
-                          <div className="bg-primary/10 p-4 rounded-lg border-2 border-primary/20">
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <p className="text-xs text-muted-foreground mb-1">Share this code</p>
-                                <p className="text-2xl font-bold font-mono tracking-wider">
-                                  {referralCode.referralCode}
-                                </p>
+                          <div className="space-y-3">
+                            {/* Referral Code Card */}
+                            <div className="bg-primary/10 p-4 rounded-lg border-2 border-primary/20">
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <p className="text-xs text-muted-foreground mb-1">Share this code</p>
+                                  <p className="text-2xl font-bold font-mono tracking-wider">
+                                    {referralCode.referralCode}
+                                  </p>
+                                </div>
+                                <Button
+                                  size="sm"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(referralCode.referralCode);
+                                    toast({
+                                      title: "Copied!",
+                                      description: "Referral code copied to clipboard",
+                                    });
+                                  }}
+                                  data-testid="button-copy-referral-code"
+                                >
+                                  Copy Code
+                                </Button>
                               </div>
-                              <Button
-                                size="sm"
-                                onClick={() => {
-                                  navigator.clipboard.writeText(referralCode.referralCode);
-                                  toast({
-                                    title: "Copied!",
-                                    description: "Referral code copied to clipboard",
-                                  });
-                                }}
-                              >
-                                Copy
-                              </Button>
+                            </div>
+
+                            {/* Referral Link Card */}
+                            <div className="bg-blue-50 dark:bg-blue-950 p-4 rounded-lg">
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <p className="text-xs text-muted-foreground mb-1">Or share this link</p>
+                                  <p className="text-sm font-mono text-blue-600 dark:text-blue-400 break-all">
+                                    {`${window.location.origin}?ref=${referralCode.referralCode}`}
+                                  </p>
+                                </div>
+                                <Button
+                                  size="sm"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(
+                                      `${window.location.origin}?ref=${referralCode.referralCode}`
+                                    );
+                                    toast({
+                                      title: "Copied!",
+                                      description: "Referral link copied to clipboard",
+                                    });
+                                  }}
+                                  data-testid="button-copy-referral-link"
+                                >
+                                  Copy Link
+                                </Button>
+                              </div>
                             </div>
                           </div>
                         ) : (
@@ -535,6 +566,7 @@ export default function Profile() {
                                 });
                               }
                             }}
+                            data-testid="button-generate-referral-code"
                           >
                             Generate Referral Code
                           </Button>

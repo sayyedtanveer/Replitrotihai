@@ -366,4 +366,149 @@ export function registerPartnerRoutes(app: Express): void {
       res.status(500).json({ message: "Failed to fetch income report" });
     }
   });
+
+  // Get subscription deliveries for this partner (chef)
+  app.get("/api/partner/subscription-deliveries", requirePartner(), async (req: AuthenticatedPartnerRequest, res) => {
+    try {
+      const chefId = req.partner?.chefId;
+      if (!chefId) {
+        res.status(401).json({ message: "Unauthorized" });
+        return;
+      }
+
+      // Get all subscriptions and filter for active ones
+      const allSubscriptions = await storage.getSubscriptions();
+      const subscriptions = allSubscriptions.filter(s => s.isPaid && s.status !== "cancelled");
+      
+      // Filter subscriptions that have delivery scheduled for today
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todayStr = today.toISOString().split('T')[0];
+      
+      // Get all delivery logs for today
+      const todaysLogs = await storage.getSubscriptionDeliveryLogsByDate(today);
+      
+      const todaysDeliveries: any[] = [];
+      let preparing = 0;
+      let outForDelivery = 0;
+      let delivered = 0;
+
+      for (const sub of subscriptions) {
+        // Check if subscription has delivery today based on next delivery date
+        const nextDelivery = new Date(sub.nextDeliveryDate);
+        nextDelivery.setHours(0, 0, 0, 0);
+        const nextDeliveryStr = nextDelivery.toISOString().split('T')[0];
+        
+        if (nextDeliveryStr === todayStr && sub.status !== "paused" && sub.status !== "cancelled") {
+          // Get the plan name
+          const plan = await storage.getSubscriptionPlan(sub.planId);
+          
+          // Get chef name if assigned
+          let chefName: string | undefined;
+          if (sub.chefId) {
+            const chef = await storage.getChefById(sub.chefId);
+            chefName = chef?.name;
+          }
+          
+          // Find today's delivery log for this subscription
+          const deliveryLog = todaysLogs.find(log => log.subscriptionId === sub.id);
+          
+          const currentStatus = deliveryLog?.status || "scheduled";
+          
+          if (currentStatus === "preparing") preparing++;
+          else if (currentStatus === "out_for_delivery") outForDelivery++;
+          else if (currentStatus === "delivered") delivered++;
+          
+          todaysDeliveries.push({
+            id: deliveryLog?.id || sub.id,
+            subscriptionId: sub.id,
+            customerName: sub.customerName,
+            phone: sub.phone,
+            address: sub.address,
+            planName: plan?.name || "Unknown Plan",
+            time: sub.nextDeliveryTime || "09:00",
+            status: currentStatus,
+            chefName,
+          });
+        }
+      }
+
+      res.json({
+        todayCount: todaysDeliveries.length,
+        preparing,
+        outForDelivery,
+        delivered,
+        deliveries: todaysDeliveries,
+      });
+    } catch (error) {
+      console.error("Error fetching subscription deliveries:", error);
+      res.status(500).json({ message: "Failed to fetch subscription deliveries" });
+    }
+  });
+
+  // Update subscription delivery status (partner updates)
+  app.patch("/api/partner/subscription-deliveries/:subscriptionId/status", requirePartner(), async (req: AuthenticatedPartnerRequest, res) => {
+    try {
+      const { subscriptionId } = req.params;
+      const { status } = req.body;
+      const chefId = req.partner?.chefId;
+
+      if (!chefId) {
+        res.status(401).json({ message: "Unauthorized" });
+        return;
+      }
+
+      if (!status || !["preparing", "out_for_delivery", "delivered", "missed"].includes(status)) {
+        res.status(400).json({ message: "Invalid status" });
+        return;
+      }
+
+      // Get or create today's delivery log for this subscription
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const time = new Date().toTimeString().slice(0, 5);
+      
+      // Get today's logs and find one for this subscription
+      const todaysLogs = await storage.getSubscriptionDeliveryLogsByDate(today);
+      let deliveryLog = todaysLogs.find(log => log.subscriptionId === subscriptionId);
+      
+      if (!deliveryLog) {
+        // Create a new delivery log
+        deliveryLog = await storage.createSubscriptionDeliveryLog({
+          subscriptionId,
+          date: today,
+          time,
+          status: status as any,
+          deliveryPersonId: null,
+          notes: `Status set to ${status} by chef`,
+        });
+      } else {
+        // Update existing delivery log
+        deliveryLog = await storage.updateSubscriptionDeliveryLog(deliveryLog.id, {
+          status: status as any,
+          notes: `Status updated to ${status} by chef`,
+        });
+      }
+
+      // If delivered, update subscription's next delivery date and remaining deliveries
+      if (status === "delivered") {
+        const subscription = await storage.getSubscription(subscriptionId);
+        if (subscription && subscription.remainingDeliveries > 0) {
+          // Calculate next delivery date (simplified - move to next day for now)
+          const nextDate = new Date(subscription.nextDeliveryDate);
+          nextDate.setDate(nextDate.getDate() + 1);
+          
+          await storage.updateSubscription(subscriptionId, {
+            remainingDeliveries: subscription.remainingDeliveries - 1,
+            nextDeliveryDate: nextDate,
+          });
+        }
+      }
+
+      res.json(deliveryLog);
+    } catch (error) {
+      console.error("Error updating subscription delivery status:", error);
+      res.status(500).json({ message: "Failed to update delivery status" });
+    }
+  });
 }

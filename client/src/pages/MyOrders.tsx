@@ -325,10 +325,10 @@ export default function MyOrders() {
       />
 
       <main className="flex-1 bg-muted/30">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold mb-2">My Orders</h1>
-            <p className="text-muted-foreground">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-4 md:py-8">
+          <div className="mb-6 md:mb-8">
+            <h1 className="text-2xl md:text-3xl font-bold mb-1 md:mb-2">My Orders</h1>
+            <p className="text-xs md:text-sm text-muted-foreground">
               Track and manage your orders
             </p>
           </div>
@@ -379,25 +379,25 @@ export default function MyOrders() {
             <div className="space-y-6">
               {/* Live Tracking for Active Order */}
               {activeOrder && (
-                <Card>
-                  <CardHeader>
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <Card className="border-primary/20">
+                  <CardHeader className="pb-3 md:pb-4">
+                    <div className="flex flex-col gap-3 md:gap-4">
                       <div>
-                        <CardTitle className="text-2xl">
+                        <CardTitle className="text-lg md:text-2xl">
                           Current Order #{activeOrder.id.slice(0, 8)}
                         </CardTitle>
-                        <p className="text-sm text-muted-foreground mt-1">
-                          Placed on {format(new Date(activeOrder.createdAt), "PPpp")}
+                        <p className="text-xs md:text-sm text-muted-foreground mt-1">
+                          {format(new Date(activeOrder.createdAt), "MMM d, h:mm a")}
                         </p>
                       </div>
-                      <div className="flex flex-col gap-2">
-                        <Badge className={getStatusColor(activeOrder.status)}>
+                      <div className="flex flex-wrap gap-2">
+                        <Badge className={getStatusColor(activeOrder.status)} data-testid="badge-active-status">
                           <Clock className="h-3 w-3 mr-1" />
-                          {activeOrder.status.toUpperCase().replace("_", " ")}
+                          <span className="text-xs">{activeOrder.status.toUpperCase().replace("_", " ")}</span>
                         </Badge>
                         <Badge className={getPaymentStatusColor(activeOrder.paymentStatus)}>
                           <CreditCard className="h-3 w-3 mr-1" />
-                          Payment: {activeOrder.paymentStatus.toUpperCase()}
+                          <span className="text-xs">Payment: {activeOrder.paymentStatus.toUpperCase()}</span>
                         </Badge>
                       </div>
                     </div>
@@ -429,15 +429,15 @@ export default function MyOrders() {
                         </div>
                       )}
 
-                      {/* Order Status Tracker */}
-                      <div className="bg-muted/30 dark:bg-muted/20 rounded-lg p-4">
-                        <h4 className="font-semibold mb-4">Order Status Tracker</h4>
+                      {/* Order Status Tracker - Mobile Responsive */}
+                      <div className="bg-muted/30 dark:bg-muted/20 rounded-lg p-3 md:p-4">
+                        <h4 className="text-xs md:text-sm font-semibold mb-4">Order Status Tracker</h4>
                         <div className="relative">
                           {getOrderProgress(activeOrder).map((step, idx) => (
-                            <div key={step.key} className="flex gap-4 pb-6 last:pb-0">
+                            <div key={step.key} className="flex gap-3 md:gap-4 pb-4 md:pb-6 last:pb-0">
                               <div className="relative flex flex-col items-center">
                                 <div
-                                  className={`w-10 h-10 rounded-full flex items-center justify-center z-10 ${
+                                  className={`w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center z-10 flex-shrink-0 ${
                                     step.completed
                                       ? "bg-primary text-primary-foreground"
                                       : "bg-muted text-muted-foreground"
@@ -447,7 +447,7 @@ export default function MyOrders() {
                                 </div>
                                 {idx < getOrderProgress(activeOrder).length - 1 && (
                                   <div
-                                    className={`w-0.5 h-full absolute top-10 ${
+                                    className={`w-0.5 h-full absolute top-8 md:top-10 ${
                                       step.completed ? "bg-primary" : "bg-muted"
                                     }`}
                                   />
@@ -455,7 +455,7 @@ export default function MyOrders() {
                               </div>
                               <div className="flex-1 -mt-1">
                                 <p
-                                  className={`font-semibold ${
+                                  className={`text-xs md:text-sm font-semibold ${
                                     step.completed
                                       ? "text-foreground"
                                       : "text-muted-foreground"
@@ -463,7 +463,7 @@ export default function MyOrders() {
                                 >
                                   {step.label}
                                 </p>
-                                <p className="text-sm text-muted-foreground mt-0.5">
+                                <p className="text-xs text-muted-foreground mt-0.5">
                                   {step.description}
                                 </p>
                               </div>
@@ -472,44 +472,45 @@ export default function MyOrders() {
                         </div>
                       </div>
 
-                      {/* Order Details Grid */}
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <div>
-                          <h4 className="font-semibold mb-2 flex items-center gap-2">
+                      {/* Order Details - Mobile Responsive */}
+                      <div className="space-y-4">
+                        <div className="bg-muted/40 rounded-lg p-3 md:p-4">
+                          <h4 className="text-xs md:text-sm font-semibold mb-3 flex items-center gap-2 text-foreground">
                             <MapPin className="h-4 w-4" />
                             Delivery Address
                           </h4>
-                          <p className="text-sm text-muted-foreground">{activeOrder.address}</p>
+                          <p className="text-xs md:text-sm text-muted-foreground leading-relaxed">{activeOrder.address}</p>
                           <div className="flex items-center gap-2 mt-2">
-                            <Phone className="h-4 w-4 text-muted-foreground" />
-                            <p className="text-sm">{activeOrder.phone}</p>
+                            <Phone className="h-3 w-3 text-muted-foreground" />
+                            <p className="text-xs md:text-sm text-muted-foreground">{activeOrder.phone}</p>
                           </div>
                         </div>
-                        <div>
-                          <h4 className="font-semibold mb-2 flex items-center gap-2">
+
+                        <div className="bg-muted/40 rounded-lg p-3 md:p-4">
+                          <h4 className="text-xs md:text-sm font-semibold mb-3 flex items-center gap-2 text-foreground">
                             <Package className="h-4 w-4" />
                             Order Items
                           </h4>
-                          <div className="space-y-1">
-                            {activeOrder.chefName && activeOrder.chefName.trim() !== '' && (
-                                <div className="mb-2 pb-2 border-b">
-                                  <p className="text-xs text-muted-foreground">Prepared by</p>
-                                  <p className="text-sm font-medium flex items-center gap-1">
-                                    <ChefHat className="h-3 w-3" />
-                                    {activeOrder.chefName}
-                                  </p>
-                                </div>
-                              )}
+                          <div className="space-y-2">
+                            {activeOrder.chefName && (
+                              <div className="mb-2 pb-2 border-b border-muted">
+                                <p className="text-xs text-muted-foreground">Prepared by</p>
+                                <p className="text-xs md:text-sm font-medium flex items-center gap-1">
+                                  <ChefHat className="h-3 w-3" />
+                                  {activeOrder.chefName}
+                                </p>
+                              </div>
+                            )}
                             {activeOrder.items.map((item: any, idx: number) => (
-                              <div key={idx} className="flex justify-between text-sm">
+                              <div key={idx} className="flex justify-between text-xs md:text-sm">
                                 <span className="text-muted-foreground">
                                   {item.name} × {item.quantity}
                                 </span>
                                 <span className="font-medium">₹{item.price * item.quantity}</span>
                               </div>
                             ))}
-                            <div className="border-t pt-2 mt-2">
-                              <div className="flex justify-between font-bold">
+                            <div className="border-t border-muted pt-2 mt-2">
+                              <div className="flex justify-between text-sm md:text-base font-bold">
                                 <span>Total</span>
                                 <span>₹{activeOrder.total}</span>
                               </div>
@@ -522,89 +523,85 @@ export default function MyOrders() {
                 </Card>
               )}
 
-              {/* All Orders Table */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Order History</CardTitle>
-                  <CardDescription>View all your past orders</CardDescription>
-                </CardHeader>
-                <CardContent className="p-0">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Order ID</TableHead>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Items</TableHead>
-                        <TableHead>Total</TableHead>
-                        <TableHead>Payment</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {orders.map((order) => (
-                        <TableRow key={order.id}>
-                          <TableCell className="font-medium">
-                            #{order.id.slice(0, 8)}
-                          </TableCell>
-                          <TableCell>
-                            {format(new Date(order.createdAt), "MMM d, yyyy")}
-                            <br />
-                            <span className="text-xs text-muted-foreground">
-                              {format(new Date(order.createdAt), "h:mm a")}
-                            </span>
-                          </TableCell>
-                          <TableCell>
-                            <div className="text-sm">
-                              {order.items.slice(0, 2).map((item: any, idx: number) => (
-                                <div key={idx} className="text-muted-foreground">
-                                  {item.name} ×{item.quantity}
-                                </div>
-                              ))}
-                              {order.items.length > 2 && (
-                                <span className="text-xs text-muted-foreground">
-                                  +{order.items.length - 2} more
-                                </span>
-                              )}
+              {/* Order History - List Style (Zomato-like) */}
+              <div>
+                <div className="mb-4">
+                  <h2 className="text-lg md:text-xl font-bold">Order History</h2>
+                  <p className="text-xs md:text-sm text-muted-foreground">View all your past orders</p>
+                </div>
+                
+                <div className="space-y-3">
+                  {orders.map((order) => (
+                    <div key={order.id} className="border rounded-lg p-3 md:p-4 hover:shadow-md transition-shadow bg-background hover-elevate" data-testid={`card-order-${order.id}`}>
+                      <div className="space-y-3">
+                        {/* Top Row: Partner Name + Status */}
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <ChefHat className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                              <p className="font-semibold text-sm md:text-base truncate text-foreground">
+                                {order.chefName || "Unknown Restaurant"}
+                              </p>
                             </div>
-                          </TableCell>
-                          <TableCell className="font-semibold">₹{order.total}</TableCell>
-                          <TableCell>
-                            <Badge className={getPaymentStatusColor(order.paymentStatus)} variant="outline">
-                              {order.paymentStatus}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <Badge className={getStatusColor(order.status)}>
-                              {order.status.replace("_", " ")}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex gap-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setLocation(`/track/${order.id}`)}
-                              >
-                                Track
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleWhatsAppSupport(order)}
-                                className="text-green-600 hover:text-green-700"
-                                title="Chat about this order"
-                              >
-                                <MessageCircle className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Order #{order.id.slice(0, 8)} • {format(new Date(order.createdAt), "MMM d, yyyy")} at {format(new Date(order.createdAt), "h:mm a")}
+                            </p>
+                          </div>
+                          <Badge className={getStatusColor(order.status)} data-testid={`badge-order-status-${order.id}`}>
+                            <span className="text-xs">{order.status.replace("_", " ")}</span>
+                          </Badge>
+                        </div>
+
+                        {/* Items */}
+                        <div className="bg-muted/30 rounded p-2">
+                          <div className="text-xs space-y-1">
+                            {order.items.slice(0, 3).map((item: any, idx: number) => (
+                              <div key={idx} className="flex justify-between text-muted-foreground">
+                                <span>{item.name} ×{item.quantity}</span>
+                                <span>₹{item.price * item.quantity}</span>
+                              </div>
+                            ))}
+                            {order.items.length > 3 && (
+                              <p className="text-muted-foreground pt-1">
+                                +{order.items.length - 3} more items
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Footer: Price + Buttons */}
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-xs text-muted-foreground">Total</p>
+                            <p className="text-base md:text-lg font-bold">₹{order.total}</p>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setLocation(`/track/${order.id}`)}
+                              data-testid={`button-track-${order.id}`}
+                              className="text-xs"
+                            >
+                              Track
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              onClick={() => handleWhatsAppSupport(order)}
+                              className="text-green-600 hover:text-green-700"
+                              title="Chat support"
+                              data-testid={`button-chat-${order.id}`}
+                            >
+                              <MessageCircle className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
         </div>

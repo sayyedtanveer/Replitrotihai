@@ -1,9 +1,9 @@
-import { type Category, type InsertCategory, type Product, type InsertProduct, type Order, type InsertOrder, type User, type UpsertUser, type Chef, type AdminUser, type InsertAdminUser, type PartnerUser, type Subscription, type SubscriptionPlan, type DeliverySetting, type InsertDeliverySetting, type CartSetting, type InsertCartSetting, type DeliveryPersonnel, type InsertDeliveryPersonnel, type WalletTransaction, type ReferralReward, type PromotionalBanner, type InsertPromotionalBanner } from "@shared/schema";
+import { type Category, type InsertCategory, type Product, type InsertProduct, type Order, type InsertOrder, type User, type UpsertUser, type Chef, type AdminUser, type InsertAdminUser, type PartnerUser, type Subscription, type SubscriptionPlan, type DeliverySetting, type InsertDeliverySetting, type CartSetting, type InsertCartSetting, type DeliveryPersonnel, type InsertDeliveryPersonnel, type WalletTransaction, type ReferralReward, type PromotionalBanner, type InsertPromotionalBanner, type SubscriptionDeliveryLog, type InsertSubscriptionDeliveryLog, type DeliveryTimeSlot, type InsertDeliveryTimeSlot } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { nanoid } from "nanoid";
 import { eq, and, gte, lte, desc, asc, or, isNull, sql } from "drizzle-orm";
 import { db, users, categories, products, orders, chefs, adminUsers, partnerUsers, subscriptions,
-  subscriptionPlans, deliverySettings, cartSettings, deliveryPersonnel, coupons, referrals, walletTransactions, referralRewards, promotionalBanners } from "@shared/db";
+  subscriptionPlans, subscriptionDeliveryLogs, deliverySettings, cartSettings, deliveryPersonnel, coupons, referrals, walletTransactions, referralRewards, promotionalBanners, deliveryTimeSlots } from "@shared/db";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -77,9 +77,19 @@ export interface IStorage {
 
   getSubscriptions(): Promise<Subscription[]>;
   getSubscription(id: string): Promise<Subscription | undefined>;
+  getSubscriptionsByUserId(userId: string): Promise<Subscription[]>;
   createSubscription(data: Omit<Subscription, "id" | "createdAt" | "updatedAt">): Promise<Subscription>;
   updateSubscription(id: string, data: Partial<Subscription>): Promise<Subscription | undefined>;
   deleteSubscription(id: string): Promise<void>;
+
+  // Subscription Delivery Log methods
+  getSubscriptionDeliveryLogs(subscriptionId: string): Promise<SubscriptionDeliveryLog[]>;
+  getSubscriptionDeliveryLogsByDate(date: Date): Promise<SubscriptionDeliveryLog[]>;
+  getSubscriptionDeliveryLog(id: string): Promise<SubscriptionDeliveryLog | undefined>;
+  createSubscriptionDeliveryLog(data: Omit<SubscriptionDeliveryLog, "id" | "createdAt" | "updatedAt">): Promise<SubscriptionDeliveryLog>;
+  updateSubscriptionDeliveryLog(id: string, data: Partial<SubscriptionDeliveryLog>): Promise<SubscriptionDeliveryLog | undefined>;
+  deleteSubscriptionDeliveryLog(id: string): Promise<void>;
+  getDeliveryLogBySubscriptionAndDate(subscriptionId: string, date: Date): Promise<SubscriptionDeliveryLog | undefined>;
 
   // Delivery settings methods
   getDeliverySettings(): Promise<DeliverySetting[]>;
@@ -159,6 +169,14 @@ export interface IStorage {
   createPromotionalBanner(data: InsertPromotionalBanner): Promise<PromotionalBanner>;
   updatePromotionalBanner(id: string, data: Partial<InsertPromotionalBanner>): Promise<PromotionalBanner | null>;
   deletePromotionalBanner(id: string): Promise<boolean>;
+
+  // Delivery Time Slots methods
+  getAllDeliveryTimeSlots(): Promise<DeliveryTimeSlot[]>;
+  getActiveDeliveryTimeSlots(): Promise<DeliveryTimeSlot[]>;
+  getDeliveryTimeSlot(id: string): Promise<DeliveryTimeSlot | undefined>;
+  createDeliveryTimeSlot(data: InsertDeliveryTimeSlot): Promise<DeliveryTimeSlot>;
+  updateDeliveryTimeSlot(id: string, data: Partial<InsertDeliveryTimeSlot>): Promise<DeliveryTimeSlot | undefined>;
+  deleteDeliveryTimeSlot(id: string): Promise<boolean>;
 }
 
 export class MemStorage implements IStorage {
@@ -170,6 +188,7 @@ export class MemStorage implements IStorage {
   private adminUsers: Map<string, AdminUser> = new Map();
   private subscriptionPlans: Map<string, SubscriptionPlan> = new Map();
   private subscriptions: Map<string, Subscription> = new Map();
+  private deliveryTimeSlots: Map<string, DeliveryTimeSlot> = new Map();
 
   constructor() {
     this.users = new Map();
@@ -180,6 +199,7 @@ export class MemStorage implements IStorage {
     this.adminUsers = new Map();
     this.subscriptionPlans = new Map();
     this.subscriptions = new Map();
+    this.deliveryTimeSlots = new Map();
     // this.seedData(); // Seed data is not directly applicable to the DB-backed storage
   }
 
@@ -310,6 +330,7 @@ export class MemStorage implements IStorage {
       paymentStatus: "pending" as const,
       paymentQrShown: true,
       chefId: insertOrder.chefId || null,
+      chefName: insertOrder.chefName || null,
       userId: insertOrder.userId || null,
       createdAt: new Date(),
     };
@@ -666,6 +687,72 @@ export class MemStorage implements IStorage {
 
   async deleteSubscription(id: string): Promise<void> {
     await db.delete(subscriptions).where(eq(subscriptions.id, id));
+  }
+
+  async getSubscriptionsByUserId(userId: string): Promise<Subscription[]> {
+    return db.query.subscriptions.findMany({ where: (s, { eq }) => eq(s.userId, userId) });
+  }
+
+  // Subscription Delivery Logs
+  async getSubscriptionDeliveryLogs(subscriptionId: string): Promise<SubscriptionDeliveryLog[]> {
+    return db.query.subscriptionDeliveryLogs.findMany({
+      where: (log, { eq }) => eq(log.subscriptionId, subscriptionId),
+      orderBy: (log, { desc }) => [desc(log.date)],
+    });
+  }
+
+  async getSubscriptionDeliveryLogsByDate(date: Date): Promise<SubscriptionDeliveryLog[]> {
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+    
+    return db.query.subscriptionDeliveryLogs.findMany({
+      where: (log, { and, gte, lte }) => and(
+        gte(log.date, startOfDay),
+        lte(log.date, endOfDay)
+      ),
+    });
+  }
+
+  async getSubscriptionDeliveryLog(id: string): Promise<SubscriptionDeliveryLog | undefined> {
+    return db.query.subscriptionDeliveryLogs.findFirst({ where: (log, { eq }) => eq(log.id, id) });
+  }
+
+  async createSubscriptionDeliveryLog(data: Omit<SubscriptionDeliveryLog, "id" | "createdAt" | "updatedAt">): Promise<SubscriptionDeliveryLog> {
+    const id = randomUUID();
+    const log: SubscriptionDeliveryLog = {
+      ...data,
+      id,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    await db.insert(subscriptionDeliveryLogs).values(log);
+    return log;
+  }
+
+  async updateSubscriptionDeliveryLog(id: string, data: Partial<SubscriptionDeliveryLog>): Promise<SubscriptionDeliveryLog | undefined> {
+    await db.update(subscriptionDeliveryLogs).set({ ...data, updatedAt: new Date() }).where(eq(subscriptionDeliveryLogs.id, id));
+    return this.getSubscriptionDeliveryLog(id);
+  }
+
+  async deleteSubscriptionDeliveryLog(id: string): Promise<void> {
+    await db.delete(subscriptionDeliveryLogs).where(eq(subscriptionDeliveryLogs.id, id));
+  }
+
+  async getDeliveryLogBySubscriptionAndDate(subscriptionId: string, date: Date): Promise<SubscriptionDeliveryLog | undefined> {
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+    
+    return db.query.subscriptionDeliveryLogs.findFirst({
+      where: (log, { and, eq, gte, lte }) => and(
+        eq(log.subscriptionId, subscriptionId),
+        gte(log.date, startOfDay),
+        lte(log.date, endOfDay)
+      ),
+    });
   }
 
   async getSalesReport(from: Date, to: Date) {
@@ -1328,6 +1415,48 @@ export class MemStorage implements IStorage {
     const result = await db.delete(promotionalBanners)
       .where(eq(promotionalBanners.id, id));
     return (result.rowCount ?? 0) > 0;
+  }
+
+  // Delivery Time Slots
+  async getAllDeliveryTimeSlots(): Promise<DeliveryTimeSlot[]> {
+    return Array.from(this.deliveryTimeSlots.values()).sort((a, b) => 
+      a.startTime.localeCompare(b.startTime)
+    );
+  }
+
+  async getActiveDeliveryTimeSlots(): Promise<DeliveryTimeSlot[]> {
+    return Array.from(this.deliveryTimeSlots.values())
+      .filter(slot => slot.isActive)
+      .sort((a, b) => a.startTime.localeCompare(b.startTime));
+  }
+
+  async getDeliveryTimeSlot(id: string): Promise<DeliveryTimeSlot | undefined> {
+    return this.deliveryTimeSlots.get(id);
+  }
+
+  async createDeliveryTimeSlot(data: InsertDeliveryTimeSlot): Promise<DeliveryTimeSlot> {
+    const id = randomUUID();
+    const slot: DeliveryTimeSlot = {
+      id,
+      ...data,
+      currentOrders: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.deliveryTimeSlots.set(id, slot);
+    return slot;
+  }
+
+  async updateDeliveryTimeSlot(id: string, data: Partial<InsertDeliveryTimeSlot>): Promise<DeliveryTimeSlot | undefined> {
+    const slot = this.deliveryTimeSlots.get(id);
+    if (!slot) return undefined;
+    const updated = { ...slot, ...data, updatedAt: new Date() };
+    this.deliveryTimeSlots.set(id, updated);
+    return updated;
+  }
+
+  async deleteDeliveryTimeSlot(id: string): Promise<boolean> {
+    return this.deliveryTimeSlots.delete(id);
   }
 
   private mapOrder(order: any): Order {

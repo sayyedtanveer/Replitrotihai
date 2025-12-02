@@ -25,6 +25,7 @@ export default function AdminManagement() {
   const [editingAdmin, setEditingAdmin] = useState<AdminUser | null>(null);
   const [deletingAdmin, setDeletingAdmin] = useState<AdminUser | null>(null);
   const [editRole, setEditRole] = useState("");
+  const [createdAdmin, setCreatedAdmin] = useState<{ username: string; email: string; password: string } | null>(null);
 
   const currentAdminUser = JSON.parse(localStorage.getItem("adminUser") || "{}");
 
@@ -67,9 +68,9 @@ export default function AdminManagement() {
       }
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin", "admins"] });
-      toast({ title: "Admin created", description: "Admin user has been created successfully" });
+      setCreatedAdmin({ username: data.username, email: data.email, password: data.password });
       setIsDialogOpen(false);
       form.reset();
     },
@@ -384,6 +385,45 @@ export default function AdminManagement() {
               data-testid="button-confirm-delete-admin"
             >
               {deleteAdminMutation.isPending ? "Deleting..." : "Delete Admin"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Admin Created Dialog - Show Credentials */}
+      <Dialog open={!!createdAdmin} onOpenChange={() => setCreatedAdmin(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-green-600">Admin Created Successfully</DialogTitle>
+            <DialogDescription>
+              Save these credentials securely. Share with the new admin user.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2 p-3 bg-slate-100 dark:bg-slate-800 rounded">
+              <div>
+                <p className="text-xs font-medium text-muted-foreground">Username</p>
+                <p className="text-sm font-mono font-bold text-foreground" data-testid="text-admin-username">{createdAdmin?.username}</p>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-muted-foreground">Email</p>
+                <p className="text-sm font-mono text-foreground" data-testid="text-admin-email">{createdAdmin?.email}</p>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-muted-foreground">Password</p>
+                <p className="text-sm font-mono font-bold text-red-600 dark:text-red-400" data-testid="text-admin-password">{createdAdmin?.password}</p>
+              </div>
+            </div>
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              Password will not be shown again. Make sure to save it securely before closing.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              onClick={() => setCreatedAdmin(null)}
+              data-testid="button-close-credentials"
+            >
+              Done
             </Button>
           </DialogFooter>
         </DialogContent>

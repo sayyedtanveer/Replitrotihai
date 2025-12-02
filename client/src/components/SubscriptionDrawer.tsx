@@ -5,15 +5,19 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SubscriptionCard } from "./SubscriptionCard";
 import { SubscriptionSchedule } from "./SubscriptionSchedule";
-import PaymentQRDialog from "./PaymentQRDialog"; // Added PaymentQRDialog
+import PaymentQRDialog from "./PaymentQRDialog";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
-import { format } from "date-fns";
-import { Calendar, Pause, Play, Clock, CheckCircle2, AlertCircle } from "lucide-react";
+import { format, addDays, differenceInDays, isPast, isAfter } from "date-fns";
+import { Calendar, Pause, Play, Clock, CheckCircle2, AlertCircle, Settings2, CalendarDays, History, RefreshCw, AlertTriangle } from "lucide-react";
 import type { SubscriptionPlan, Subscription } from "@shared/schema";
-import { useLocation } from "wouter"; // Added useLocation
+import { useLocation } from "wouter";
 
 interface SubscriptionDrawerProps {
   isOpen: boolean;
@@ -23,13 +27,42 @@ interface SubscriptionDrawerProps {
 function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
   const { toast } = useToast();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [showPaymentQR, setShowPaymentQR] = useState(false); // State for payment QR dialog
-  const [paymentDetails, setPaymentDetails] = useState<{ // State for payment details
+  const [showPaymentQR, setShowPaymentQR] = useState(false);
+  const [paymentDetails, setPaymentDetails] = useState<{
     subscriptionId: string;
     amount: number;
     planName: string;
   } | null>(null);
-  const [, setLocation] = useLocation(); // Added for potential redirects
+  const [, setLocation] = useLocation();
+  
+  // Advanced pause modal state
+  const [showPauseModal, setShowPauseModal] = useState(false);
+  const [pauseSubscriptionId, setPauseSubscriptionId] = useState<string | null>(null);
+  const [pauseStartDate, setPauseStartDate] = useState<string>("");
+  const [pauseResumeDate, setPauseResumeDate] = useState<string>("");
+  
+  // Delivery time modal state
+  const [showTimeModal, setShowTimeModal] = useState(false);
+  const [timeSubscriptionId, setTimeSubscriptionId] = useState<string | null>(null);
+  const [selectedDeliveryTime, setSelectedDeliveryTime] = useState<string>("09:00");
+  
+  // Fetch available delivery time slots
+  const { data: availableSlots = [] } = useQuery({
+    queryKey: ["/api/delivery-slots"],
+    queryFn: async () => {
+      const response = await fetch("/api/delivery-slots");
+      if (!response.ok) throw new Error("Failed to fetch delivery slots");
+      return response.json();
+    },
+  });
+  
+  // Delivery history modal state
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [historySubscriptionId, setHistorySubscriptionId] = useState<string | null>(null);
+  
+  // Renewal modal state
+  const [showRenewalModal, setShowRenewalModal] = useState(false);
+  const [renewalSubscription, setRenewalSubscription] = useState<Subscription | null>(null);
 
   const { data: plans, isLoading: plansLoading, error: plansError } = useQuery<SubscriptionPlan[]>({
     queryKey: ["/api/subscription-plans"],
@@ -196,19 +229,131 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
   });
 
   const pauseMutation = useMutation({
-    mutationFn: async (subscriptionId: string) => {
+    mutationFn: async ({ subscriptionId, pauseStartDate, pauseResumeDate }: { 
+      subscriptionId: string; 
+      pauseStartDate?: string; 
+      pauseResumeDate?: string;
+    }) => {
       const response = await fetch(`/api/subscriptions/${subscriptionId}/pause`, {
         method: "POST",
-        headers: getAuthHeaders(),
+        headers: { 
+          "Content-Type": "application/json",
+          ...getAuthHeaders(),
+        },
+        body: JSON.stringify({ pauseStartDate, pauseResumeDate }),
       });
       if (!response.ok) throw new Error("Failed to pause subscription");
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/subscriptions"] });
-      toast({ title: "Paused", description: "Subscription paused successfully" });
+      setShowPauseModal(false);
+      setPauseSubscriptionId(null);
+      setPauseStartDate("");
+      setPauseResumeDate("");
+      
+      let message = "Subscription paused successfully";
+      if (data.pauseResumeDate) {
+        message = `Subscription paused until ${format(new Date(data.pauseResumeDate), "PPP")}`;
+      }
+      toast({ title: "Paused", description: message });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to pause subscription", variant: "destructive" });
     },
   });
+
+  const updateDeliveryTimeMutation = useMutation({
+    mutationFn: async ({ subscriptionId, deliveryTime }: { subscriptionId: string; deliveryTime: string }) => {
+      const response = await fetch(`/api/subscriptions/${subscriptionId}/delivery-time`, {
+        method: "PATCH",
+        headers: { 
+          "Content-Type": "application/json",
+          ...getAuthHeaders(),
+        },
+        body: JSON.stringify({ deliveryTime }),
+      });
+      if (!response.ok) throw new Error("Failed to update delivery time");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/subscriptions"] });
+      setShowTimeModal(false);
+      setTimeSubscriptionId(null);
+      toast({ title: "Updated", description: "Delivery time updated successfully" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to update delivery time", variant: "destructive" });
+    },
+  });
+
+  // Fetch delivery history for a subscription
+  const { data: deliveryHistory } = useQuery({
+    queryKey: ["/api/subscriptions", historySubscriptionId, "delivery-logs"],
+    queryFn: async () => {
+      const response = await fetch(`/api/subscriptions/${historySubscriptionId}/delivery-logs`, {
+        headers: getAuthHeaders(),
+      });
+      if (!response.ok) throw new Error("Failed to fetch delivery history");
+      return response.json();
+    },
+    enabled: !!historySubscriptionId && showHistoryModal,
+  });
+
+  // Renewal mutation
+  const renewalMutation = useMutation({
+    mutationFn: async (subscriptionId: string) => {
+      const response = await fetch(`/api/subscriptions/${subscriptionId}/renew`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+      });
+      if (!response.ok) throw new Error("Failed to renew subscription");
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/subscriptions"] });
+      setShowRenewalModal(false);
+      setRenewalSubscription(null);
+      
+      // Show payment QR for renewal
+      const plan = plans?.find(p => p.id === data.planId);
+      setPaymentDetails({
+        subscriptionId: data.id,
+        amount: plan?.price || 0,
+        planName: plan?.name || "Subscription",
+      });
+      setShowPaymentQR(true);
+      
+      toast({ 
+        title: "Renewal Created!", 
+        description: "Complete payment to activate your renewal" 
+      });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to renew subscription", variant: "destructive" });
+    },
+  });
+
+  // Helper function to check subscription expiration status
+  const getExpirationStatus = (sub: Subscription) => {
+    if (sub.remainingDeliveries <= 0) {
+      return { isExpired: true, isExpiringSoon: false, daysRemaining: 0 };
+    }
+    
+    const endDate = sub.endDate ? new Date(sub.endDate) : null;
+    if (endDate) {
+      const daysRemaining = differenceInDays(endDate, new Date());
+      return {
+        isExpired: isPast(endDate),
+        isExpiringSoon: daysRemaining <= 7 && daysRemaining > 0,
+        daysRemaining
+      };
+    }
+    
+    // Check based on remaining deliveries
+    const isExpiringSoon = sub.remainingDeliveries <= 3;
+    return { isExpired: false, isExpiringSoon, daysRemaining: sub.remainingDeliveries };
+  };
 
   const resumeMutation = useMutation({
     mutationFn: async (subscriptionId: string) => {
@@ -302,37 +447,53 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
                 <div className="space-y-4 mt-4">
                   {mySubscriptions.map(sub => {
                     const plan = plans?.find(p => p.id === sub.planId);
+                    const expirationStatus = getExpirationStatus(sub);
                     return (
                       <div key={sub.id} className="space-y-4">
-                        <Card>
+                        <Card className={expirationStatus.isExpiringSoon ? "border-yellow-500/50" : expirationStatus.isExpired ? "border-destructive/50" : ""}>
                           <CardHeader>
-                            <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center justify-between gap-2 flex-wrap">
                               <CardTitle className="text-lg">{plan?.name}</CardTitle>
-                              {/* Enhanced status badge with clear states */}
-                              {!sub.isPaid && !sub.paymentTransactionId && (
-                                <Badge variant="destructive" className="gap-1">
-                                  <AlertCircle className="w-3 h-3" />
-                                  Pending Payment
-                                </Badge>
-                              )}
-                              {!sub.isPaid && sub.paymentTransactionId && (
-                                <Badge variant="secondary" className="gap-1">
-                                  <Clock className="w-3 h-3" />
-                                  Awaiting Verification
-                                </Badge>
-                              )}
-                              {sub.isPaid && sub.status === "active" && (
-                                <Badge variant="default" className="gap-1">
-                                  <CheckCircle2 className="w-3 h-3" />
-                                  Active
-                                </Badge>
-                              )}
-                              {sub.isPaid && sub.status === "paused" && (
-                                <Badge variant="secondary" className="gap-1">
-                                  <Pause className="w-3 h-3" />
-                                  Paused
-                                </Badge>
-                              )}
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {/* Expiration warning badge */}
+                                {sub.isPaid && expirationStatus.isExpiringSoon && (
+                                  <Badge variant="outline" className="gap-1 border-yellow-500 text-yellow-600 dark:text-yellow-500">
+                                    <AlertTriangle className="w-3 h-3" />
+                                    Expiring Soon
+                                  </Badge>
+                                )}
+                                {sub.isPaid && expirationStatus.isExpired && (
+                                  <Badge variant="outline" className="gap-1 border-destructive text-destructive">
+                                    <AlertCircle className="w-3 h-3" />
+                                    Expired
+                                  </Badge>
+                                )}
+                                {/* Status badge */}
+                                {!sub.isPaid && !sub.paymentTransactionId && (
+                                  <Badge variant="destructive" className="gap-1">
+                                    <AlertCircle className="w-3 h-3" />
+                                    Pending Payment
+                                  </Badge>
+                                )}
+                                {!sub.isPaid && sub.paymentTransactionId && (
+                                  <Badge variant="secondary" className="gap-1">
+                                    <Clock className="w-3 h-3" />
+                                    Awaiting Verification
+                                  </Badge>
+                                )}
+                                {sub.isPaid && sub.status === "active" && !expirationStatus.isExpired && (
+                                  <Badge variant="default" className="gap-1">
+                                    <CheckCircle2 className="w-3 h-3" />
+                                    Active
+                                  </Badge>
+                                )}
+                                {sub.isPaid && sub.status === "paused" && (
+                                  <Badge variant="secondary" className="gap-1">
+                                    <Pause className="w-3 h-3" />
+                                    Paused
+                                  </Badge>
+                                )}
+                              </div>
                             </div>
                           </CardHeader>
                           <CardContent className="space-y-4">
@@ -402,29 +563,82 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
                               </div>
                             )}
                             
-                            {/* Step 3: Active Subscription - Can Pause */}
+                            {/* Step 3: Active Subscription - Can Pause and Configure */}
                             {sub.isPaid && sub.status === "active" && (
-                              <div className="flex flex-wrap gap-2 pt-2">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  data-testid={`button-pause-${sub.id}`}
-                                  onClick={() => pauseMutation.mutate(sub.id)}
-                                  disabled={pauseMutation.isPending}
-                                >
-                                  <Pause className="w-4 h-4 mr-2" />
-                                  {pauseMutation.isPending ? "Pausing..." : "Pause Deliveries"}
-                                </Button>
+                              <div className="space-y-3 pt-2">
+                                {/* Delivery Time Display */}
+                                <div className="flex items-center justify-between text-sm">
+                                  <span className="text-muted-foreground">Delivery Time:</span>
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium">{sub.nextDeliveryTime || "09:00"}</span>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      data-testid={`button-change-time-${sub.id}`}
+                                      onClick={() => {
+                                        setTimeSubscriptionId(sub.id);
+                                        setSelectedDeliveryTime(sub.nextDeliveryTime || "09:00");
+                                        setShowTimeModal(true);
+                                      }}
+                                    >
+                                      <Settings2 className="w-4 h-4" />
+                                    </Button>
+                                  </div>
+                                </div>
+                                
+                                <div className="flex flex-wrap gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    data-testid={`button-pause-${sub.id}`}
+                                    onClick={() => {
+                                      setPauseSubscriptionId(sub.id);
+                                      setPauseStartDate(format(new Date(), "yyyy-MM-dd"));
+                                      setPauseResumeDate("");
+                                      setShowPauseModal(true);
+                                    }}
+                                  >
+                                    <Pause className="w-4 h-4 mr-2" />
+                                    Pause Deliveries
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    data-testid={`button-history-${sub.id}`}
+                                    onClick={() => {
+                                      setHistorySubscriptionId(sub.id);
+                                      setShowHistoryModal(true);
+                                    }}
+                                  >
+                                    <History className="w-4 h-4 mr-2" />
+                                    History
+                                  </Button>
+                                </div>
                               </div>
                             )}
                             
                             {/* Paused State - Can Resume */}
                             {sub.isPaid && sub.status === "paused" && (
                               <div className="space-y-3 pt-2">
-                                <div className="p-3 bg-muted rounded-md border">
-                                  <p className="text-sm text-center text-muted-foreground">
-                                    Your subscription is paused. Resume anytime to continue deliveries.
+                                <div className="p-3 bg-muted rounded-md border space-y-2">
+                                  <p className="text-sm text-center font-medium">
+                                    Subscription Paused
                                   </p>
+                                  {sub.pauseStartDate && (
+                                    <p className="text-xs text-center text-muted-foreground">
+                                      Since: {format(new Date(sub.pauseStartDate), "PPP")}
+                                    </p>
+                                  )}
+                                  {sub.pauseResumeDate && (
+                                    <p className="text-xs text-center text-muted-foreground">
+                                      Auto-resume: {format(new Date(sub.pauseResumeDate), "PPP")}
+                                    </p>
+                                  )}
+                                  {!sub.pauseResumeDate && (
+                                    <p className="text-xs text-center text-muted-foreground">
+                                      Resume manually to continue deliveries
+                                    </p>
+                                  )}
                                 </div>
                                 <Button
                                   className="w-full"
@@ -433,7 +647,51 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
                                   disabled={resumeMutation.isPending}
                                 >
                                   <Play className="w-4 h-4 mr-2" />
-                                  {resumeMutation.isPending ? "Resuming..." : "Resume Deliveries"}
+                                  {resumeMutation.isPending ? "Resuming..." : "Resume Deliveries Now"}
+                                </Button>
+                              </div>
+                            )}
+
+                            {/* Expiration Warning and Renewal */}
+                            {sub.isPaid && (expirationStatus.isExpiringSoon || expirationStatus.isExpired) && (
+                              <div className="space-y-3 pt-2">
+                                <div className={`p-3 rounded-md border ${
+                                  expirationStatus.isExpired 
+                                    ? "bg-destructive/10 border-destructive/20" 
+                                    : "bg-yellow-500/10 border-yellow-500/20"
+                                }`}>
+                                  <div className="flex items-center gap-2 justify-center">
+                                    {expirationStatus.isExpired ? (
+                                      <AlertCircle className="w-4 h-4 text-destructive" />
+                                    ) : (
+                                      <AlertTriangle className="w-4 h-4 text-yellow-600 dark:text-yellow-500" />
+                                    )}
+                                    <span className={`text-sm font-medium ${
+                                      expirationStatus.isExpired ? "text-destructive" : "text-yellow-600 dark:text-yellow-500"
+                                    }`}>
+                                      {expirationStatus.isExpired 
+                                        ? "Subscription Expired" 
+                                        : `Only ${expirationStatus.daysRemaining} ${expirationStatus.daysRemaining === 1 ? 'delivery' : 'deliveries'} remaining`
+                                      }
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-center text-muted-foreground mt-2">
+                                    {expirationStatus.isExpired 
+                                      ? "Renew to continue enjoying your subscription" 
+                                      : "Renew now to avoid interruption"
+                                    }
+                                  </p>
+                                </div>
+                                <Button
+                                  className="w-full"
+                                  data-testid={`button-renew-${sub.id}`}
+                                  onClick={() => {
+                                    setRenewalSubscription(sub);
+                                    setShowRenewalModal(true);
+                                  }}
+                                >
+                                  <RefreshCw className="w-4 h-4 mr-2" />
+                                  Renew Subscription - ₹{plan?.price}
                                 </Button>
                               </div>
                             )}
@@ -485,6 +743,218 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
           }}
         />
       )}
+
+      {/* Advanced Pause Modal */}
+      <Dialog open={showPauseModal} onOpenChange={setShowPauseModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Pause Subscription</DialogTitle>
+            <DialogDescription>
+              Choose how long you want to pause your subscription. You can set a date range or pause indefinitely.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="pauseStart">Pause From</Label>
+              <Input
+                id="pauseStart"
+                type="date"
+                value={pauseStartDate}
+                min={format(new Date(), "yyyy-MM-dd")}
+                onChange={(e) => setPauseStartDate(e.target.value)}
+                data-testid="input-pause-start"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="pauseResume">Resume On (Optional)</Label>
+              <Input
+                id="pauseResume"
+                type="date"
+                value={pauseResumeDate}
+                min={pauseStartDate || format(addDays(new Date(), 1), "yyyy-MM-dd")}
+                onChange={(e) => setPauseResumeDate(e.target.value)}
+                data-testid="input-pause-resume"
+              />
+              <p className="text-xs text-muted-foreground">
+                Leave empty to pause indefinitely. You can resume manually anytime.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowPauseModal(false)}>
+              Cancel
+            </Button>
+            <Button
+              data-testid="button-confirm-pause"
+              onClick={() => {
+                if (pauseSubscriptionId) {
+                  pauseMutation.mutate({
+                    subscriptionId: pauseSubscriptionId,
+                    pauseStartDate: pauseStartDate || undefined,
+                    pauseResumeDate: pauseResumeDate || undefined,
+                  });
+                }
+              }}
+              disabled={pauseMutation.isPending}
+            >
+              {pauseMutation.isPending ? "Pausing..." : "Pause Subscription"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delivery Time Modal */}
+      <Dialog open={showTimeModal} onOpenChange={setShowTimeModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Change Delivery Time</DialogTitle>
+            <DialogDescription>
+              Select your preferred delivery time slot.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="deliveryTime">Delivery Time</Label>
+              <Select value={selectedDeliveryTime} onValueChange={setSelectedDeliveryTime}>
+                <SelectTrigger data-testid="select-delivery-time">
+                  <SelectValue placeholder="Select time slot" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableSlots.length > 0 ? (
+                    availableSlots.map((slot: any) => (
+                      <SelectItem key={slot.id} value={slot.startTime}>
+                        {slot.label}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="09:00">Default: 9:00 AM - 10:00 AM</SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowTimeModal(false)}>
+              Cancel
+            </Button>
+            <Button
+              data-testid="button-save-time"
+              onClick={() => {
+                if (timeSubscriptionId) {
+                  updateDeliveryTimeMutation.mutate({
+                    subscriptionId: timeSubscriptionId,
+                    deliveryTime: selectedDeliveryTime,
+                  });
+                }
+              }}
+              disabled={updateDeliveryTimeMutation.isPending}
+            >
+              {updateDeliveryTimeMutation.isPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delivery History Modal */}
+      <Dialog open={showHistoryModal} onOpenChange={(open) => {
+        setShowHistoryModal(open);
+        if (!open) setHistorySubscriptionId(null);
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delivery History</DialogTitle>
+            <DialogDescription>
+              Your recent subscription deliveries
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-80 overflow-y-auto space-y-2 py-4">
+            {deliveryHistory && deliveryHistory.length > 0 ? (
+              deliveryHistory.map((log: any) => (
+                <div key={log.id} className="flex items-center justify-between p-3 bg-muted rounded-md">
+                  <div>
+                    <p className="text-sm font-medium">{format(new Date(log.date), "PPP")}</p>
+                    <p className="text-xs text-muted-foreground">{log.time}</p>
+                  </div>
+                  <Badge
+                    variant={
+                      log.status === "delivered" ? "default" :
+                      log.status === "missed" ? "destructive" :
+                      "secondary"
+                    }
+                  >
+                    {log.status.replace(/_/g, " ")}
+                  </Badge>
+                </div>
+              ))
+            ) : (
+              <p className="text-center text-muted-foreground py-8">
+                No delivery history yet
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowHistoryModal(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Renewal Confirmation Modal */}
+      <Dialog open={showRenewalModal} onOpenChange={(open) => {
+        setShowRenewalModal(open);
+        if (!open) setRenewalSubscription(null);
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Renew Subscription</DialogTitle>
+            <DialogDescription>
+              Renew your subscription to continue enjoying deliveries
+            </DialogDescription>
+          </DialogHeader>
+          {renewalSubscription && (() => {
+            const plan = plans?.find(p => p.id === renewalSubscription.planId);
+            return (
+              <div className="space-y-4 py-4">
+                <div className="p-4 bg-muted rounded-md space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">{plan?.name}</span>
+                    <Badge>{plan?.frequency}</Badge>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Price:</span>
+                    <span className="font-bold text-lg">₹{plan?.price}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Deliveries:</span>
+                    <span>{renewalSubscription?.totalDeliveries} deliveries</span>
+                  </div>
+                </div>
+                <p className="text-sm text-muted-foreground text-center">
+                  After renewal, you'll need to complete payment to activate your subscription.
+                </p>
+              </div>
+            );
+          })()}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowRenewalModal(false)}>
+              Cancel
+            </Button>
+            <Button
+              data-testid="button-confirm-renewal"
+              onClick={() => {
+                if (renewalSubscription) {
+                  renewalMutation.mutate(renewalSubscription.id);
+                }
+              }}
+              disabled={renewalMutation.isPending}
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              {renewalMutation.isPending ? "Processing..." : "Renew Now"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

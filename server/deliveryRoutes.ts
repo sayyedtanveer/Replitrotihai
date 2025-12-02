@@ -370,4 +370,201 @@ export function registerDeliveryRoutes(app: Express) {
       res.status(500).json({ message: "Failed to fetch statistics" });
     }
   });
+
+  // Get subscription deliveries for today assigned to this delivery person
+  app.get("/api/delivery/subscription-deliveries", requireDeliveryAuth(), async (req: AuthenticatedDeliveryRequest, res) => {
+    try {
+      const deliveryPersonId = req.delivery!.deliveryId;
+      const today = new Date();
+      
+      // Get all subscription delivery logs for today
+      const todayLogs = await storage.getSubscriptionDeliveryLogsByDate(today);
+      
+      // Filter logs assigned to this delivery person
+      const myDeliveries = todayLogs.filter(log => log.deliveryPersonId === deliveryPersonId);
+      
+      // Enrich with subscription and customer details
+      const enrichedDeliveries = await Promise.all(
+        myDeliveries.map(async (log) => {
+          const subscription = await storage.getSubscription(log.subscriptionId);
+          const plan = subscription ? await storage.getSubscriptionPlan(subscription.planId) : null;
+          
+          return {
+            ...log,
+            subscription: subscription ? {
+              id: subscription.id,
+              customerName: subscription.customerName,
+              phone: subscription.phone,
+              address: subscription.address,
+              planName: plan?.name || "Unknown Plan",
+            } : null,
+          };
+        })
+      );
+      
+      res.json(enrichedDeliveries);
+    } catch (error) {
+      console.error("Error fetching subscription deliveries:", error);
+      res.status(500).json({ message: "Failed to fetch subscription deliveries" });
+    }
+  });
+
+  // Get available subscription deliveries that can be claimed
+  app.get("/api/delivery/available-subscription-deliveries", requireDeliveryAuth(), async (req: AuthenticatedDeliveryRequest, res) => {
+    try {
+      const deliveryPersonId = req.delivery!.deliveryId;
+      
+      // Check if delivery person is active
+      const deliveryPerson = await storage.getDeliveryPersonnelById(deliveryPersonId);
+      if (!deliveryPerson || !deliveryPerson.isActive) {
+        res.json([]);
+        return;
+      }
+
+      const today = new Date();
+      const todayLogs = await storage.getSubscriptionDeliveryLogsByDate(today);
+      
+      // Filter unassigned deliveries that are scheduled or preparing
+      const availableDeliveries = todayLogs.filter(log => 
+        !log.deliveryPersonId && 
+        (log.status === "scheduled" || log.status === "preparing")
+      );
+      
+      // Enrich with subscription details
+      const enrichedDeliveries = await Promise.all(
+        availableDeliveries.map(async (log) => {
+          const subscription = await storage.getSubscription(log.subscriptionId);
+          const plan = subscription ? await storage.getSubscriptionPlan(subscription.planId) : null;
+          
+          return {
+            ...log,
+            subscription: subscription ? {
+              id: subscription.id,
+              customerName: subscription.customerName,
+              phone: subscription.phone,
+              address: subscription.address,
+              planName: plan?.name || "Unknown Plan",
+            } : null,
+          };
+        })
+      );
+      
+      res.json(enrichedDeliveries);
+    } catch (error) {
+      console.error("Error fetching available subscription deliveries:", error);
+      res.status(500).json({ message: "Failed to fetch available subscription deliveries" });
+    }
+  });
+
+  // Claim a subscription delivery
+  app.post("/api/delivery/subscription-deliveries/:id/claim", requireDeliveryAuth(), async (req: AuthenticatedDeliveryRequest, res) => {
+    try {
+      const deliveryPersonId = req.delivery!.deliveryId;
+      const logId = req.params.id;
+      
+      const log = await storage.getSubscriptionDeliveryLog(logId);
+      if (!log) {
+        res.status(404).json({ message: "Delivery log not found" });
+        return;
+      }
+      
+      if (log.deliveryPersonId) {
+        res.status(400).json({ message: "This delivery is already claimed" });
+        return;
+      }
+      
+      const updated = await storage.updateSubscriptionDeliveryLog(logId, {
+        deliveryPersonId: deliveryPersonId,
+        status: "preparing",
+      });
+      
+      console.log(`📦 Delivery person ${deliveryPersonId} claimed subscription delivery ${logId}`);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error claiming subscription delivery:", error);
+      res.status(500).json({ message: "Failed to claim subscription delivery" });
+    }
+  });
+
+  // Update subscription delivery status
+  app.patch("/api/delivery/subscription-deliveries/:id/status", requireDeliveryAuth(), async (req: AuthenticatedDeliveryRequest, res) => {
+    try {
+      const deliveryPersonId = req.delivery!.deliveryId;
+      const logId = req.params.id;
+      const { status, notes } = req.body;
+      
+      const log = await storage.getSubscriptionDeliveryLog(logId);
+      if (!log) {
+        res.status(404).json({ message: "Delivery log not found" });
+        return;
+      }
+      
+      // Verify this delivery is assigned to this person
+      if (log.deliveryPersonId !== deliveryPersonId) {
+        res.status(403).json({ message: "This delivery is not assigned to you" });
+        return;
+      }
+      
+      // Validate status transitions
+      const validTransitions: Record<string, string[]> = {
+        "scheduled": ["preparing"],
+        "preparing": ["out_for_delivery"],
+        "out_for_delivery": ["delivered", "missed"],
+      };
+      
+      if (!validTransitions[log.status]?.includes(status)) {
+        res.status(400).json({ message: `Invalid status transition from ${log.status} to ${status}` });
+        return;
+      }
+      
+      const updateData: any = { status };
+      if (notes) updateData.notes = notes;
+      
+      const updated = await storage.updateSubscriptionDeliveryLog(logId, updateData);
+      
+      // If delivered, update the subscription
+      if (status === "delivered") {
+        const subscription = await storage.getSubscription(log.subscriptionId);
+        if (subscription) {
+          await storage.updateSubscription(log.subscriptionId, {
+            lastDeliveryDate: log.date,
+            remainingDeliveries: Math.max(0, subscription.remainingDeliveries - 1),
+          });
+        }
+      }
+      
+      console.log(`🚚 Delivery person ${deliveryPersonId} updated subscription delivery ${logId} to ${status}`);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating subscription delivery status:", error);
+      res.status(500).json({ message: "Failed to update delivery status" });
+    }
+  });
+
+  // Get subscription delivery statistics for delivery person
+  app.get("/api/delivery/subscription-stats", requireDeliveryAuth(), async (req: AuthenticatedDeliveryRequest, res) => {
+    try {
+      const deliveryPersonId = req.delivery!.deliveryId;
+      const today = new Date();
+      
+      const todayLogs = await storage.getSubscriptionDeliveryLogsByDate(today);
+      const myLogs = todayLogs.filter(log => log.deliveryPersonId === deliveryPersonId);
+      
+      const pending = myLogs.filter(log => ["scheduled", "preparing"].includes(log.status)).length;
+      const outForDelivery = myLogs.filter(log => log.status === "out_for_delivery").length;
+      const delivered = myLogs.filter(log => log.status === "delivered").length;
+      const missed = myLogs.filter(log => log.status === "missed").length;
+      
+      res.json({
+        pending,
+        outForDelivery,
+        delivered,
+        missed,
+        total: myLogs.length,
+      });
+    } catch (error) {
+      console.error("Error fetching subscription stats:", error);
+      res.status(500).json({ message: "Failed to fetch subscription statistics" });
+    }
+  });
 }
