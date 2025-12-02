@@ -35,6 +35,7 @@ export const {
   cartSettings,
   deliveryPersonnel,
   coupons,
+  couponUsages,
   referrals,
   walletTransactions,
   walletSettings,

@@ -4,11 +4,13 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { useApplyReferral } from "@/hooks/useApplyReferral";
-import { Loader2 } from "lucide-react";
+import { Loader2, Clock } from "lucide-react";
 
 interface CartItem {
   id: string;
@@ -92,9 +94,29 @@ export default function CheckoutDialog({
   } | null>(null);
   const [couponError, setCouponError] = useState("");
   const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [selectedDeliveryTime, setSelectedDeliveryTime] = useState("");
+  const [selectedDeliverySlotId, setSelectedDeliverySlotId] = useState("");
   const { toast } = useToast();
   const { user, isAuthenticated } = useAuth();
   const applyReferralMutation = useApplyReferral();
+
+  // Check if this is a Roti category order
+  const isRotiCategory = cart?.categoryName?.toLowerCase() === 'roti' || 
+                         cart?.categoryName?.toLowerCase().includes('roti');
+
+  // Fetch delivery time slots for Roti orders
+  const { data: deliverySlots = [] } = useQuery<Array<{
+    id: string;
+    startTime: string;
+    endTime: string;
+    label: string;
+    capacity: number;
+    currentOrders: number;
+    isActive: boolean;
+  }>>({
+    queryKey: ["/api/delivery-slots"],
+    enabled: isRotiCategory,
+  });
 
   // Get token from localStorage (for authenticated users)
   const userToken = localStorage.getItem("userToken");
@@ -277,6 +299,16 @@ export default function CheckoutDialog({
       return;
     }
 
+    // Validate delivery time for Roti category
+    if (isRotiCategory && !selectedDeliveryTime) {
+      toast({
+        title: "Delivery Time Required",
+        description: "Please select a delivery time for your Roti order",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -298,7 +330,11 @@ export default function CheckoutDialog({
         discount,
         couponCode: appliedCoupon?.code,
         total,
-        chefId: cart.chefId || cart.items[0]?.chefId, // Include chefId from cart
+        chefId: cart.chefId || cart.items[0]?.chefId,
+        categoryId: cart.categoryId,
+        categoryName: cart.categoryName,
+        deliveryTime: isRotiCategory ? selectedDeliveryTime : undefined,
+        deliverySlotId: isRotiCategory ? selectedDeliverySlotId : undefined,
         status: "pending" as const,
         paymentStatus: "pending" as const,
       };
@@ -402,7 +438,9 @@ export default function CheckoutDialog({
       setCouponCode("");
       setReferralCode("");
       setAppliedCoupon(null);
-      setPhoneExists(null); // Reset phoneExists state
+      setPhoneExists(null);
+      setSelectedDeliveryTime("");
+      setSelectedDeliverySlotId("");
 
       // Close the checkout dialog
       onClose();
@@ -521,7 +559,8 @@ export default function CheckoutDialog({
   const [password, setPassword] = useState("");
 
   // Determine if the form is valid for submission
-  const isFormValid = customerName && phone && address; // Add other required fields as needed
+  const isFormValid = customerName && phone && address && 
+    (!isRotiCategory || (isRotiCategory && selectedDeliveryTime));
 
 
   return (
@@ -638,6 +677,56 @@ export default function CheckoutDialog({
                       Please include street, area, and any landmarks in Kurla West, Mumbai
                     </p>
                   </div>
+
+                  {/* Delivery Time Selection - Required for Roti orders */}
+                  {isRotiCategory && (
+                    <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md p-3">
+                      <Label htmlFor="deliveryTime" className="text-sm font-medium flex items-center gap-2 text-amber-800 dark:text-amber-200">
+                        <Clock className="h-4 w-4" />
+                        Select Delivery Time *
+                      </Label>
+                      <p className="text-xs text-amber-700 dark:text-amber-300 mb-2">
+                        Fresh rotis require a specific delivery time slot
+                      </p>
+                      <Select 
+                        value={selectedDeliverySlotId} 
+                        onValueChange={(value) => {
+                          setSelectedDeliverySlotId(value);
+                          const slot = deliverySlots.find(s => s.id === value);
+                          if (slot) {
+                            setSelectedDeliveryTime(slot.startTime);
+                          }
+                        }}
+                      >
+                        <SelectTrigger data-testid="select-delivery-time">
+                          <SelectValue placeholder="Choose a delivery time slot" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {deliverySlots
+                            .filter(slot => slot.isActive && slot.currentOrders < slot.capacity)
+                            .map((slot) => (
+                              <SelectItem 
+                                key={slot.id} 
+                                value={slot.id}
+                                data-testid={`delivery-slot-${slot.id}`}
+                              >
+                                {slot.label} ({slot.capacity - slot.currentOrders} slots available)
+                              </SelectItem>
+                            ))}
+                          {deliverySlots.filter(slot => slot.isActive && slot.currentOrders < slot.capacity).length === 0 && (
+                            <SelectItem value="none" disabled>
+                              No delivery slots available
+                            </SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
+                      {selectedDeliveryTime && (
+                        <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                          Your rotis will be delivered around {selectedDeliveryTime}
+                        </p>
+                      )}
+                    </div>
+                  )}
 
                   {/* Referral Code Input - for new users only (not logged in) */}
                   {!isAuthenticated && (

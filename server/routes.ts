@@ -12,28 +12,49 @@ import { requireAdmin } from "./adminAuth";
 import { sendEmail, createWelcomeEmail, createPasswordResetEmail, createPasswordChangeConfirmationEmail } from "./emailService";
 import { db, subscriptions } from "@shared/db";
 import { eq } from "drizzle-orm";
+import { ZodError } from "zod";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   registerAdminRoutes(app);
   registerPartnerRoutes(app);
   registerDeliveryRoutes(app);
 
-  // Coupon verification route
-  app.post("/api/coupons/verify", async (req, res) => {
+  // Coupon verification route (supports optional userId for per-user limit checking)
+  app.post("/api/coupons/verify", async (req: any, res) => {
     try {
-      const { code, orderAmount } = req.body;
+      const { code, orderAmount, userId: providedUserId } = req.body;
 
-      if (!code || typeof code !== 'string') {
+      // Validate coupon code
+      if (!code || typeof code !== 'string' || code.trim().length === 0) {
         res.status(400).json({ message: "Coupon code is required" });
         return;
       }
 
-      if (!orderAmount || typeof orderAmount !== 'number' || orderAmount <= 0) {
+      // Validate order amount
+      if (!orderAmount || typeof orderAmount !== 'number' || orderAmount <= 0 || !isFinite(orderAmount)) {
         res.status(400).json({ message: "Valid order amount is required" });
         return;
       }
 
-      const result = await storage.verifyCoupon(code, orderAmount);
+      // Sanitize and validate userId if provided
+      let userId: string | undefined = providedUserId;
+      if (providedUserId && typeof providedUserId === 'string') {
+        userId = providedUserId.trim();
+      }
+
+      // Try to get userId from auth header
+      if (!userId && req.headers.authorization?.startsWith("Bearer ")) {
+        try {
+          const token = req.headers.authorization.substring(7);
+          const payload = verifyUserToken(token);
+          if (payload?.userId) userId = payload.userId;
+        } catch (tokenError) {
+          // Token verification failed, continue without userId
+          console.log("Token verification failed for coupon, continuing without userId");
+        }
+      }
+
+      const result = await storage.verifyCoupon(code.trim().toUpperCase(), orderAmount, userId);
 
       if (!result) {
         res.status(404).json({ message: "Invalid coupon code" });
@@ -79,7 +100,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Reset password endpoint (Forgot Password)
   app.post("/api/user/reset-password", async (req, res) => {
     try {
-      res.setHeader('Content-Type', 'application/json');
       const { phone } = req.body;
 
       if (!phone) {
@@ -120,7 +140,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       console.error("Password reset error:", error);
-      res.setHeader('Content-Type', 'application/json');
       res.status(500).json({ message: "Failed to reset password" });
     }
   });
@@ -184,22 +203,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const result = insertUserSchema.safeParse(req.body);
       if (!result.success) {
-        res.status(400).json({ message: "Invalid user data", errors: result.error });
+        console.error("User registration validation failed:", result.error.flatten());
+        res.status(400).json({ 
+          message: "Invalid user data", 
+          errors: result.error.flatten().fieldErrors 
+        });
         return;
       }
 
-      const existingUser = await storage.getUserByPhone(result.data.phone);
+      // Sanitize phone number
+      const sanitizedPhone = result.data.phone.trim().replace(/\s+/g, '');
+      
+      const existingUser = await storage.getUserByPhone(sanitizedPhone);
       if (existingUser) {
-        res.status(400).json({ message: "User with this phone number already exists" });
+        res.status(409).json({ message: "User with this phone number already exists" });
         return;
       }
 
       const passwordHash = await hashPassword(result.data.password);
       const user = await storage.createUser({
-        name: result.data.name,
-        phone: result.data.phone,
-        email: result.data.email || null,
-        address: result.data.address || null,
+        name: result.data.name.trim(),
+        phone: sanitizedPhone,
+        email: result.data.email ? result.data.email.trim().toLowerCase() : null,
+        address: result.data.address ? result.data.address.trim() : null,
         passwordHash,
         referralCode: null,
         walletBalance: 0,
@@ -207,6 +233,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const accessToken = generateAccessToken(user);
       const refreshToken = generateRefreshToken(user);
+
+      console.log(`✅ User registered successfully: ${user.id}`);
 
       res.json({
         user: {
@@ -219,9 +247,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         accessToken,
         refreshToken,
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Registration error:", error);
-      res.status(500).json({ message: "Failed to register user" });
+      res.status(500).json({ 
+        message: error.message || "Failed to register user" 
+      });
     }
   });
 
@@ -271,7 +301,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ✅ Forgot password - send new password via email
   app.post("/api/user/forgot-password", async (req, res) => {
     try {
-      res.setHeader('Content-Type', 'application/json');
       const { phone } = req.body;
 
       if (!phone || phone.length !== 10) {
@@ -311,7 +340,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       console.error("Forgot password error:", error);
-      res.setHeader('Content-Type', 'application/json');
       res.status(500).json({
         message: "Failed to reset password. Please try again later."
       });
@@ -321,7 +349,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // User logout (JWT-based)
 app.post("/api/user/logout", async (req, res) => {
   try {
-    res.setHeader('Content-Type', 'application/json');
     // For JWT, logout simply means the client deletes the token.
     // (Tokens are stateless — there's nothing to invalidate on the server)
     // However, we could later add refresh token blacklisting here if needed.
@@ -331,7 +358,6 @@ app.post("/api/user/logout", async (req, res) => {
     res.json({ message: "Logged out successfully" });
   } catch (error: any) {
     console.error("Logout error:", error);
-    res.setHeader('Content-Type', 'application/json');
     res.status(500).json({ message: error.message || "Failed to logout" });
   }
 });
@@ -438,7 +464,6 @@ app.post("/api/user/logout", async (req, res) => {
   // Update user profile
   app.put("/api/user/profile", requireUser(), async (req: AuthenticatedUserRequest, res) => {
     try {
-      res.setHeader('Content-Type', 'application/json');
       const userId = req.authenticatedUser!.userId;
       const { name, email, address } = req.body;
 
@@ -478,7 +503,6 @@ app.post("/api/user/logout", async (req, res) => {
       });
     } catch (error) {
       console.error("Error updating profile:", error);
-      res.setHeader('Content-Type', 'application/json');
       res.status(500).json({ message: "Failed to update profile" });
     }
   });
@@ -616,9 +640,6 @@ app.post("/api/user/logout", async (req, res) => {
   // User confirms they made payment (similar to order payment confirmation)
   app.post("/api/subscriptions/:id/payment-confirmed", requireUser(), async (req: AuthenticatedUserRequest, res) => {
     try {
-      // Ensure JSON response header is set first
-      res.setHeader("Content-Type", "application/json");
-
       const { id } = req.params;
       const { paymentTransactionId } = req.body;
 
@@ -673,8 +694,6 @@ app.post("/api/user/logout", async (req, res) => {
       });
     } catch (error) {
       console.error("Error confirming subscription payment:", error);
-      // Ensure we always return JSON even on error
-      res.setHeader("Content-Type", "application/json");
       res.status(500).json({
         message: "Failed to confirm payment",
         error: error instanceof Error ? error.message : "Unknown error"
@@ -915,9 +934,24 @@ app.post("/api/orders", async (req: any, res) => {
       chefId: body.chefId || body.items?.[0]?.chefId || "",
       paymentStatus: body.paymentStatus || "pending",
       userId: body.userId || undefined,
-      couponCode: body.couponCode || undefined, // Added for coupon code
-      discount: body.discount || 0, // Added for discount amount
+      couponCode: body.couponCode || undefined,
+      discount: body.discount || 0,
+      categoryId: body.categoryId || undefined,
+      categoryName: body.categoryName || undefined,
+      deliveryTime: body.deliveryTime || undefined,
+      deliverySlotId: body.deliverySlotId || undefined,
     };
+
+    // Validate: If order is for Roti category, deliveryTime is required
+    const isRotiCategory = sanitized.categoryName?.toLowerCase() === 'roti' || 
+                           sanitized.categoryName?.toLowerCase().includes('roti');
+    if (isRotiCategory && !sanitized.deliveryTime) {
+      return res.status(400).json({
+        message: "Delivery time is required for Roti category orders",
+        requiresDeliveryTime: true,
+        categoryName: sanitized.categoryName
+      });
+    }
 
     const result = insertOrderSchema.safeParse(sanitized);
     if (!result.success) {
@@ -1016,8 +1050,10 @@ app.post("/api/orders", async (req: any, res) => {
 
     const order = await storage.createOrder(orderPayload);
 
-      // Increment coupon usage if coupon was applied
-      if (orderPayload.couponCode) {
+      // Record coupon usage with per-user tracking
+      if (orderPayload.couponCode && userId) {
+        await storage.recordCouponUsage(orderPayload.couponCode, userId, order.id);
+      } else if (orderPayload.couponCode) {
         await storage.incrementCouponUsage(orderPayload.couponCode);
       }
 
@@ -1352,6 +1388,13 @@ app.post("/api/orders", async (req: any, res) => {
         totalDeliveries,
         isPaid: false,
         paymentTransactionId: null,
+        originalPrice: plan.price,
+        discountAmount: 0,
+        walletAmountUsed: 0,
+        couponCode: null,
+        couponDiscount: 0,
+        finalAmount: plan.price,
+        paymentNotes: null,
         lastDeliveryDate: null,
         deliveryHistory: [],
         pauseStartDate: null,
@@ -1592,6 +1635,13 @@ app.post("/api/orders", async (req: any, res) => {
         totalDeliveries,
         isPaid: false,
         paymentTransactionId: null,
+        originalPrice: plan.price,
+        discountAmount: 0,
+        walletAmountUsed: 0,
+        couponCode: null,
+        couponDiscount: 0,
+        finalAmount: plan.price,
+        paymentNotes: null,
         lastDeliveryDate: null,
         deliveryHistory: [],
         pauseStartDate: null,
@@ -1616,6 +1666,12 @@ app.post("/api/orders", async (req: any, res) => {
 
       if (!deliveryTime || typeof deliveryTime !== "string") {
         res.status(400).json({ message: "Valid delivery time is required" });
+        return;
+      }
+
+      // Validate time format (HH:mm)
+      if (!/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(deliveryTime)) {
+        res.status(400).json({ message: "Invalid time format. Use HH:mm" });
         return;
       }
 

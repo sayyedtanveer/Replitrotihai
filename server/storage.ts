@@ -3,7 +3,7 @@ import { randomUUID } from "crypto";
 import { nanoid } from "nanoid";
 import { eq, and, gte, lte, desc, asc, or, isNull, sql } from "drizzle-orm";
 import { db, users, categories, products, orders, chefs, adminUsers, partnerUsers, subscriptions,
-  subscriptionPlans, subscriptionDeliveryLogs, deliverySettings, cartSettings, deliveryPersonnel, coupons, referrals, walletTransactions, referralRewards, promotionalBanners, deliveryTimeSlots } from "@shared/db";
+  subscriptionPlans, subscriptionDeliveryLogs, deliverySettings, cartSettings, deliveryPersonnel, coupons, couponUsages, referrals, walletTransactions, referralRewards, promotionalBanners, deliveryTimeSlots } from "@shared/db";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -188,7 +188,6 @@ export class MemStorage implements IStorage {
   private adminUsers: Map<string, AdminUser> = new Map();
   private subscriptionPlans: Map<string, SubscriptionPlan> = new Map();
   private subscriptions: Map<string, Subscription> = new Map();
-  private deliveryTimeSlots: Map<string, DeliveryTimeSlot> = new Map();
 
   constructor() {
     this.users = new Map();
@@ -199,7 +198,6 @@ export class MemStorage implements IStorage {
     this.adminUsers = new Map();
     this.subscriptionPlans = new Map();
     this.subscriptions = new Map();
-    this.deliveryTimeSlots = new Map();
     // this.seedData(); // Seed data is not directly applicable to the DB-backed storage
   }
 
@@ -332,6 +330,10 @@ export class MemStorage implements IStorage {
       chefId: insertOrder.chefId || null,
       chefName: insertOrder.chefName || null,
       userId: insertOrder.userId || null,
+      categoryId: insertOrder.categoryId || null,
+      categoryName: insertOrder.categoryName || null,
+      deliveryTime: insertOrder.deliveryTime || null,
+      deliverySlotId: insertOrder.deliverySlotId || null,
       createdAt: new Date(),
     };
 
@@ -561,61 +563,93 @@ export class MemStorage implements IStorage {
   }
 
   // Coupons
-  async verifyCoupon(code: string, orderAmount: number): Promise<{
-  code: string;
-  discountAmount: number;
-  discountType: string;
-} | null> {
-  const coupon = await db.query.coupons.findFirst({
-    where: (coupons, { eq, and }) =>
-      and(eq(coupons.code, code.toUpperCase()), eq(coupons.isActive, true)),
-  });
+  async verifyCoupon(code: string, orderAmount: number, userId?: string): Promise<{
+    code: string;
+    discountAmount: number;
+    discountType: string;
+  } | null> {
+    const coupon = await db.query.coupons.findFirst({
+      where: (coupons, { eq, and }) =>
+        and(eq(coupons.code, code.toUpperCase()), eq(coupons.isActive, true)),
+    });
 
-  if (!coupon) throw new Error("Invalid coupon code");
+    if (!coupon) throw new Error("Invalid coupon code");
 
-  // 🧾 Log for debugging
-  console.log("🧾 Coupon validity check:", {
-    now: new Date().toISOString(),
-    validFrom: coupon.validFrom,
-    validUntil: coupon.validUntil,
-  });
+    console.log("🧾 Coupon validity check:", {
+      now: new Date().toISOString(),
+      validFrom: coupon.validFrom,
+      validUntil: coupon.validUntil,
+    });
 
-  const now = Date.now();
-  const validFrom = new Date(coupon.validFrom).getTime();
-  const validUntil = new Date(coupon.validUntil).getTime();
+    const now = Date.now();
+    const validFrom = new Date(coupon.validFrom).getTime();
+    const validUntil = new Date(coupon.validUntil).getTime();
 
-  if (isNaN(validFrom) || isNaN(validUntil)) {
-    throw new Error("Invalid coupon date format");
-  }
-
-  if (now < validFrom) throw new Error("Coupon not active yet");
-  if (now > validUntil) throw new Error("Coupon has expired");
-
-  if (orderAmount < coupon.minOrderAmount) {
-    throw new Error(`Minimum order amount of ₹${coupon.minOrderAmount} required`);
-  }
-
-  if (coupon.usageLimit && coupon.usedCount >= coupon.usageLimit) {
-    throw new Error("Coupon usage limit reached");
-  }
-
-  let discountAmount = 0;
-  if (coupon.discountType === "percentage") {
-    discountAmount = Math.floor((orderAmount * coupon.discountValue) / 100);
-    if (coupon.maxDiscount && discountAmount > coupon.maxDiscount) {
-      discountAmount = coupon.maxDiscount;
+    if (isNaN(validFrom) || isNaN(validUntil)) {
+      throw new Error("Invalid coupon date format");
     }
-  } else {
-    discountAmount = coupon.discountValue;
+
+    if (now < validFrom) throw new Error("Coupon not active yet");
+    if (now > validUntil) throw new Error("Coupon has expired");
+
+    if (orderAmount < coupon.minOrderAmount) {
+      throw new Error(`Minimum order amount of ₹${coupon.minOrderAmount} required`);
+    }
+
+    if (coupon.usageLimit && coupon.usedCount >= coupon.usageLimit) {
+      throw new Error("Coupon usage limit reached");
+    }
+
+    // Check per-user usage limit
+    if (userId && coupon.perUserLimit) {
+      const userUsageCount = await db.query.couponUsages.findMany({
+        where: (usages, { eq, and }) =>
+          and(eq(usages.couponId, coupon.id), eq(usages.userId, userId)),
+      });
+
+      if (userUsageCount.length >= coupon.perUserLimit) {
+        throw new Error(`You have already used this coupon ${coupon.perUserLimit} time(s)`);
+      }
+    }
+
+    let discountAmount = 0;
+    if (coupon.discountType === "percentage") {
+      discountAmount = Math.floor((orderAmount * coupon.discountValue) / 100);
+      if (coupon.maxDiscount && discountAmount > coupon.maxDiscount) {
+        discountAmount = coupon.maxDiscount;
+      }
+    } else {
+      discountAmount = coupon.discountValue;
+    }
+
+    return {
+      code: coupon.code,
+      discountAmount,
+      discountType: coupon.discountType,
+    };
   }
 
-  return {
-    code: coupon.code,
-    discountAmount,
-    discountType: coupon.discountType,
-  };
-}
+  async recordCouponUsage(code: string, userId: string, orderId?: string): Promise<void> {
+    const coupon = await db.query.coupons.findFirst({
+      where: (coupons, { eq }) => eq(coupons.code, code.toUpperCase()),
+    });
 
+    if (coupon) {
+      // Record in coupon_usages table
+      await db.insert(couponUsages).values({
+        id: randomUUID(),
+        couponId: coupon.id,
+        userId,
+        orderId: orderId || null,
+        usedAt: new Date(),
+      });
+
+      // Also increment total usage count
+      await db.update(coupons)
+        .set({ usedCount: coupon.usedCount + 1 })
+        .where(eq(coupons.code, code.toUpperCase()));
+    }
+  }
 
   async incrementCouponUsage(code: string): Promise<void> {
     const coupon = await db.query.coupons.findFirst({
@@ -627,6 +661,14 @@ export class MemStorage implements IStorage {
         .set({ usedCount: coupon.usedCount + 1 })
         .where(eq(coupons.code, code.toUpperCase()));
     }
+  }
+
+  async getCouponUserUsage(couponId: string, userId: string): Promise<number> {
+    const usages = await db.query.couponUsages.findMany({
+      where: (usages, { eq, and }) =>
+        and(eq(usages.couponId, couponId), eq(usages.userId, userId)),
+    });
+    return usages.length;
   }
 
   // Subscription Plans
@@ -691,6 +733,55 @@ export class MemStorage implements IStorage {
 
   async getSubscriptionsByUserId(userId: string): Promise<Subscription[]> {
     return db.query.subscriptions.findMany({ where: (s, { eq }) => eq(s.userId, userId) });
+  }
+
+  // Get active subscriptions count for a chef
+  async getActiveSubscriptionCountByChef(chefId: string): Promise<number> {
+    const result = await db.query.subscriptions.findMany({
+      where: (s, { and, eq }) => and(
+        eq(s.chefId, chefId),
+        eq(s.status, "active")
+      ),
+    });
+    return result.length;
+  }
+
+  // Find the best available chef for a category (load balancing)
+  async findBestChefForCategory(categoryId: string): Promise<Chef | null> {
+    // Get all active chefs for this category
+    const activeChefs = await db.query.chefs.findMany({
+      where: (c, { and, eq }) => and(
+        eq(c.categoryId, categoryId),
+        eq(c.isActive, true)
+      ),
+    });
+
+    if (activeChefs.length === 0) {
+      return null;
+    }
+
+    // Find the chef with the least number of active subscriptions
+    let bestChef = activeChefs[0];
+    let minSubscriptions = await this.getActiveSubscriptionCountByChef(activeChefs[0].id);
+
+    for (let i = 1; i < activeChefs.length; i++) {
+      const chef = activeChefs[i];
+      const subCount = await this.getActiveSubscriptionCountByChef(chef.id);
+      if (subCount < minSubscriptions) {
+        minSubscriptions = subCount;
+        bestChef = chef;
+      }
+    }
+
+    return bestChef;
+  }
+
+  // Assign chef to subscription
+  async assignChefToSubscription(subscriptionId: string, chefId: string): Promise<Subscription | undefined> {
+    return this.updateSubscription(subscriptionId, {
+      chefId,
+      chefAssignedAt: new Date(),
+    });
   }
 
   // Subscription Delivery Logs
@@ -938,6 +1029,10 @@ export class MemStorage implements IStorage {
 
   async getDeliveryPersonnelById(id: string): Promise<DeliveryPersonnel | undefined> {
     return db.query.deliveryPersonnel.findFirst({ where: (dp, { eq }) => eq(dp.id, id) });
+  }
+
+  async getDeliveryPersonnel(id: string): Promise<DeliveryPersonnel | undefined> {
+    return this.getDeliveryPersonnelById(id);
   }
 
   async getAllDeliveryPersonnel(): Promise<DeliveryPersonnel[]> {
@@ -1419,19 +1514,24 @@ export class MemStorage implements IStorage {
 
   // Delivery Time Slots
   async getAllDeliveryTimeSlots(): Promise<DeliveryTimeSlot[]> {
-    return Array.from(this.deliveryTimeSlots.values()).sort((a, b) => 
-      a.startTime.localeCompare(b.startTime)
-    );
+    return db.query.deliveryTimeSlots.findMany({
+      orderBy: (slot, { asc }) => [asc(slot.startTime)]
+    });
   }
 
   async getActiveDeliveryTimeSlots(): Promise<DeliveryTimeSlot[]> {
-    return Array.from(this.deliveryTimeSlots.values())
-      .filter(slot => slot.isActive)
-      .sort((a, b) => a.startTime.localeCompare(b.startTime));
+    return db.query.deliveryTimeSlots.findMany({
+      where: (slot, { eq }) => eq(slot.isActive, true),
+      orderBy: (slot, { asc }) => [asc(slot.startTime)]
+    });
   }
 
   async getDeliveryTimeSlot(id: string): Promise<DeliveryTimeSlot | undefined> {
-    return this.deliveryTimeSlots.get(id);
+    return db.query.deliveryTimeSlots.findFirst({ where: (slot, { eq }) => eq(slot.id, id) });
+  }
+
+  async getDeliveryTimeSlotById(id: string): Promise<DeliveryTimeSlot | undefined> {
+    return db.query.deliveryTimeSlots.findFirst({ where: (slot, { eq }) => eq(slot.id, id) });
   }
 
   async createDeliveryTimeSlot(data: InsertDeliveryTimeSlot): Promise<DeliveryTimeSlot> {
@@ -1443,20 +1543,21 @@ export class MemStorage implements IStorage {
       createdAt: new Date(),
       updatedAt: new Date(),
     };
-    this.deliveryTimeSlots.set(id, slot);
-    return slot;
+    const [created] = await db.insert(deliveryTimeSlots).values(slot).returning();
+    return created;
   }
 
   async updateDeliveryTimeSlot(id: string, data: Partial<InsertDeliveryTimeSlot>): Promise<DeliveryTimeSlot | undefined> {
-    const slot = this.deliveryTimeSlots.get(id);
-    if (!slot) return undefined;
-    const updated = { ...slot, ...data, updatedAt: new Date() };
-    this.deliveryTimeSlots.set(id, updated);
-    return updated;
+    const [updated] = await db.update(deliveryTimeSlots)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(deliveryTimeSlots.id, id))
+      .returning();
+    return updated || undefined;
   }
 
   async deleteDeliveryTimeSlot(id: string): Promise<boolean> {
-    return this.deliveryTimeSlots.delete(id);
+    const result = await db.delete(deliveryTimeSlots).where(eq(deliveryTimeSlots.id, id));
+    return (result.rowCount ?? 0) > 0;
   }
 
   private mapOrder(order: any): Order {

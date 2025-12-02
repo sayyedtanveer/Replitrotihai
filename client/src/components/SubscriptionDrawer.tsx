@@ -838,7 +838,7 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
               Cancel
             </Button>
             <Button
-              data-testid="button-save-time"
+              data-testid="button-save-delivery-time"
               onClick={() => {
                 if (timeSubscriptionId) {
                   updateDeliveryTimeMutation.mutate({

@@ -129,6 +129,10 @@ export const orders = pgTable("orders", {
   paymentQrShown: boolean("payment_qr_shown").notNull().default(false),
   chefId: text("chef_id"),
   chefName: text("chef_name"),
+  categoryId: varchar("category_id"), // Category of the order (for Roti validation)
+  categoryName: text("category_name"), // Category name for display
+  deliveryTime: text("delivery_time"), // Required for Roti orders (HH:mm format)
+  deliverySlotId: varchar("delivery_slot_id"), // Reference to delivery time slot
   approvedBy: text("approved_by"),
   rejectedAt: timestamp("rejected_at"),
   approvedAt: timestamp("approved_at"),
@@ -176,11 +180,22 @@ export const coupons = pgTable("coupons", {
   maxDiscount: integer("max_discount"),
   usageLimit: integer("usage_limit"),
   usedCount: integer("used_count").notNull().default(0),
+  perUserLimit: integer("per_user_limit").default(1), // How many times each user can use this coupon
   validFrom: timestamp("valid_from", { withTimezone: true }).notNull(),
   validUntil: timestamp("valid_until", { withTimezone: true }).notNull(),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
+
+export const couponUsages = pgTable("coupon_usages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  couponId: varchar("coupon_id").notNull(),
+  userId: varchar("user_id").notNull(),
+  orderId: varchar("order_id"), // Reference to the order where coupon was used
+  usedAt: timestamp("used_at").notNull().defaultNow(),
+}, (table) => [
+  index("IDX_coupon_usages_coupon_user").on(table.couponId, table.userId),
+]);
 
 export const referrals = pgTable("referrals", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -281,6 +296,14 @@ export const subscriptions = pgTable("subscriptions", {
   totalDeliveries: integer("total_deliveries").notNull().default(30), // Total deliveries in subscription
   isPaid: boolean("is_paid").notNull().default(false),
   paymentTransactionId: text("payment_transaction_id"),
+  // Payment breakdown fields for admin adjustments
+  originalPrice: integer("original_price"), // Original plan price
+  discountAmount: integer("discount_amount").default(0), // Admin-applied discount
+  walletAmountUsed: integer("wallet_amount_used").default(0), // Wallet balance deducted
+  couponCode: text("coupon_code"), // Coupon code applied
+  couponDiscount: integer("coupon_discount").default(0), // Discount from coupon
+  finalAmount: integer("final_amount"), // Final amount after all adjustments
+  paymentNotes: text("payment_notes"), // Admin notes for payment adjustments
   lastDeliveryDate: timestamp("last_delivery_date"),
   deliveryHistory: jsonb("delivery_history").default([]), // Array of delivery records
   pauseStartDate: timestamp("pause_start_date"), // Advanced pause: start date
@@ -347,6 +370,10 @@ export const insertOrderSchema = createInsertSchema(orders, {
     'cancelled'             // Order cancelled
   ]).default('pending'),
   paymentStatus: z.enum(['pending', 'paid', 'confirmed']).default('pending'),
+  categoryId: z.string().optional(),
+  categoryName: z.string().optional(),
+  deliveryTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format").optional(),
+  deliverySlotId: z.string().optional(),
 }).omit({
   id: true,
   createdAt: true,
