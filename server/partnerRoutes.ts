@@ -1,12 +1,12 @@
 import type { Express } from "express";
 import { requirePartner, type AuthenticatedPartnerRequest } from "./partnerAuth";
 import { storage } from "./storage";
-import { broadcastOrderUpdate, broadcastPreparedOrderToAvailableDelivery, broadcastProductAvailabilityUpdate } from "./websocket";
+import { broadcastOrderUpdate, broadcastPreparedOrderToAvailableDelivery, broadcastProductAvailabilityUpdate, broadcastChefStatusUpdate } from "./websocket";
 import { db, orders } from "@shared/db";
 import { eq } from "drizzle-orm";
 
 export function registerPartnerRoutes(app: Express): void {
-  // Get all orders for this partner
+  // Get orders assigned to this chef
   app.get("/api/partner/orders", requirePartner(), async (req: AuthenticatedPartnerRequest, res) => {
     try {
       const chefId = req.partner?.chefId;
@@ -20,6 +20,66 @@ export function registerPartnerRoutes(app: Express): void {
     } catch (error) {
       console.error("Error fetching partner orders:", error);
       res.status(500).json({ message: "Failed to fetch orders" });
+    }
+  });
+
+  // Get subscriptions assigned to this chef
+  app.get("/api/partner/subscriptions", requirePartner(), async (req: AuthenticatedPartnerRequest, res) => {
+    try {
+      const chefId = req.partner?.chefId;
+      if (!chefId) {
+        res.status(401).json({ message: "Unauthorized" });
+        return;
+      }
+
+      const allSubscriptions = await storage.getSubscriptions();
+      const chefSubscriptions = allSubscriptions.filter(sub => sub.chefId === chefId);
+
+      const enrichedSubscriptions = await Promise.all(
+        chefSubscriptions.map(async (sub) => {
+          const plan = await storage.getSubscriptionPlan(sub.planId);
+          return {
+            ...sub,
+            planName: plan?.name,
+            planItems: plan?.items,
+            planFrequency: plan?.frequency,
+          };
+        })
+      );
+
+      res.json(enrichedSubscriptions);
+    } catch (error) {
+      console.error("Error fetching partner subscriptions:", error);
+      res.status(500).json({ message: "Failed to fetch subscriptions" });
+    }
+  });
+
+  // Get subscription delivery logs for chef
+  app.get("/api/partner/subscriptions/:id/logs", requirePartner(), async (req: AuthenticatedPartnerRequest, res) => {
+    try {
+      const { id } = req.params;
+      const chefId = req.partner?.chefId;
+      if (!chefId) {
+        res.status(401).json({ message: "Unauthorized" });
+        return;
+      }
+
+      const subscription = await storage.getSubscription(id);
+      if (!subscription) {
+        res.status(404).json({ message: "Subscription not found" });
+        return;
+      }
+
+      if (subscription.chefId !== chefId) {
+        res.status(403).json({ message: "Unauthorized access to subscription" });
+        return;
+      }
+
+      const logs = await storage.getSubscriptionDeliveryLogs(id);
+      res.json(logs);
+    } catch (error) {
+      console.error("Error fetching subscription logs:", error);
+      res.status(500).json({ message: "Failed to fetch logs" });
     }
   });
 
@@ -161,6 +221,29 @@ export function registerPartnerRoutes(app: Express): void {
 
       console.log(`🔄 Chef updating order ${orderId} status from ${order.status} to ${status}`);
 
+      // --- Roti Category + Delivery Time Slot Flow ---
+      if (status === "prepared") {
+        // Get the first product to determine category
+        const items = order.items as any[];
+        if (items && items.length > 0) {
+          const firstProduct = await storage.getProductById(items[0].id);
+          if (firstProduct) {
+            const category = await storage.getCategoryById(firstProduct.categoryId);
+            const isRotiCategory = category?.name?.toLowerCase() === 'roti' || 
+                                   category?.name?.toLowerCase().includes('roti');
+
+            if (isRotiCategory && !order.deliverySlotId) {
+              res.status(400).json({ message: "Delivery time slot is required for Roti category" });
+              return;
+            }
+          }
+        }
+        // If it's roti category and time slot is provided, it's already saved in the order.
+        // If it's not roti category, no time slot validation needed.
+      }
+      // --- End Roti Category + Delivery Time Slot Flow ---
+
+
       const updatedOrder = await storage.updateOrderStatus(orderId, status);
 
       if (updatedOrder) {
@@ -173,7 +256,7 @@ export function registerPartnerRoutes(app: Express): void {
         // STAGE 2: When order is marked as prepared, notify the assigned delivery person to pickup
         if (status === "prepared") {
           console.log(`📢 STAGE 2: Notifying assigned delivery person - Food is ready for pickup for order ${orderId}`);
-          
+
           // If delivery person is already assigned, just broadcast the update to them
           if (updatedOrder.assignedTo) {
             console.log(`✅ Order ${orderId} already assigned to ${updatedOrder.deliveryPersonName}, notifying them food is ready`);
@@ -222,12 +305,12 @@ export function registerPartnerRoutes(app: Express): void {
       }
 
       const updatedProduct = await storage.updateProduct(productId, { isAvailable });
-      
+
       // Broadcast product availability update
       if (updatedProduct) {
         broadcastProductAvailabilityUpdate(updatedProduct);
       }
-      
+
       res.json(updatedProduct);
     } catch (error) {
       console.error("Error updating product availability:", error);
@@ -294,11 +377,27 @@ export function registerPartnerRoutes(app: Express): void {
       }
 
       console.log(`🏪 Chef ${updatedChef.name} is now ${isActive ? "ACTIVE" : "INACTIVE"}`);
-      
+
+      // If chef is closing (marking unavailable), check for active subscriptions
+      if (!isActive) {
+        const activeSubscriptions = await storage.getActiveSubscriptionsByChef(chefId);
+
+        if (activeSubscriptions.length > 0) {
+          // Notify admin that this chef has active subscriptions and needs reassignment
+          const { broadcastChefUnavailableNotification } = await import("./websocket");
+          broadcastChefUnavailableNotification({
+            chef: updatedChef,
+            subscriptionCount: activeSubscriptions.length,
+            subscriptions: activeSubscriptions,
+          });
+
+          console.log(`⚠️ Chef ${updatedChef.name} marked unavailable with ${activeSubscriptions.length} active subscriptions - Admin notified for reassignment`);
+        }
+      }
+
       // Broadcast chef status update to all connected clients
-      const { broadcastChefStatusUpdate } = await import("./websocket");
       broadcastChefStatusUpdate(updatedChef);
-      
+
       return res.status(200).json(updatedChef);
     } catch (error) {
       console.error("Error updating chef status:", error);
@@ -376,18 +475,20 @@ export function registerPartnerRoutes(app: Express): void {
         return;
       }
 
-      // Get all subscriptions and filter for active ones
+      // Get all subscriptions assigned to this chef and filter for active ones
       const allSubscriptions = await storage.getSubscriptions();
-      const subscriptions = allSubscriptions.filter(s => s.isPaid && s.status !== "cancelled");
-      
+      const subscriptions = allSubscriptions.filter(s => 
+        s.chefId === chefId && s.isPaid && s.status !== "cancelled"
+      );
+
       // Filter subscriptions that have delivery scheduled for today
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const todayStr = today.toISOString().split('T')[0];
-      
+
       // Get all delivery logs for today
       const todaysLogs = await storage.getSubscriptionDeliveryLogsByDate(today);
-      
+
       const todaysDeliveries: any[] = [];
       let preparing = 0;
       let outForDelivery = 0;
@@ -398,27 +499,27 @@ export function registerPartnerRoutes(app: Express): void {
         const nextDelivery = new Date(sub.nextDeliveryDate);
         nextDelivery.setHours(0, 0, 0, 0);
         const nextDeliveryStr = nextDelivery.toISOString().split('T')[0];
-        
+
         if (nextDeliveryStr === todayStr && sub.status !== "paused" && sub.status !== "cancelled") {
           // Get the plan name
           const plan = await storage.getSubscriptionPlan(sub.planId);
-          
+
           // Get chef name if assigned
           let chefName: string | undefined;
           if (sub.chefId) {
             const chef = await storage.getChefById(sub.chefId);
             chefName = chef?.name;
           }
-          
+
           // Find today's delivery log for this subscription
           const deliveryLog = todaysLogs.find(log => log.subscriptionId === sub.id);
-          
+
           const currentStatus = deliveryLog?.status || "scheduled";
-          
+
           if (currentStatus === "preparing") preparing++;
           else if (currentStatus === "out_for_delivery") outForDelivery++;
           else if (currentStatus === "delivered") delivered++;
-          
+
           todaysDeliveries.push({
             id: deliveryLog?.id || sub.id,
             subscriptionId: sub.id,
@@ -458,8 +559,15 @@ export function registerPartnerRoutes(app: Express): void {
         return;
       }
 
-      if (!status || !["preparing", "out_for_delivery", "delivered", "missed"].includes(status)) {
+      if (!status || !["preparing", "accepted_by_delivery", "out_for_delivery", "delivered", "missed"].includes(status)) {
         res.status(400).json({ message: "Invalid status" });
+        return;
+      }
+
+      // Verify that this subscription belongs to the chef
+      const subscription = await storage.getSubscription(subscriptionId);
+      if (!subscription || subscription.chefId !== chefId) {
+        res.status(403).json({ message: "You are not authorized to update this subscription" });
         return;
       }
 
@@ -467,11 +575,11 @@ export function registerPartnerRoutes(app: Express): void {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const time = new Date().toTimeString().slice(0, 5);
-      
+
       // Get today's logs and find one for this subscription
       const todaysLogs = await storage.getSubscriptionDeliveryLogsByDate(today);
       let deliveryLog = todaysLogs.find(log => log.subscriptionId === subscriptionId);
-      
+
       if (!deliveryLog) {
         // Create a new delivery log
         deliveryLog = await storage.createSubscriptionDeliveryLog({
@@ -490,19 +598,31 @@ export function registerPartnerRoutes(app: Express): void {
         });
       }
 
+      // Broadcast to available delivery boys when chef starts preparing
+      if (status === "preparing") {
+        console.log(`📢 Chef started preparing subscription ${subscriptionId} - notifying delivery personnel`);
+
+        const { broadcastSubscriptionDeliveryToAvailableDelivery } = await import("./websocket");
+        await broadcastSubscriptionDeliveryToAvailableDelivery({
+          ...deliveryLog,
+          subscription: {
+            customerName: subscription.customerName,
+            phone: subscription.phone,
+            address: subscription.address,
+          }
+        });
+      }
+
       // If delivered, update subscription's next delivery date and remaining deliveries
-      if (status === "delivered") {
-        const subscription = await storage.getSubscription(subscriptionId);
-        if (subscription && subscription.remainingDeliveries > 0) {
-          // Calculate next delivery date (simplified - move to next day for now)
-          const nextDate = new Date(subscription.nextDeliveryDate);
-          nextDate.setDate(nextDate.getDate() + 1);
-          
-          await storage.updateSubscription(subscriptionId, {
-            remainingDeliveries: subscription.remainingDeliveries - 1,
-            nextDeliveryDate: nextDate,
-          });
-        }
+      if (status === "delivered" && subscription.remainingDeliveries > 0) {
+        // Calculate next delivery date (simplified - move to next day for now)
+        const nextDate = new Date(subscription.nextDeliveryDate);
+        nextDate.setDate(nextDate.getDate() + 1);
+
+        await storage.updateSubscription(subscriptionId, {
+          remainingDeliveries: subscription.remainingDeliveries - 1,
+          nextDeliveryDate: nextDate,
+        });
       }
 
       res.json(deliveryLog);

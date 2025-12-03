@@ -1,4 +1,3 @@
-
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
@@ -16,11 +15,12 @@ import { Label } from "@/components/ui/label";
 import type { Category, SubscriptionPlan, InsertSubscriptionPlan, Subscription } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
-import { Plus, Pencil, Trash2, Calendar, Users, Settings2, Pause, Play, Package, Clock, Truck, CheckCircle } from "lucide-react";
+import { Plus, Pencil, Trash2, Calendar, Users, Settings2, Pause, Play, Package, Clock, Truck, CheckCircle, AlertCircle } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertSubscriptionPlanSchema } from "@shared/schema";
 import { format } from "date-fns";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 const DAYS_OF_WEEK = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 
@@ -29,7 +29,7 @@ export default function AdminSubscriptions() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState<SubscriptionPlan | null>(null);
   const [selectedDays, setSelectedDays] = useState<string[]>([]);
-  
+
   // Subscription management modals
   const [adjustModalOpen, setAdjustModalOpen] = useState(false);
   const [selectedSubscription, setSelectedSubscription] = useState<Subscription | null>(null);
@@ -37,7 +37,7 @@ export default function AdminSubscriptions() {
   const [adjustReason, setAdjustReason] = useState("");
   const [newStatus, setNewStatus] = useState("");
   const [newDeliveryDate, setNewDeliveryDate] = useState("");
-  
+
   // Today's deliveries modal
   const [todaysDeliveriesOpen, setTodaysDeliveriesOpen] = useState(false);
 
@@ -50,70 +50,85 @@ export default function AdminSubscriptions() {
     isActive: true,
   });
 
+  const token = localStorage.getItem("adminToken");
+
   const { data: categories } = useQuery<Category[]>({
     queryKey: ["/api/admin", "categories"],
     queryFn: async () => {
-      const token = localStorage.getItem("adminToken");
       const response = await fetch("/api/admin/categories", {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) throw new Error("Failed to fetch categories");
       return response.json();
     },
+    enabled: !!token,
   });
 
   const { data: plans, isLoading } = useQuery<SubscriptionPlan[]>({
     queryKey: ["/api/admin", "subscription-plans"],
     queryFn: async () => {
-      const token = localStorage.getItem("adminToken");
       const response = await fetch("/api/admin/subscription-plans", {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) throw new Error("Failed to fetch subscription plans");
       return response.json();
     },
+    enabled: !!token,
   });
 
-  const { data: subscriptions } = useQuery<Subscription[]>({
+  const { data: subscriptions = [], isLoading: subscriptionsLoading } = useQuery<any[]>({
     queryKey: ["/api/admin", "subscriptions"],
     queryFn: async () => {
-      const token = localStorage.getItem("adminToken");
       const response = await fetch("/api/admin/subscriptions", {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) throw new Error("Failed to fetch subscriptions");
       return response.json();
     },
+    enabled: !!token,
+  });
+
+  // Fetch overdue preparations
+  const { data: overduePreparations = [] } = useQuery<any[]>({
+    queryKey: ["/api/admin/subscriptions/overdue-preparations"],
+    queryFn: async () => {
+      const response = await fetch("/api/admin/subscriptions/overdue-preparations", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error("Failed to fetch overdue preparations");
+      return response.json();
+    },
+    enabled: !!token,
+    refetchInterval: 5 * 60 * 1000, // Refetch every 5 minutes
   });
 
   const { data: chefs } = useQuery<Array<{ id: string; name: string; isActive: boolean }>>({
     queryKey: ["/api/admin", "chefs"],
     queryFn: async () => {
-      const token = localStorage.getItem("adminToken");
       const response = await fetch("/api/admin/chefs", {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) throw new Error("Failed to fetch chefs");
       return response.json();
     },
+    enabled: !!token,
   });
 
   const { data: deliverySlots = [], isLoading: slotsLoading } = useQuery<any[]>({
     queryKey: ["/api/admin/delivery-slots"],
     queryFn: async () => {
-      const token = localStorage.getItem("adminToken");
       const response = await fetch("/api/admin/delivery-slots", {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) throw new Error("Failed to fetch delivery slots");
       return response.json();
     },
+    enabled: !!token,
   });
 
   // Create delivery slot
   const createSlotMutation = useMutation({
     mutationFn: async (data: any) => {
-      const token = localStorage.getItem("adminToken");
       const response = await fetch("/api/admin/delivery-slots", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -135,7 +150,6 @@ export default function AdminSubscriptions() {
   // Update delivery slot
   const updateSlotMutation = useMutation({
     mutationFn: async ({ id, data }: any) => {
-      const token = localStorage.getItem("adminToken");
       const response = await fetch(`/api/admin/delivery-slots/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -156,7 +170,6 @@ export default function AdminSubscriptions() {
   // Delete delivery slot
   const deleteSlotMutation = useMutation({
     mutationFn: async (id: string) => {
-      const token = localStorage.getItem("adminToken");
       const response = await fetch(`/api/admin/delivery-slots/${id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
@@ -189,7 +202,6 @@ export default function AdminSubscriptions() {
 
   const createMutation = useMutation({
     mutationFn: async (data: InsertSubscriptionPlan) => {
-      const token = localStorage.getItem("adminToken");
       const response = await fetch("/api/admin/subscription-plans", {
         method: "POST",
         headers: {
@@ -208,11 +220,13 @@ export default function AdminSubscriptions() {
       form.reset();
       setSelectedDays([]);
     },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to create subscription plan", variant: "destructive" });
+    },
   });
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: InsertSubscriptionPlan }) => {
-      const token = localStorage.getItem("adminToken");
       const response = await fetch(`/api/admin/subscription-plans/${id}`, {
         method: "PATCH",
         headers: {
@@ -232,11 +246,13 @@ export default function AdminSubscriptions() {
       form.reset();
       setSelectedDays([]);
     },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to update subscription plan", variant: "destructive" });
+    },
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const token = localStorage.getItem("adminToken");
       const response = await fetch(`/api/admin/subscription-plans/${id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
@@ -248,12 +264,14 @@ export default function AdminSubscriptions() {
       queryClient.invalidateQueries({ queryKey: ["/api/admin", "subscription-plans"] });
       toast({ title: "Plan deleted", description: "Subscription plan deleted successfully" });
     },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to delete subscription plan", variant: "destructive" });
+    },
   });
 
   // Subscription adjustment mutation
   const adjustSubscriptionMutation = useMutation({
     mutationFn: async ({ subscriptionId, data }: { subscriptionId: string; data: any }) => {
-      const token = localStorage.getItem("adminToken");
       const response = await fetch(`/api/admin/subscriptions/${subscriptionId}/adjust`, {
         method: "POST",
         headers: {
@@ -283,7 +301,6 @@ export default function AdminSubscriptions() {
   // Assign chef/partner to subscription mutation
   const assignChefMutation = useMutation({
     mutationFn: async ({ subscriptionId, chefId }: { subscriptionId: string; chefId: string }) => {
-      const token = localStorage.getItem("adminToken");
       const response = await fetch(`/api/admin/subscriptions/${subscriptionId}/assign-chef`, {
         method: "PATCH",
         headers: {
@@ -300,6 +317,7 @@ export default function AdminSubscriptions() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin", "subscriptions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/subscriptions/overdue-preparations"] }); // Invalidate overdue preparations as well
       toast({ title: "Chef Assigned", description: "Chef assigned to subscription successfully" });
     },
     onError: (error: Error) => {
@@ -310,7 +328,6 @@ export default function AdminSubscriptions() {
   // Status change mutation
   const changeStatusMutation = useMutation({
     mutationFn: async ({ subscriptionId, status }: { subscriptionId: string; status: string }) => {
-      const token = localStorage.getItem("adminToken");
       const response = await fetch(`/api/admin/subscriptions/${subscriptionId}/status`, {
         method: "PATCH",
         headers: {
@@ -335,19 +352,18 @@ export default function AdminSubscriptions() {
   const { data: todaysDeliveries } = useQuery({
     queryKey: ["/api/admin", "subscriptions", "today-deliveries"],
     queryFn: async () => {
-      const token = localStorage.getItem("adminToken");
       const response = await fetch(`/api/admin/subscriptions/today-deliveries`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) throw new Error("Failed to fetch today's deliveries");
       return response.json();
     },
+    enabled: !!token,
   });
 
   // Delivery status update mutation
   const updateDeliveryStatusMutation = useMutation({
     mutationFn: async ({ subscriptionId, status }: { subscriptionId: string; status: string }) => {
-      const token = localStorage.getItem("adminToken");
       const response = await fetch(`/api/admin/subscriptions/${subscriptionId}/delivery-status`, {
         method: "PATCH",
         headers: {
@@ -361,6 +377,7 @@ export default function AdminSubscriptions() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin", "subscriptions", "today-deliveries"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin", "subscriptions"] });
       toast({ title: "Updated", description: "Delivery status updated" });
     },
     onError: () => {
@@ -384,7 +401,7 @@ export default function AdminSubscriptions() {
 
   const handleAdjustSubmit = () => {
     if (!selectedSubscription) return;
-    
+
     const data: any = {};
     if (adjustDeliveries !== 0) {
       data.deliveryAdjustment = adjustDeliveries;
@@ -398,12 +415,12 @@ export default function AdminSubscriptions() {
     if (newDeliveryDate) {
       data.nextDeliveryDate = newDeliveryDate;
     }
-    
+
     if (Object.keys(data).length === 0) {
       toast({ title: "No Changes", description: "Please make at least one adjustment", variant: "destructive" });
       return;
     }
-    
+
     adjustSubscriptionMutation.mutate({ subscriptionId: selectedSubscription.id, data });
   };
 
@@ -674,6 +691,189 @@ export default function AdminSubscriptions() {
           </TabsContent>
 
           <TabsContent value="active">
+            {/* Unavailable Chefs with Active Subscriptions */}
+            {subscriptions?.filter(s => s.isPaid && s.status === "active" && s.chefId).length > 0 && (
+              (() => {
+                const unavailableChefSubscriptions = subscriptions.filter(s => {
+                  if (!s.isPaid || s.status !== "active" || !s.chefId) return false;
+                  const chef = chefs?.find(c => c.id === s.chefId);
+                  return chef && !chef.isActive;
+                });
+                
+                if (unavailableChefSubscriptions.length === 0) return null;
+
+                const chefGroups = unavailableChefSubscriptions.reduce((acc, sub) => {
+                  const chefId = sub.chefId!;
+                  if (!acc[chefId]) {
+                    acc[chefId] = {
+                      chef: chefs?.find(c => c.id === chefId),
+                      subscriptions: [] as any[],
+                    };
+                  }
+                  acc[chefId].subscriptions.push(sub);
+                  return acc;
+                }, {} as Record<string, { chef: any; subscriptions: any[] }>);
+
+                return (
+                  <Card className="mb-6 border-red-500">
+                    <CardHeader>
+                      <CardTitle className="text-red-600 flex items-center gap-2">
+                        <AlertCircle className="h-5 w-5" />
+                        🔴 Unavailable Chefs with Active Subscriptions
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Chef</TableHead>
+                            <TableHead>Subscriptions</TableHead>
+                            <TableHead>Customers</TableHead>
+                            <TableHead>Action</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {Object.entries(chefGroups).map(([chefId, group]) => {
+                            const { chef, subscriptions: subs } = group;
+                            return (
+                            <TableRow key={chefId} className="bg-red-50">
+                              <TableCell>
+                                <div>
+                                  <Badge variant="destructive">{chef?.name || "Unknown Chef"}</Badge>
+                                  <div className="text-xs text-muted-foreground mt-1">Status: Unavailable</div>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="outline">{subs.length} active subscription{subs.length > 1 ? 's' : ''}</Badge>
+                              </TableCell>
+                              <TableCell>
+                                <div className="space-y-1">
+                                  {subs.slice(0, 3).map(s => (
+                                    <div key={s.id} className="text-sm">{s.customerName}</div>
+                                  ))}
+                                  {subs.length > 3 && (
+                                    <div className="text-xs text-muted-foreground">+{subs.length - 3} more</div>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="text-xs text-amber-600 font-medium mb-2">
+                                  Please reassign these subscriptions to available chefs
+                                </div>
+                                {subs.map(s => (
+                                  <div key={s.id} className="mb-2">
+                                    <Select
+                                      onValueChange={(newChefId) => {
+                                        assignChefMutation.mutate({
+                                          subscriptionId: s.id,
+                                          chefId: newChefId,
+                                        });
+                                      }}
+                                    >
+                                      <SelectTrigger className="h-8 text-xs">
+                                        <SelectValue placeholder={`Reassign ${s.customerName}`} />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {chefs?.filter(c => c.id !== chefId && c.isActive).map(c => (
+                                          <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                ))}
+                              </TableCell>
+                            </TableRow>
+                          );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </CardContent>
+                  </Card>
+                );
+              })()
+            )}
+
+            {/* Overdue Chef Preparations */}
+            {overduePreparations.length > 0 && (
+              <Card className="mb-6 border-red-500">
+                <CardHeader>
+                  <CardTitle className="text-red-600 flex items-center gap-2">
+                    <AlertCircle className="h-5 w-5" />
+                    ⚠️ Overdue Chef Preparations - Reassignment Needed
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Customer</TableHead>
+                        <TableHead>Plan</TableHead>
+                        <TableHead>Current Chef</TableHead>
+                        <TableHead>Expected Prep Time</TableHead>
+                        <TableHead>Delivery Time</TableHead>
+                        <TableHead>Overdue By</TableHead>
+                        <TableHead>Action</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {overduePreparations.map((item) => (
+                        <TableRow key={item.subscriptionId} className="bg-red-50">
+                          <TableCell>
+                            <div>{item.customerName}</div>
+                            <div className="text-xs text-muted-foreground">{item.phone}</div>
+                          </TableCell>
+                          <TableCell>{item.planName}</TableCell>
+                          <TableCell>
+                            <Badge variant="destructive">{item.chefName}</Badge>
+                          </TableCell>
+                          <TableCell>{item.expectedPrepTime}</TableCell>
+                          <TableCell>{item.deliveryTime}</TableCell>
+                          <TableCell>
+                            <Badge variant="destructive">{item.minutesOverdue} min</Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <Button size="sm" variant="destructive">
+                                  Reassign Chef
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent>
+                                <DialogHeader>
+                                  <DialogTitle>Reassign Chef</DialogTitle>
+                                </DialogHeader>
+                                <Select
+                                  onValueChange={(value) => {
+                                    assignChefMutation.mutate({
+                                      subscriptionId: item.subscriptionId,
+                                      chefId: value,
+                                    });
+                                  }}
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Select a new chef" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {chefs
+                                      ?.filter((c) => c.id !== item.chefId && c.isActive)
+                                      .map((chef) => (
+                                        <SelectItem key={chef.id} value={chef.id}>
+                                          {chef.name}
+                                        </SelectItem>
+                                      ))}
+                                  </SelectContent>
+                                </Select>
+                              </DialogContent>
+                            </Dialog>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Pending Payment Verification Section */}
             {subscriptions?.filter(s => !s.isPaid && s.paymentTransactionId).length ? (
               <Card className="mb-6 border-amber-200 dark:border-amber-800">
@@ -716,7 +916,6 @@ export default function AdminSubscriptions() {
                               <Button
                                 onClick={async () => {
                                   try {
-                                    const token = localStorage.getItem("adminToken");
                                     const response = await fetch(`/api/admin/subscriptions/${sub.id}/confirm-payment`, {
                                       method: "POST",
                                       headers: {
@@ -724,12 +923,12 @@ export default function AdminSubscriptions() {
                                         Authorization: `Bearer ${token}`,
                                       },
                                     });
-                                    
+
                                     if (!response.ok) {
                                       const error = await response.json();
                                       throw new Error(error.message || "Failed to confirm payment");
                                     }
-                                    
+
                                     queryClient.invalidateQueries({ queryKey: ["/api/admin", "subscriptions"] });
                                     toast({ 
                                       title: "Payment Verified ✅", 
@@ -1148,7 +1347,7 @@ export default function AdminSubscriptions() {
                 Current: {selectedSubscription?.remainingDeliveries} → New: {(selectedSubscription?.remainingDeliveries || 0) + adjustDeliveries}
               </p>
             </div>
-            
+
             <div className="space-y-2">
               <Label>Status</Label>
               <Select value={newStatus} onValueChange={setNewStatus}>
@@ -1162,7 +1361,7 @@ export default function AdminSubscriptions() {
                 </SelectContent>
               </Select>
             </div>
-            
+
             <div className="space-y-2">
               <Label>Next Delivery Date</Label>
               <Input
@@ -1172,7 +1371,7 @@ export default function AdminSubscriptions() {
                 data-testid="input-adjust-date"
               />
             </div>
-            
+
             <div className="space-y-2">
               <Label>Reason for Adjustment</Label>
               <Textarea

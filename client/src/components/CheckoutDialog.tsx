@@ -299,15 +299,7 @@ export default function CheckoutDialog({
       return;
     }
 
-    // Validate delivery time for Roti category
-    if (isRotiCategory && !selectedDeliveryTime) {
-      toast({
-        title: "Delivery Time Required",
-        description: "Please select a delivery time for your Roti order",
-        variant: "destructive",
-      });
-      return;
-    }
+    // Delivery time is optional for Roti orders
 
     setIsLoading(true);
 
@@ -559,8 +551,7 @@ export default function CheckoutDialog({
   const [password, setPassword] = useState("");
 
   // Determine if the form is valid for submission
-  const isFormValid = customerName && phone && address && 
-    (!isRotiCategory || (isRotiCategory && selectedDeliveryTime));
+  const isFormValid = customerName && phone && address;
 
 
   return (
@@ -678,15 +669,15 @@ export default function CheckoutDialog({
                     </p>
                   </div>
 
-                  {/* Delivery Time Selection - Required for Roti orders */}
+                  {/* Delivery Time Selection - OPTIONAL for Roti orders */}
                   {isRotiCategory && (
-                    <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md p-3">
-                      <Label htmlFor="deliveryTime" className="text-sm font-medium flex items-center gap-2 text-amber-800 dark:text-amber-200">
-                        <Clock className="h-4 w-4" />
-                        Select Delivery Time *
+                    <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-300 dark:border-blue-700 rounded-md p-3">
+                      <Label htmlFor="deliveryTime" className="text-sm font-medium flex items-center gap-2 text-blue-800 dark:text-blue-200">
+                        <Clock className="h-5 w-5" />
+                        Select Delivery Time (Optional)
                       </Label>
-                      <p className="text-xs text-amber-700 dark:text-amber-300 mb-2">
-                        Fresh rotis require a specific delivery time slot
+                      <p className="text-xs text-blue-700 dark:text-blue-300 mb-2">
+                        💡 Choose a preferred time slot for your fresh rotis
                       </p>
                       <Select 
                         value={selectedDeliverySlotId} 
@@ -722,7 +713,12 @@ export default function CheckoutDialog({
                       </Select>
                       {selectedDeliveryTime && (
                         <p className="text-xs text-green-600 dark:text-green-400 mt-1">
-                          Your rotis will be delivered around {selectedDeliveryTime}
+                          ✓ Your rotis will be delivered around {selectedDeliveryTime}
+                        </p>
+                      )}
+                      {!selectedDeliveryTime && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          If not selected, we'll deliver at the earliest available time
                         </p>
                       )}
                     </div>

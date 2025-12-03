@@ -193,6 +193,121 @@ export function broadcastSubscriptionUpdate(subscription: any) {
   console.log(`================================================\n`);
 }
 
+// Broadcast subscription delivery to available delivery personnel
+export async function broadcastSubscriptionDeliveryToAvailableDelivery(deliveryLog: any) {
+  console.log(`📣 Broadcasting subscription delivery ${deliveryLog.id} to all active delivery personnel`);
+
+  const { storage } = await import("./storage");
+
+  let deliveryPersonnelNotified = 0;
+
+  for (const [deliveryPersonId, client] of Array.from(clients.entries())) {
+    if (client.type === "delivery" && client.ws.readyState === WebSocket.OPEN) {
+      const deliveryPerson = await storage.getDeliveryPersonnelById(deliveryPersonId);
+      if (deliveryPerson && deliveryPerson.isActive) {
+        const message = {
+          type: "new_subscription_delivery",
+          deliveryLog: deliveryLog,
+          message: `🍽️ New subscription delivery ready for pickup!`
+        };
+
+        client.ws.send(JSON.stringify(message));
+        console.log(`✅ Sent to delivery person: ${deliveryPersonId} (${deliveryPerson.name})`);
+        deliveryPersonnelNotified++;
+      }
+    }
+  }
+
+  if (deliveryPersonnelNotified === 0) {
+    console.log(`⚠️ WARNING: No available delivery personnel to notify for subscription delivery ${deliveryLog.id}`);
+  } else {
+    console.log(`✅ Notified ${deliveryPersonnelNotified} delivery personnel about subscription delivery ${deliveryLog.id}`);
+  }
+}
+
+// Broadcast overdue chef notification to admins
+export function broadcastOverdueChefNotification(overdueInfo: any) {
+  const message = JSON.stringify({
+    type: "overdue_chef_preparation",
+    data: {
+      subscriptionId: overdueInfo.subscription.id,
+      customerName: overdueInfo.subscription.customerName,
+      chefId: overdueInfo.chef?.id,
+      chefName: overdueInfo.chef?.name,
+      expectedPrepTime: overdueInfo.expectedPrepTime,
+      deliveryTime: overdueInfo.deliveryTime,
+      deliveryLogId: overdueInfo.log.id,
+    },
+    message: `⚠️ Chef ${overdueInfo.chef?.name || 'Unknown'} hasn't started preparing subscription for ${overdueInfo.subscription.customerName}. Expected by ${overdueInfo.expectedPrepTime}, delivery at ${overdueInfo.deliveryTime}.`,
+    timestamp: new Date().toISOString(),
+  });
+
+  console.log(`\n⚠️ ========== BROADCASTING OVERDUE CHEF NOTIFICATION ==========`);
+  console.log(`Subscription: ${overdueInfo.subscription.id}`);
+  console.log(`Customer: ${overdueInfo.subscription.customerName}`);
+  console.log(`Chef: ${overdueInfo.chef?.name || 'Unknown'}`);
+  console.log(`Expected Prep Time: ${overdueInfo.expectedPrepTime}`);
+  console.log(`Delivery Time: ${overdueInfo.deliveryTime}`);
+
+  let adminNotified = 0;
+
+  clients.forEach((client) => {
+    if (client.type === "admin" && client.ws.readyState === WebSocket.OPEN) {
+      client.ws.send(message);
+      adminNotified++;
+      console.log(`  ✅ Sent to admin ${client.id}`);
+    }
+  });
+
+  console.log(`\n📊 Notification Summary:`);
+  console.log(`  - Admins notified: ${adminNotified}`);
+  console.log(`================================================\n`);
+}
+
+// Broadcast chef unavailable notification to admins (when chef closes with active subscriptions)
+export function broadcastChefUnavailableNotification(data: { chef: any; subscriptionCount: number; subscriptions: any[] }) {
+  const message = JSON.stringify({
+    type: "chef_unavailable_with_subscriptions",
+    data: {
+      chefId: data.chef.id,
+      chefName: data.chef.name,
+      subscriptionCount: data.subscriptionCount,
+      subscriptions: data.subscriptions.map(s => ({
+        id: s.id,
+        customerName: s.customerName,
+        phone: s.phone,
+        address: s.address,
+        nextDeliveryDate: s.nextDeliveryDate,
+        nextDeliveryTime: s.nextDeliveryTime,
+      })),
+    },
+    message: `🔴 Chef ${data.chef.name} has marked themselves unavailable but has ${data.subscriptionCount} active subscription(s). Please reassign these subscriptions to another chef.`,
+    timestamp: new Date().toISOString(),
+  });
+
+  console.log(`\n🔴 ========== BROADCASTING CHEF UNAVAILABLE NOTIFICATION ==========`);
+  console.log(`Chef: ${data.chef.name} (${data.chef.id})`);
+  console.log(`Active Subscriptions: ${data.subscriptionCount}`);
+  console.log(`Subscriptions:`);
+  data.subscriptions.forEach(s => {
+    console.log(`  - ${s.customerName} (${s.id})`);
+  });
+
+  let adminNotified = 0;
+
+  clients.forEach((client) => {
+    if (client.type === "admin" && client.ws.readyState === WebSocket.OPEN) {
+      client.ws.send(message);
+      adminNotified++;
+      console.log(`  ✅ Sent to admin ${client.id}`);
+    }
+  });
+
+  console.log(`\n📊 Notification Summary:`);
+  console.log(`  - Admins notified: ${adminNotified}`);
+  console.log(`================================================\n`);
+}
+
 
 export function broadcastOrderUpdate(order: Order) {
   const message = JSON.stringify({

@@ -81,6 +81,10 @@ export interface IStorage {
   createSubscription(data: Omit<Subscription, "id" | "createdAt" | "updatedAt">): Promise<Subscription>;
   updateSubscription(id: string, data: Partial<Subscription>): Promise<Subscription | undefined>;
   deleteSubscription(id: string): Promise<void>;
+  getActiveSubscriptionCountByChef(chefId: string): Promise<number>; // Added for load balancing
+  findBestChefForCategory(categoryId: string): Promise<Chef | null>; // Added for load balancing
+  assignChefToSubscription(subscriptionId: string, chefId: string): Promise<Subscription | undefined>;
+  getActiveSubscriptionsByChef(chefId: string): Promise<Subscription[]>; // Added for load balancing
 
   // Subscription Delivery Log methods
   getSubscriptionDeliveryLogs(subscriptionId: string): Promise<SubscriptionDeliveryLog[]>;
@@ -671,6 +675,44 @@ export class MemStorage implements IStorage {
     return usages.length;
   }
 
+  async getCouponByCode(code: string): Promise<{
+    id: string;
+    code: string;
+    discountType: "percentage" | "fixed";
+    discountValue: number;
+    minOrderAmount: number;
+    maxDiscountAmount: number | null;
+    usageLimit: number | null;
+    usedCount: number;
+    perUserLimit: number | null;
+    isActive: boolean;
+    expiryDate: Date | null;
+    validFrom: Date;
+  } | null> {
+    const coupon = await db.query.coupons.findFirst({
+      where: (coupons, { eq }) => eq(coupons.code, code.toUpperCase()),
+    });
+    if (!coupon) return null;
+    return {
+      id: coupon.id,
+      code: coupon.code,
+      discountType: coupon.discountType,
+      discountValue: coupon.discountValue,
+      minOrderAmount: coupon.minOrderAmount,
+      maxDiscountAmount: coupon.maxDiscount,
+      usageLimit: coupon.usageLimit,
+      usedCount: coupon.usedCount,
+      perUserLimit: coupon.perUserLimit,
+      isActive: coupon.isActive,
+      expiryDate: coupon.validUntil,
+      validFrom: coupon.validFrom,
+    };
+  }
+
+  async updateCoupon(id: string, data: { usedCount?: number; isActive?: boolean }): Promise<void> {
+    await db.update(coupons).set(data).where(eq(coupons.id, id));
+  }
+
   // Subscription Plans
   async getSubscriptionPlans(): Promise<SubscriptionPlan[]> {
     return db.query.subscriptionPlans.findMany();
@@ -784,6 +826,16 @@ export class MemStorage implements IStorage {
     });
   }
 
+  // Get active subscriptions by chef
+  async getActiveSubscriptionsByChef(chefId: string): Promise<Subscription[]> {
+    return db.query.subscriptions.findMany({
+      where: (s, { and, eq }) => and(
+        eq(s.chefId, chefId),
+        eq(s.status, "active")
+      ),
+    });
+  }
+
   // Subscription Delivery Logs
   async getSubscriptionDeliveryLogs(subscriptionId: string): Promise<SubscriptionDeliveryLog[]> {
     return db.query.subscriptionDeliveryLogs.findMany({
@@ -797,7 +849,7 @@ export class MemStorage implements IStorage {
     startOfDay.setHours(0, 0, 0, 0);
     const endOfDay = new Date(date);
     endOfDay.setHours(23, 59, 59, 999);
-    
+
     return db.query.subscriptionDeliveryLogs.findMany({
       where: (log, { and, gte, lte }) => and(
         gte(log.date, startOfDay),
@@ -836,7 +888,7 @@ export class MemStorage implements IStorage {
     startOfDay.setHours(0, 0, 0, 0);
     const endOfDay = new Date(date);
     endOfDay.setHours(23, 59, 59, 999);
-    
+
     return db.query.subscriptionDeliveryLogs.findFirst({
       where: (log, { and, eq, gte, lte }) => and(
         eq(log.subscriptionId, subscriptionId),
@@ -1571,6 +1623,71 @@ export class MemStorage implements IStorage {
       approvedAt: order.approvedAt ? new Date(order.approvedAt) : null,
       assignedAt: order.assignedAt ? new Date(order.assignedAt) : null,
     };
+  }
+
+  // Referral Rewards Settings
+  async getAllReferralRewards(): Promise<ReferralReward[]> {
+    return db.query.referralRewards.findMany({
+      orderBy: (rr, { desc }) => [desc(rr.createdAt)]
+    });
+  }
+
+  async getActiveReferralReward(): Promise<ReferralReward | undefined> {
+    return db.query.referralRewards.findFirst({
+      where: (rr, { eq }) => eq(rr.isActive, true),
+      orderBy: (rr, { desc }) => [desc(rr.createdAt)]
+    });
+  }
+
+  async createReferralReward(data: Omit<ReferralReward, "id" | "createdAt" | "updatedAt">): Promise<ReferralReward> {
+    const id = randomUUID();
+    const reward: ReferralReward = {
+      id,
+      ...data,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    const [created] = await db.insert(referralRewards).values(reward).returning();
+    return created;
+  }
+
+  async updateReferralReward(id: string, data: Partial<ReferralReward>): Promise<ReferralReward | undefined> {
+    const [updated] = await db.update(referralRewards)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(referralRewards.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteReferralReward(id: string): Promise<boolean> {
+    const result = await db.delete(referralRewards).where(eq(referralRewards.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  // Get all coupons (for admin)
+  async getAllCoupons(): Promise<any[]> {
+    return db.query.coupons.findMany({
+      orderBy: (c, { desc }) => [desc(c.createdAt)]
+    });
+  }
+
+  // Create coupon
+  async createCoupon(data: any): Promise<any> {
+    const id = randomUUID();
+    const coupon = {
+      id,
+      ...data,
+      usedCount: 0,
+      createdAt: new Date(),
+    };
+    const [created] = await db.insert(coupons).values(coupon).returning();
+    return created;
+  }
+
+  // Delete coupon
+  async deleteCoupon(id: string): Promise<boolean> {
+    const result = await db.delete(coupons).where(eq(coupons.id, id));
+    return (result.rowCount ?? 0) > 0;
   }
 }
 

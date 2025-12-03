@@ -942,13 +942,13 @@ app.post("/api/orders", async (req: any, res) => {
       deliverySlotId: body.deliverySlotId || undefined,
     };
 
-    // Validate: If order is for Roti category, deliveryTime is required
+    // Validate: If order is for Roti category, deliverySlotId is required (deliveryTime is optional legacy field)
     const isRotiCategory = sanitized.categoryName?.toLowerCase() === 'roti' || 
                            sanitized.categoryName?.toLowerCase().includes('roti');
-    if (isRotiCategory && !sanitized.deliveryTime) {
+    if (isRotiCategory && !sanitized.deliverySlotId) {
       return res.status(400).json({
-        message: "Delivery time is required for Roti category orders",
-        requiresDeliveryTime: true,
+        message: "Delivery time slot is required for Roti category orders",
+        requiresDeliverySlot: true,
         categoryName: sanitized.categoryName
       });
     }
@@ -1340,6 +1340,21 @@ app.post("/api/orders", async (req: any, res) => {
       const plan = await storage.getSubscriptionPlan(planId);
       if (!plan) {
         res.status(404).json({ message: "Subscription plan not found" });
+        return;
+      }
+
+      // Get category to check if it's Roti
+      const category = await storage.getCategoryById(plan.categoryId);
+      const isRotiCategory = category?.name?.toLowerCase() === 'roti' || 
+                             category?.name?.toLowerCase().includes('roti');
+      
+      // Validate: If subscription is for Roti category, deliverySlotId is required
+      if (isRotiCategory && !deliverySlotId) {
+        res.status(400).json({
+          message: "Delivery time slot is required for Roti category subscriptions",
+          requiresDeliverySlot: true,
+          categoryName: category?.name
+        });
         return;
       }
 

@@ -21,4 +21,7 @@ export interface Order {
   deliveryPersonName?: string;
   chefName?: string;
   chefId?: string;
+  deliveryTime?: string;
+  deliverySlotId?: string;
+  categoryName?: string;
 }

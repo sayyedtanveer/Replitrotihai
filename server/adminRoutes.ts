@@ -12,7 +12,7 @@ import {
   type AuthenticatedAdminRequest,
 } from "./adminAuth";
 import { db, walletSettings } from "@shared/db";
-import { adminLoginSchema, insertAdminUserSchema, insertCategorySchema, insertProductSchema, insertDeliveryPersonnelSchema, insertDeliveryTimeSlotsSchema } from "@shared/schema";
+import { adminLoginSchema, insertAdminUserSchema, insertCategorySchema, insertProductSchema, insertDeliveryPersonnelSchema, insertDeliveryTimeSlotsSchema, insertReferralRewardSchema, insertCouponSchema } from "@shared/schema";
 import { fromZodError } from "zod-validation-error";
 import { broadcastOrderUpdate, broadcastNewOrder, notifyDeliveryAssignment, cancelPreparedOrderTimeout, broadcastProductAvailabilityUpdate, broadcastChefStatusUpdate } from "./websocket";
 import { hashPassword as hashDeliveryPassword } from "./deliveryAuth";
@@ -1100,6 +1100,10 @@ export function registerAdminRoutes(app: Express) {
 
       console.log(`✅ Admin confirmed payment for subscription ${subscriptionId} (TxnID: ${subscription.paymentTransactionId}) - Subscription activated`);
 
+      // Broadcast the subscription update to customer and admin
+      const { broadcastSubscriptionUpdate } = await import("./websocket");
+      broadcastSubscriptionUpdate(updated);
+
       res.json({ 
         message: "Payment verified and subscription activated", 
         subscription: updated 
@@ -1218,6 +1222,12 @@ export function registerAdminRoutes(app: Express) {
       const updated = await storage.assignChefToSubscription(id, chefId);
 
       console.log(`👨‍🍳 Admin reassigned chef ${chef.name} (${chefId}) to subscription ${id}`);
+
+      // Broadcast the subscription update to chef and admin
+      if (updated) {
+        const { broadcastSubscriptionUpdate } = await import("./websocket");
+        broadcastSubscriptionUpdate(updated);
+      }
 
       res.json({ 
         message: `Chef ${chef.name} assigned to subscription successfully`,
@@ -2020,7 +2030,7 @@ export function registerAdminRoutes(app: Express) {
 
       const updated = await storage.updateSubscription(req.params.id, { 
         status: "expired",
-        deliveriesRemaining: 0,
+        remainingDeliveries: 0,
         pauseStartDate: null,
         pauseResumeDate: null,
       });
@@ -2076,13 +2086,13 @@ export function registerAdminRoutes(app: Express) {
       const updateData: any = {};
 
       if (additionalDays && typeof additionalDays === 'number' && additionalDays > 0) {
-        const currentEndDate = new Date(subscription.endDate);
+        const currentEndDate = subscription.endDate ? new Date(subscription.endDate) : new Date();
         currentEndDate.setDate(currentEndDate.getDate() + additionalDays);
         updateData.endDate = currentEndDate;
       }
 
       if (additionalDeliveries && typeof additionalDeliveries === 'number' && additionalDeliveries > 0) {
-        updateData.deliveriesRemaining = (subscription.deliveriesRemaining || 0) + additionalDeliveries;
+        updateData.remainingDeliveries = (subscription.remainingDeliveries || 0) + additionalDeliveries;
         updateData.totalDeliveries = (subscription.totalDeliveries || 0) + additionalDeliveries;
       }
 
@@ -2155,27 +2165,59 @@ export function registerAdminRoutes(app: Express) {
       }
 
       const newStartDate = startDate ? new Date(startDate) : new Date();
+      
+      // Calculate duration based on frequency and original subscription settings
+      const deliveryDays = plan.deliveryDays as string[] || [];
+      const deliveriesPerWeek = deliveryDays.length || 1;
+      
+      // Use original subscription's total deliveries (nullish coalescing to preserve 0), fallback to 30 only if null/undefined
+      const totalDeliveries = subscription.totalDeliveries ?? 30;
+      
+      // Calculate duration based on deliveries and frequency
+      let durationDays = 30; // default
+      if (plan.frequency === "daily") {
+        durationDays = totalDeliveries;
+      } else if (plan.frequency === "weekly") {
+        durationDays = Math.ceil(totalDeliveries / deliveriesPerWeek) * 7;
+      } else if (plan.frequency === "monthly") {
+        durationDays = totalDeliveries * 30;
+      }
+      
       const newEndDate = new Date(newStartDate);
-      newEndDate.setDate(newEndDate.getDate() + plan.durationDays);
+      newEndDate.setDate(newEndDate.getDate() + durationDays);
 
       // Create a new subscription based on the existing one
       const newSubscription = await storage.createSubscription({
         userId: subscription.userId,
         planId: subscription.planId,
+        customerName: subscription.customerName,
+        phone: subscription.phone,
+        email: subscription.email,
         status: paymentStatus === "confirmed" ? "active" : "pending",
         startDate: newStartDate,
         endDate: newEndDate,
-        totalDeliveries: plan.deliveryCount,
-        deliveriesRemaining: plan.deliveryCount,
+        nextDeliveryDate: newStartDate,
+        nextDeliveryTime: subscription.nextDeliveryTime || "09:00",
+        totalDeliveries: totalDeliveries,
+        remainingDeliveries: totalDeliveries,
         deliverySlotId: subscription.deliverySlotId,
-        deliveryTime: subscription.deliveryTime,
         address: subscription.address,
-        paymentMethod: subscription.paymentMethod,
-        paymentStatus: paymentStatus || "pending",
         chefId: subscription.chefId,
+        chefAssignedAt: subscription.chefAssignedAt,
         originalPrice: customPrice || plan.price,
         finalAmount: customPrice || plan.price,
-        quantity: subscription.quantity || 1,
+        isPaid: false,
+        couponCode: null,
+        walletAmountUsed: 0,
+        discountAmount: 0,
+        couponDiscount: 0,
+        paymentNotes: null,
+        paymentTransactionId: null,
+        customItems: null,
+        lastDeliveryDate: null,
+        deliveryHistory: [],
+        pauseStartDate: null,
+        pauseResumeDate: null,
       });
 
       console.log(`🔄 Admin renewed subscription ${req.params.id} -> ${newSubscription.id}`);
@@ -2558,6 +2600,144 @@ export function registerAdminRoutes(app: Express) {
     } catch (error) {
       console.error("Delete delivery log error:", error);
       res.status(500).json({ message: "Failed to delete delivery log" });
+    }
+  });
+
+  // ================= REFERRAL REWARDS SETTINGS =================
+  
+  // Get all referral reward settings
+  app.get("/api/admin/referral-rewards", requireAdmin(), async (req: AuthenticatedAdminRequest, res) => {
+    try {
+      const rewards = await storage.getAllReferralRewards();
+      res.json(rewards);
+    } catch (error) {
+      console.error("Error fetching referral rewards:", error);
+      res.status(500).json({ message: "Failed to fetch referral rewards" });
+    }
+  });
+
+  // Create referral reward setting
+  app.post("/api/admin/referral-rewards", requireAdmin(), async (req: AuthenticatedAdminRequest, res) => {
+    try {
+      const validation = insertReferralRewardSchema.safeParse(req.body);
+      if (!validation.success) {
+        res.status(400).json({ message: fromZodError(validation.error).toString() });
+        return;
+      }
+      const reward = await storage.createReferralReward(validation.data);
+      res.status(201).json(reward);
+    } catch (error) {
+      console.error("Error creating referral reward:", error);
+      res.status(500).json({ message: "Failed to create referral reward" });
+    }
+  });
+
+  // Update referral reward setting
+  app.patch("/api/admin/referral-rewards/:id", requireAdmin(), async (req: AuthenticatedAdminRequest, res) => {
+    try {
+      const { id } = req.params;
+      const validation = insertReferralRewardSchema.partial().safeParse(req.body);
+      if (!validation.success) {
+        res.status(400).json({ message: fromZodError(validation.error).toString() });
+        return;
+      }
+      const reward = await storage.updateReferralReward(id, validation.data);
+      if (!reward) {
+        res.status(404).json({ message: "Referral reward not found" });
+        return;
+      }
+      res.json(reward);
+    } catch (error) {
+      console.error("Error updating referral reward:", error);
+      res.status(500).json({ message: "Failed to update referral reward" });
+    }
+  });
+
+  // Delete referral reward setting
+  app.delete("/api/admin/referral-rewards/:id", requireSuperAdmin(), async (req: AuthenticatedAdminRequest, res) => {
+    try {
+      const { id } = req.params;
+      const deleted = await storage.deleteReferralReward(id);
+      if (!deleted) {
+        res.status(404).json({ message: "Referral reward not found" });
+        return;
+      }
+      res.json({ message: "Referral reward deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting referral reward:", error);
+      res.status(500).json({ message: "Failed to delete referral reward" });
+    }
+  });
+
+  // ================= COUPON MANAGEMENT =================
+
+  // Get all coupons
+  app.get("/api/admin/coupons", requireAdmin(), async (req: AuthenticatedAdminRequest, res) => {
+    try {
+      const coupons = await storage.getAllCoupons();
+      res.json(coupons);
+    } catch (error) {
+      console.error("Error fetching coupons:", error);
+      res.status(500).json({ message: "Failed to fetch coupons" });
+    }
+  });
+
+  // Create coupon
+  app.post("/api/admin/coupons", requireAdmin(), async (req: AuthenticatedAdminRequest, res) => {
+    try {
+      // Prepare data with defaults
+      const couponData = {
+        ...req.body,
+        code: req.body.code?.toUpperCase(),
+        validFrom: req.body.validFrom || new Date().toISOString(),
+        validUntil: req.body.validUntil || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        perUserLimit: req.body.perUserLimit || 1,
+      };
+
+      const validation = insertCouponSchema.safeParse(couponData);
+      if (!validation.success) {
+        res.status(400).json({ message: fromZodError(validation.error).toString() });
+        return;
+      }
+
+      const coupon = await storage.createCoupon(validation.data);
+      res.status(201).json(coupon);
+    } catch (error) {
+      console.error("Error creating coupon:", error);
+      res.status(500).json({ message: "Failed to create coupon" });
+    }
+  });
+
+  // Update coupon
+  app.patch("/api/admin/coupons/:id", requireAdmin(), async (req: AuthenticatedAdminRequest, res) => {
+    try {
+      const { id } = req.params;
+      const validation = insertCouponSchema.partial().safeParse(req.body);
+      if (!validation.success) {
+        res.status(400).json({ message: fromZodError(validation.error).toString() });
+        return;
+      }
+      await storage.updateCoupon(id, validation.data);
+      res.json({ message: "Coupon updated successfully" });
+    } catch (error) {
+      console.error("Error updating coupon:", error);
+      res.status(500).json({ message: "Failed to update coupon" });
+    }
+  });
+
+  // Delete coupon
+  app.delete("/api/admin/coupons/:id", requireSuperAdmin(), async (req: AuthenticatedAdminRequest, res) => {
+    try {
+      const { id } = req.params;
+      const deleted = await storage.deleteCoupon(id);
+      if (!deleted) {
+        res.status(404).json({ message: "Coupon not found" });
+        return;
+      }
+      res.json({ message: "Coupon deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting coupon:", error);
+      res.status(500).json({ message: "Failed to delete coupon" });
     }
   });
 }

@@ -12,7 +12,7 @@ import { queryClient } from "@/lib/queryClient";
 import { usePartnerNotifications } from "@/hooks/usePartnerNotifications";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import type { Chef, Product } from "@shared/schema";
+import type { Chef, Product, Order } from "@shared/schema"; // Assuming Order type is defined in schema
 
 export default function PartnerDashboard() {
   const partnerToken = localStorage.getItem("partnerToken");
@@ -68,7 +68,7 @@ export default function PartnerDashboard() {
     },
   });
 
-  const { data: orders } = useQuery({
+  const { data: orders = [], isLoading: ordersLoading } = useQuery<Order[]>({
     queryKey: ["/api/partner/orders"],
     queryFn: async () => {
       const response = await fetch("/api/partner/orders", {
@@ -76,7 +76,7 @@ export default function PartnerDashboard() {
       });
       if (!response.ok) throw new Error("Failed to fetch orders");
       const allOrders = await response.json();
-      console.log(`📦 Partner Dashboard - Received ${allOrders.length} orders:`, 
+      console.log(`📦 Partner Dashboard - Received ${allOrders.length} orders:`,
         allOrders.map((o: any) => ({ id: o.id.slice(0, 8), status: o.status, assignedTo: o.assignedTo }))
       );
       // Sort by latest first
@@ -85,6 +85,20 @@ export default function PartnerDashboard() {
       );
     },
   });
+
+  // Fetch subscription orders for the chef panel
+  const { data: subscriptions = [], isLoading: subscriptionsLoading } = useQuery({
+    queryKey: ["/api/partner/subscriptions"],
+    queryFn: async () => {
+      const token = localStorage.getItem("partnerToken");
+      const response = await fetch("/api/partner/subscriptions", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error("Failed to fetch subscriptions");
+      return response.json();
+    },
+  });
+
 
   const { data: incomeReport } = useQuery({
     queryKey: ["/api/partner/income-report"],
@@ -120,7 +134,7 @@ export default function PartnerDashboard() {
   });
 
   // Subscription deliveries for the partner
-  const { data: subscriptionDeliveries, isLoading: subscriptionLoading } = useQuery({
+  const { data: subscriptionDeliveries, isLoading: subscriptionDeliveriesLoading } = useQuery({
     queryKey: ["/api/partner/subscription-deliveries"],
     queryFn: async () => {
       const response = await fetch("/api/partner/subscription-deliveries", {
@@ -178,8 +192,8 @@ export default function PartnerDashboard() {
       queryClient.invalidateQueries({ queryKey: ["/api/partner/chef"] });
       toast({
         title: data.isActive ? "Store is now OPEN" : "Store is now CLOSED",
-        description: data.isActive 
-          ? "Customers can now see and order from your menu" 
+        description: data.isActive
+          ? "Customers can now see and order from your menu"
           : "Your store will appear as unavailable to customers",
       });
     },
@@ -209,8 +223,8 @@ export default function PartnerDashboard() {
       queryClient.invalidateQueries({ queryKey: ["/api/partner/products"] });
       toast({
         title: data.isAvailable ? "Item is now available" : "Item is now unavailable",
-        description: data.isAvailable 
-          ? `${data.name} can now be ordered by customers` 
+        description: data.isAvailable
+          ? `${data.name} can now be ordered by customers`
           : `${data.name} will appear as unavailable`,
       });
     },
@@ -341,10 +355,10 @@ export default function PartnerDashboard() {
               <h1 className="text-sm md:text-xl font-bold text-foreground truncate">
                 {chefName}
               </h1>
-              <div 
+              <div
                 className={`flex items-center gap-1.5 px-2 py-1 rounded-full border transition-all flex-shrink-0 ${
-                  chefDetails?.isActive 
-                    ? "bg-green-50 dark:bg-green-950 border-green-500" 
+                  chefDetails?.isActive
+                    ? "bg-green-50 dark:bg-green-950 border-green-500"
                     : "bg-red-50 dark:bg-red-950 border-red-500"
                 }`}
               >
@@ -381,7 +395,7 @@ export default function PartnerDashboard() {
               </Button>
             </div>
           </div>
-          
+
           {/* Status Row - Hidden on md and above */}
           <div className="md:hidden flex items-center gap-2 text-xs">
             {newOrdersCount > 0 && (
@@ -459,6 +473,7 @@ export default function PartnerDashboard() {
               </Card>
             </div>
 
+            {/* Orders Section */}
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm md:text-base">Recent Orders</CardTitle>
@@ -495,6 +510,12 @@ export default function PartnerDashboard() {
                               <p className="text-muted-foreground text-xs">+{(order.items as any[]).length - 2} more</p>
                             )}
                           </div>
+                          {/* Display delivery time slot if available */}
+                          {order.deliveryTime && (
+                            <p className="text-sm font-bold text-orange-600 bg-orange-50 dark:bg-orange-950 px-2 py-1 rounded inline-block mt-1">
+                              🕐 Delivery Time: {order.deliveryTime}
+                            </p>
+                          )}
                         </div>
                         <div className="flex items-center justify-between md:flex-col md:items-end gap-2 flex-wrap">
                           <p className="font-bold text-sm md:text-base">₹{order.total}</p>
@@ -595,8 +616,8 @@ export default function PartnerDashboard() {
                   <Card
                     key={product.id}
                     className={`overflow-hidden transition-all hover:shadow-lg ${
-                      product.isAvailable 
-                        ? "bg-white dark:bg-slate-800" 
+                      product.isAvailable
+                        ? "bg-white dark:bg-slate-800"
                         : "opacity-60"
                     }`}
                     data-testid={`card-product-${product.id}`}
@@ -608,7 +629,7 @@ export default function PartnerDashboard() {
                         className={`w-full h-full object-cover ${!product.isAvailable ? "grayscale" : ""}`}
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-                      
+
                       {/* Offer Badge */}
                       {product.offerPercentage > 0 && (
                         <div className="absolute top-2 left-2 bg-blue-600 text-white text-xs font-bold px-2 py-1 rounded">
@@ -658,10 +679,10 @@ export default function PartnerDashboard() {
                         <div className="flex flex-col items-end gap-1 flex-shrink-0">
                           <Switch
                             checked={product.isAvailable}
-                            onCheckedChange={(checked) => 
-                              toggleProductAvailabilityMutation.mutate({ 
-                                productId: product.id, 
-                                isAvailable: checked 
+                            onCheckedChange={(checked) =>
+                              toggleProductAvailabilityMutation.mutate({
+                                productId: product.id,
+                                isAvailable: checked
                               })
                             }
                             disabled={toggleProductAvailabilityMutation.isPending}
@@ -672,7 +693,7 @@ export default function PartnerDashboard() {
                           </span>
                         </div>
                       </div>
-                      
+
                       <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
                         {product.description}
                       </p>
@@ -764,6 +785,12 @@ export default function PartnerDashboard() {
                             <Badge variant="outline" className="text-xs mt-2">
                               🚴 {order.deliveryPersonName}
                             </Badge>
+                          )}
+                          {/* Display delivery time slot if available */}
+                          {order.deliveryTime && (
+                            <p className="text-sm font-bold text-orange-600 bg-orange-50 dark:bg-orange-950 px-2 py-1 rounded inline-block mt-1">
+                              🕐 Delivery Time: {order.deliveryTime}
+                            </p>
                           )}
                         </div>
                         <div className="flex items-center justify-between md:flex-col md:items-end gap-2 flex-wrap">
@@ -906,7 +933,7 @@ export default function PartnerDashboard() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {subscriptionLoading ? (
+                {subscriptionDeliveriesLoading ? (
                   <div className="flex items-center justify-center py-8">
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                   </div>
@@ -915,73 +942,28 @@ export default function PartnerDashboard() {
                     {subscriptionDeliveries.deliveries.map((delivery: any) => (
                       <div
                         key={delivery.id}
-                        className="flex items-center justify-between p-4 border rounded-lg"
+                        className="border rounded-lg p-4 space-y-2"
                         data-testid={`subscription-delivery-${delivery.id}`}
                       >
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <p className="font-medium">{delivery.customerName}</p>
-                            <Badge variant="secondary">{delivery.planName}</Badge>
-                            <Badge variant={
-                              delivery.status === "delivered" ? "default" :
-                              delivery.status === "out_for_delivery" ? "secondary" :
-                              delivery.status === "preparing" ? "outline" :
-                              "outline"
-                            }>
-                              {(delivery.status || "scheduled").replace(/_/g, " ").toUpperCase()}
-                            </Badge>
-                            {delivery.chefName && (
-                              <span className="text-xs text-muted-foreground">Delivery: {delivery.chefName}</span>
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h4 className="font-semibold">{delivery.planName}</h4>
+                            <p className="text-sm text-muted-foreground">{delivery.customerName} - {delivery.phone}</p>
+                            <p className="text-sm text-muted-foreground">{delivery.address}</p>
+                            {delivery.deliverySlotId && (
+                              <p className="text-sm font-medium text-orange-600 bg-orange-50 dark:bg-orange-950 px-2 py-1 rounded inline-block mt-1">
+                                🕐 Delivery Time: {delivery.nextDeliveryTime}
+                              </p>
                             )}
                           </div>
-                          <p className="text-sm text-muted-foreground mt-1">
-                            {delivery.address}
-                          </p>
-                          <div className="flex gap-4 mt-1 text-xs text-muted-foreground">
-                            <span>Phone: {delivery.phone}</span>
-                            <span>Time: {delivery.time || "09:00"}</span>
-                          </div>
+                          <Badge className={delivery.status === "active" ? "bg-green-500" : "bg-yellow-500"}>
+                            {delivery.status}
+                          </Badge>
                         </div>
-                        <div className="flex gap-2 flex-wrap">
-                          <Button
-                            size="sm"
-                            variant={delivery.status === "preparing" ? "default" : "outline"}
-                            onClick={() => updateSubscriptionStatusMutation.mutate({ 
-                              subscriptionId: delivery.subscriptionId, 
-                              status: "preparing" 
-                            })}
-                            disabled={updateSubscriptionStatusMutation.isPending || delivery.status === "delivered"}
-                            data-testid={`button-sub-preparing-${delivery.id}`}
-                          >
-                            <Clock className="h-3 w-3 mr-1" />
-                            Preparing
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant={delivery.status === "out_for_delivery" ? "default" : "outline"}
-                            onClick={() => updateSubscriptionStatusMutation.mutate({ 
-                              subscriptionId: delivery.subscriptionId, 
-                              status: "out_for_delivery" 
-                            })}
-                            disabled={updateSubscriptionStatusMutation.isPending || delivery.status === "delivered"}
-                            data-testid={`button-sub-outfordelivery-${delivery.id}`}
-                          >
-                            <Truck className="h-3 w-3 mr-1" />
-                            Out
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant={delivery.status === "delivered" ? "default" : "outline"}
-                            onClick={() => updateSubscriptionStatusMutation.mutate({ 
-                              subscriptionId: delivery.subscriptionId, 
-                              status: "delivered" 
-                            })}
-                            disabled={updateSubscriptionStatusMutation.isPending}
-                            data-testid={`button-sub-delivered-${delivery.id}`}
-                          >
-                            <CheckCircle className="h-3 w-3 mr-1" />
-                            Delivered
-                          </Button>
+                        <div className="text-sm">
+                          <p>Next Delivery: {new Date(delivery.nextDeliveryDate).toLocaleDateString()}</p>
+                          <p>Remaining: {delivery.remainingDeliveries} / {delivery.totalDeliveries} deliveries</p>
+                          <p className="font-medium">Items: {delivery.planItems?.map((item: any) => `${item.name} x${item.quantity}`).join(", ")}</p>
                         </div>
                       </div>
                     ))}

@@ -310,6 +310,11 @@ export default function AdminOrders() {
                           <div>
                             <p className="font-medium">{order.customerName}</p>
                             <p className="text-sm text-slate-600 dark:text-slate-400">{order.phone}</p>
+                            {order.deliveryTime && (
+                              <p className="text-xs font-semibold text-orange-600 bg-orange-50 dark:bg-orange-900 px-2 py-0.5 rounded mt-1 inline-block">
+                                🕐 {order.deliveryTime}
+                              </p>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell>

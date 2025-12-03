@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
+import { toast } from "@/hooks/use-toast";
 import type { Order } from "@shared/schema";
 
 export function useAdminNotifications() {
@@ -68,6 +69,31 @@ export function useAdminNotifications() {
         // Invalidate chefs query to refresh the list immediately
         queryClient.invalidateQueries({ queryKey: ["/api/admin", "chefs"] });
         queryClient.invalidateQueries({ queryKey: ["/api/chefs"] });
+      } else if (data.type === "manual_assignment_required") {
+        toast({
+          title: "⚠️ Manual Assignment Required",
+          description: data.message,
+          variant: "destructive",
+        });
+        queryClient.invalidateQueries({ queryKey: ["/api/admin", "orders"] });
+      } else if (data.type === "overdue_chef_preparation") {
+        toast({
+          title: "⚠️ Chef Not Preparing",
+          description: data.message,
+          variant: "destructive",
+          duration: 10000,
+        });
+        queryClient.invalidateQueries({ queryKey: ["/api/admin/subscriptions/overdue-preparations"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/admin/subscriptions/today-deliveries"] });
+      } else if (data.type === "chef_unavailable_with_subscriptions") {
+        toast({
+          title: "🔴 Chef Unavailable - Reassignment Needed",
+          description: data.message,
+          variant: "destructive",
+          duration: 15000,
+        });
+        queryClient.invalidateQueries({ queryKey: ["/api/admin", "subscriptions"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/admin", "chefs"] });
       }
     };
 
