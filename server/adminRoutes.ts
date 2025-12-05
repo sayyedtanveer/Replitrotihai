@@ -1100,9 +1100,33 @@ export function registerAdminRoutes(app: Express) {
 
       console.log(`✅ Admin confirmed payment for subscription ${subscriptionId} (TxnID: ${subscription.paymentTransactionId}) - Subscription activated`);
 
-      // Broadcast the subscription update to customer and admin
+      // Broadcast the subscription update to customer, admin, and chef
       const { broadcastSubscriptionUpdate } = await import("./websocket");
-      broadcastSubscriptionUpdate(updated);
+      if (updated) {
+        broadcastSubscriptionUpdate(updated);
+        console.log(`📣 Broadcasted subscription activation to all connected clients`);
+      }
+
+      // Create today's delivery log if the subscription starts today and notify chef
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const nextDelivery = new Date(updated.nextDeliveryDate);
+      nextDelivery.setHours(0, 0, 0, 0);
+
+      if (nextDelivery.getTime() === today.getTime() && chefId) {
+        const existingLog = await storage.getDeliveryLogBySubscriptionAndDate(subscriptionId, today);
+        if (!existingLog) {
+          await storage.createSubscriptionDeliveryLog({
+            subscriptionId,
+            date: today,
+            time: updated.nextDeliveryTime || "09:00",
+            status: "scheduled",
+            deliveryPersonId: null,
+            notes: "Auto-created on payment confirmation",
+          });
+          console.log(`📋 Created today's delivery log for subscription ${subscriptionId}`);
+        }
+      }
 
       res.json({ 
         message: "Payment verified and subscription activated", 
@@ -2118,6 +2142,34 @@ export function registerAdminRoutes(app: Express) {
     }
   });
 
+  // Delete subscription
+  app.delete("/api/admin/subscriptions/:id", requireSuperAdmin(), async (req: AuthenticatedAdminRequest, res) => {
+    try {
+      const { id } = req.params;
+
+      const subscription = await storage.getSubscription(id);
+      if (!subscription) {
+        res.status(404).json({ message: "Subscription not found" });
+        return;
+      }
+
+      // Delete all delivery logs for this subscription first
+      const logs = await storage.getSubscriptionDeliveryLogs(id);
+      for (const log of logs) {
+        await storage.deleteSubscriptionDeliveryLog(log.id);
+      }
+
+      // Delete the subscription
+      await storage.deleteSubscription(id);
+
+      console.log(`🗑️ Admin deleted subscription ${id} for ${subscription.customerName}`);
+      res.json({ message: "Subscription deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting subscription:", error);
+      res.status(500).json({ message: "Failed to delete subscription" });
+    }
+  });
+
   // Renew subscription (create new subscription based on existing one)
   app.post("/api/admin/subscriptions/:id/renew", requireAdmin(), async (req: AuthenticatedAdminRequest, res) => {
     try {
@@ -2738,6 +2790,171 @@ export function registerAdminRoutes(app: Express) {
     } catch (error) {
       console.error("Error deleting coupon:", error);
       res.status(500).json({ message: "Failed to delete coupon" });
+    }
+  });
+
+  // ================= REFERRAL MANAGEMENT =================
+
+  // Get all referrals with user details
+  app.get("/api/admin/referrals", requireAdmin(), async (req: AuthenticatedAdminRequest, res) => {
+    try {
+      const referrals = await storage.getAllReferrals();
+      
+      // Enrich referrals with user details
+      const enrichedReferrals = await Promise.all(
+        referrals.map(async (referral) => {
+          const referrer = await storage.getUser(referral.referrerId);
+          const referred = await storage.getUser(referral.referredId);
+          return {
+            ...referral,
+            referrerName: referrer?.name || "Unknown",
+            referrerPhone: referrer?.phone || "-",
+            referredName: referred?.name || "Unknown",
+            referredPhone: referred?.phone || "-",
+          };
+        })
+      );
+      
+      res.json(enrichedReferrals);
+    } catch (error) {
+      console.error("Error fetching referrals:", error);
+      res.status(500).json({ message: "Failed to fetch referrals" });
+    }
+  });
+
+  // Get referral stats
+  app.get("/api/admin/referral-stats", requireAdmin(), async (req: AuthenticatedAdminRequest, res) => {
+    try {
+      const referrals = await storage.getAllReferrals();
+      
+      const totalReferrals = referrals.length;
+      const pendingReferrals = referrals.filter(r => r.status === "pending").length;
+      const completedReferrals = referrals.filter(r => r.status === "completed").length;
+      const totalBonusPaid = referrals
+        .filter(r => r.status === "completed")
+        .reduce((sum, r) => sum + r.referrerBonus + r.referredBonus, 0);
+      
+      res.json({
+        totalReferrals,
+        pendingReferrals,
+        completedReferrals,
+        totalBonusPaid,
+      });
+    } catch (error) {
+      console.error("Error fetching referral stats:", error);
+      res.status(500).json({ message: "Failed to fetch referral stats" });
+    }
+  });
+
+  // Update referral status
+  app.patch("/api/admin/referrals/:id/status", requireAdmin(), async (req: AuthenticatedAdminRequest, res) => {
+    try {
+      const { id } = req.params;
+      const { status } = req.body;
+      
+      if (!["pending", "completed", "expired"].includes(status)) {
+        res.status(400).json({ message: "Invalid status" });
+        return;
+      }
+      
+      const referral = await storage.getReferralById(id);
+      if (!referral) {
+        res.status(404).json({ message: "Referral not found" });
+        return;
+      }
+      
+      if (status === "completed" && referral.status !== "completed") {
+        // Credit bonuses to both users
+        const settings = await storage.getActiveReferralReward();
+        const referrerBonus = settings?.referrerBonus || 50;
+        const referredBonus = settings?.referredBonus || 50;
+        
+        // Credit referrer
+        const referrer = await storage.getUser(referral.referrerId);
+        if (referrer) {
+          await storage.updateUser(referral.referrerId, {
+            walletBalance: referrer.walletBalance + referrerBonus,
+          });
+          await storage.createWalletTransaction({
+            userId: referral.referrerId,
+            amount: referrerBonus,
+            type: "referral_bonus",
+            description: `Referral bonus for successful referral`,
+            referenceId: id,
+            referenceType: "referral",
+          });
+        }
+        
+        await storage.updateReferralStatus(id, "completed", referrerBonus, referredBonus);
+      } else {
+        await storage.updateReferralStatus(id, status, 0, 0);
+      }
+      
+      res.json({ message: "Referral status updated successfully" });
+    } catch (error) {
+      console.error("Error updating referral status:", error);
+      res.status(500).json({ message: "Failed to update referral status" });
+    }
+  });
+
+  // ================= WALLET TRANSACTION LOGS =================
+
+  // Get all wallet transactions
+  app.get("/api/admin/wallet-transactions", requireAdmin(), async (req: AuthenticatedAdminRequest, res) => {
+    try {
+      const { date } = req.query;
+      const transactions = await storage.getAllWalletTransactions(date as string | undefined);
+      
+      // Enrich transactions with user details
+      const enrichedTransactions = await Promise.all(
+        transactions.map(async (tx) => {
+          const user = await storage.getUser(tx.userId);
+          return {
+            ...tx,
+            userName: user?.name || "Unknown",
+            userPhone: user?.phone || "-",
+          };
+        })
+      );
+      
+      res.json(enrichedTransactions);
+    } catch (error) {
+      console.error("Error fetching wallet transactions:", error);
+      res.status(500).json({ message: "Failed to fetch wallet transactions" });
+    }
+  });
+
+  // Get wallet transaction stats
+  app.get("/api/admin/wallet-stats", requireAdmin(), async (req: AuthenticatedAdminRequest, res) => {
+    try {
+      const transactions = await storage.getAllWalletTransactions();
+      
+      let totalCredits = 0;
+      let totalDebits = 0;
+      let totalReferralBonus = 0;
+      let totalOrderDiscounts = 0;
+      
+      for (const tx of transactions) {
+        if (tx.type === "credit") {
+          totalCredits += Math.abs(tx.amount);
+        } else if (tx.type === "debit") {
+          totalDebits += Math.abs(tx.amount);
+        } else if (tx.type === "referral_bonus") {
+          totalReferralBonus += Math.abs(tx.amount);
+        } else if (tx.type === "order_discount") {
+          totalOrderDiscounts += Math.abs(tx.amount);
+        }
+      }
+      
+      res.json({
+        totalCredits,
+        totalDebits,
+        totalReferralBonus,
+        totalOrderDiscounts,
+      });
+    } catch (error) {
+      console.error("Error fetching wallet stats:", error);
+      res.status(500).json({ message: "Failed to fetch wallet stats" });
     }
   });
 }

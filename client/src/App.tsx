@@ -33,6 +33,9 @@ import DeliveryDashboard from "./pages/delivery/DeliveryDashboard";
 import OrderTracking from "@/pages/OrderTracking";
 import AdminWalletSettings from "./pages/admin/AdminWalletSettings";
 import AdminDeliveryTimeSlots from "@/pages/admin/AdminDeliveryTimeSlots";
+import InviteEarn from "@/pages/InviteEarn";
+import AdminReferrals from "@/pages/admin/AdminReferrals";
+import AdminWalletLogs from "@/pages/admin/AdminWalletLogs";
 // Add AdminCartSettings import here
 const AdminCartSettings = lazy(() => import("@/pages/admin/AdminCartSettings"));
 
@@ -82,6 +85,8 @@ function Router() {
       <Route path="/admin/delivery-settings" component={AdminDeliverySettings} />
       <Route path="/admin/wallet-settings" component={AdminWalletSettings} />
       <Route path="/admin/delivery-time-slots" component={AdminDeliveryTimeSlots} />
+      <Route path="/admin/referrals" component={AdminReferrals} />
+      <Route path="/admin/wallet-logs" component={AdminWalletLogs} />
       {/* Add cart settings admin route */}
       <Route path="/admin/cart-settings" component={AdminCartSettings} />
 
@@ -111,6 +116,10 @@ function Router() {
       <Route
         path="/orders"
         component={() => <ProtectedRoute component={MyOrders} />}
+      />
+      <Route
+        path="/invite"
+        component={() => <ProtectedRoute component={InviteEarn} />}
       />
 
       <Route path="/track/:orderId" component={OrderTracking} />

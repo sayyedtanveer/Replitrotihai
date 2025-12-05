@@ -40,6 +40,7 @@ export default function AdminSubscriptions() {
 
   // Today's deliveries modal
   const [todaysDeliveriesOpen, setTodaysDeliveriesOpen] = useState(false);
+  const [deletingSubscription, setDeletingSubscription] = useState<Subscription | null>(null);
 
   // Delivery time slots
   const [newSlot, setNewSlot] = useState({
@@ -345,6 +346,26 @@ export default function AdminSubscriptions() {
     },
     onError: () => {
       toast({ title: "Error", description: "Failed to change status", variant: "destructive" });
+    },
+  });
+
+  // Delete subscription mutation
+  const deleteSubscriptionMutation = useMutation({
+    mutationFn: async (subscriptionId: string) => {
+      const response = await fetch(`/api/admin/subscriptions/${subscriptionId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error("Failed to delete subscription");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin", "subscriptions"] });
+      toast({ title: "Deleted", description: "Subscription deleted successfully" });
+      setDeletingSubscription(null);
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to delete subscription", variant: "destructive" });
     },
   });
 
@@ -1160,6 +1181,14 @@ export default function AdminSubscriptions() {
                                 >
                                   <Settings2 className="w-3 h-3" />
                                 </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => setDeletingSubscription(sub)}
+                                  data-testid={`button-delete-${sub.id}`}
+                                >
+                                  <Trash2 className="w-3 h-3 text-red-600" />
+                                </Button>
                               </div>
                             </div>
                           </div>
@@ -1392,6 +1421,32 @@ export default function AdminSubscriptions() {
               data-testid="button-save-adjustment"
             >
               {adjustSubscriptionMutation.isPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Subscription Confirmation Dialog */}
+      <Dialog open={!!deletingSubscription} onOpenChange={() => setDeletingSubscription(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Subscription</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete the subscription for {deletingSubscription?.customerName}? 
+              This action cannot be undone and will delete all associated delivery logs.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeletingSubscription(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => deletingSubscription && deleteSubscriptionMutation.mutate(deletingSubscription.id)}
+              disabled={deleteSubscriptionMutation.isPending}
+              data-testid="button-confirm-delete-subscription"
+            >
+              {deleteSubscriptionMutation.isPending ? "Deleting..." : "Delete Subscription"}
             </Button>
           </DialogFooter>
         </DialogContent>

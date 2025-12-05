@@ -28,7 +28,7 @@ class CustomerNotificationsManager {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 10;
   private baseReconnectDelay = 1000; // Start with 1 second
-  
+
   public wsConnected = false;
   public chefStatuses: Record<string, boolean> = {};
   public productAvailability: Record<string, { isAvailable: boolean; stock?: number }> = {};
@@ -86,7 +86,7 @@ class CustomerNotificationsManager {
         if (data.type === "chef_status_update") {
           const chef = data.data as ChefStatusUpdate;
           console.log(`Chef status updated: ${chef.name} is now ${chef.isActive ? "OPEN" : "CLOSED"}`);
-          
+
           const wasOpen = this.chefStatuses[chef.id];
           // Show toast only if status actually changed and not first load
           if (!this.isFirstLoad && wasOpen !== undefined && wasOpen !== chef.isActive) {
@@ -96,7 +96,7 @@ class CustomerNotificationsManager {
               variant: chef.isActive ? "default" : "destructive",
             });
           }
-          
+
           this.chefStatuses = {
             ...this.chefStatuses,
             [chef.id]: chef.isActive
@@ -111,7 +111,7 @@ class CustomerNotificationsManager {
         if (data.type === "product_availability_update") {
           const product = data.data as ProductAvailabilityUpdate;
           console.log(`Product availability updated: ${product.name} is now ${product.isAvailable ? "AVAILABLE" : "UNAVAILABLE"}`);
-          
+
           const wasAvailable = this.productAvailability[product.id]?.isAvailable;
           // Show toast only if availability actually changed and not first load
           if (!this.isFirstLoad && wasAvailable !== undefined && wasAvailable !== product.isAvailable) {
@@ -121,7 +121,7 @@ class CustomerNotificationsManager {
               variant: product.isAvailable ? "default" : "destructive",
             });
           }
-          
+
           this.productAvailability = {
             ...this.productAvailability,
             [product.id]: { isAvailable: product.isAvailable, stock: product.stock }
@@ -130,6 +130,22 @@ class CustomerNotificationsManager {
           // Invalidate product queries to refresh data
           queryClient.invalidateQueries({ queryKey: ["/api/products"] });
           this.notify();
+        }
+
+        // Handle subscription_update messages
+        if (data.type === "subscription_update") {
+          const subscription = data.data;
+          console.log("Subscription updated:", subscription.id, subscription.status);
+          queryClient.invalidateQueries({ queryKey: ["/api/subscriptions"] });
+
+          // Show notification to user
+          if (subscription.isPaid && subscription.status === "active") {
+            toast({
+              title: "Subscription Activated! 🎉",
+              description: `Your subscription has been confirmed and is now active.`,
+              duration: 5000,
+            });
+          }
         }
       } catch (error) {
         console.error("Error parsing WebSocket message:", error);
@@ -160,7 +176,7 @@ class CustomerNotificationsManager {
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
     }
-    
+
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       console.log("Max WebSocket reconnection attempts reached");
       return;
@@ -169,9 +185,9 @@ class CustomerNotificationsManager {
     // Exponential backoff: 1s, 2s, 4s, 8s... capped at 30s
     const delay = Math.min(this.baseReconnectDelay * Math.pow(2, this.reconnectAttempts), 30000);
     this.reconnectAttempts++;
-    
+
     console.log(`Scheduling WebSocket reconnection in ${delay}ms (attempt ${this.reconnectAttempts})`);
-    
+
     this.reconnectTimeout = setTimeout(() => {
       if (!this.ws && !this.connecting && this.listeners.size > 0) {
         console.log("Attempting WebSocket reconnection...");
@@ -201,7 +217,7 @@ const manager = CustomerNotificationsManager.getInstance();
 
 export function useCustomerNotifications() {
   const [, forceUpdate] = useState({});
-  
+
   useEffect(() => {
     return manager.subscribe(() => forceUpdate({}));
   }, []);

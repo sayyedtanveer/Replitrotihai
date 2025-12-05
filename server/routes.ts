@@ -213,7 +213,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Sanitize phone number
       const sanitizedPhone = result.data.phone.trim().replace(/\s+/g, '');
-      
+
       const existingUser = await storage.getUserByPhone(sanitizedPhone);
       if (existingUser) {
         res.status(409).json({ message: "User with this phone number already exists" });
@@ -507,6 +507,35 @@ app.post("/api/user/logout", async (req, res) => {
     }
   });
 
+  // Get public referral settings
+  app.get("/api/referral-settings", async (req, res) => {
+    try {
+      const settings = await storage.getActiveReferralReward();
+      if (!settings) {
+        res.json({
+          referrerBonus: 50,
+          referredBonus: 50,
+          minOrderAmount: 100,
+          maxReferralsPerMonth: 10,
+          maxEarningsPerMonth: 500,
+          expiryDays: 30,
+        });
+        return;
+      }
+      res.json({
+        referrerBonus: settings.referrerBonus,
+        referredBonus: settings.referredBonus,
+        minOrderAmount: settings.minOrderAmount,
+        maxReferralsPerMonth: settings.maxReferralsPerMonth,
+        maxEarningsPerMonth: settings.maxEarningsPerMonth,
+        expiryDays: settings.expiryDays,
+      });
+    } catch (error) {
+      console.error("Error fetching referral settings:", error);
+      res.status(500).json({ message: "Failed to fetch referral settings" });
+    }
+  });
+
   // Generate referral code for user
   app.post("/api/user/generate-referral", requireUser(), async (req: AuthenticatedUserRequest, res) => {
     try {
@@ -685,9 +714,21 @@ app.post("/api/user/logout", async (req, res) => {
 
       console.log(`✅ Subscription payment confirmed: ${id} - TxnID: ${paymentTransactionId.trim()}`);
 
+      // Fetch updated subscription
+      const updatedSubscription = await db.query.subscriptions.findFirst({
+        where: eq(subscriptions.id, id),
+      });
+
+      // **Admin Notification**: Broadcast to admin when payment is confirmed
+      if (updatedSubscription) {
+        const { broadcastSubscriptionUpdate } = await import("./websocket");
+        broadcastSubscriptionUpdate(updatedSubscription);
+        console.log(`📣 Broadcasted subscription payment confirmation to admin for subscription ${id}`);
+      }
+
       res.status(200).json({
         message: "Payment confirmation submitted. Admin will verify shortly.",
-        subscription: {
+        subscription: updatedSubscription || {
           ...subscription,
           paymentTransactionId: paymentTransactionId.trim()
         }
@@ -1347,7 +1388,7 @@ app.post("/api/orders", async (req: any, res) => {
       const category = await storage.getCategoryById(plan.categoryId);
       const isRotiCategory = category?.name?.toLowerCase() === 'roti' || 
                              category?.name?.toLowerCase().includes('roti');
-      
+
       // Validate: If subscription is for Roti category, deliverySlotId is required
       if (isRotiCategory && !deliverySlotId) {
         res.status(400).json({
@@ -1383,7 +1424,7 @@ app.post("/api/orders", async (req: any, res) => {
         totalDeliveries = Math.floor(durationDays / 30);
       }
 
-      const subscription = await storage.createSubscription({
+      const subscriptionData: any = { // Use a different variable name to avoid conflict
         userId,
         planId,
         chefId: null,
@@ -1414,9 +1455,15 @@ app.post("/api/orders", async (req: any, res) => {
         deliveryHistory: [],
         pauseStartDate: null,
         pauseResumeDate: null,
-      });
+      };
 
-      console.log(`📋 Subscription created: ${subscription.id} - Status: pending (awaiting payment)`);
+      const subscription = await storage.createSubscription(subscriptionData);
+
+      console.log(`✅ Subscription created: ${subscription.id}`);
+
+      // Broadcast new subscription to admin
+      const { broadcastSubscriptionUpdate } = await import("./websocket");
+      broadcastSubscriptionUpdate(subscription);
 
       res.status(201).json(subscription);
     } catch (error: any) {
@@ -1442,24 +1489,24 @@ app.post("/api/orders", async (req: any, res) => {
       }
 
       const { pauseStartDate, pauseResumeDate } = req.body;
-      
+
       // Prepare update data
       const updateData: any = { status: "paused" };
-      
+
       if (pauseStartDate) {
         updateData.pauseStartDate = new Date(pauseStartDate);
       } else {
         updateData.pauseStartDate = new Date();
       }
-      
+
       if (pauseResumeDate) {
         updateData.pauseResumeDate = new Date(pauseResumeDate);
       }
 
       const updated = await storage.updateSubscription(req.params.id, updateData);
-      
+
       console.log(`⏸️ Subscription ${req.params.id} paused from ${updateData.pauseStartDate} to ${updateData.pauseResumeDate || 'indefinite'}`);
-      
+
       res.json(updated);
     } catch (error: any) {
       console.error("Error pausing subscription:", error);
@@ -1488,9 +1535,9 @@ app.post("/api/orders", async (req: any, res) => {
         pauseStartDate: null,
         pauseResumeDate: null
       });
-      
+
       console.log(`▶️ Subscription ${req.params.id} resumed`);
-      
+
       res.json(updated);
     } catch (error: any) {
       console.error("Error resuming subscription:", error);
@@ -1523,9 +1570,9 @@ app.post("/api/orders", async (req: any, res) => {
       const updated = await storage.updateSubscription(req.params.id, { 
         nextDeliveryTime: deliveryTime 
       });
-      
+
       console.log(`🕐 Subscription ${req.params.id} delivery time updated to ${deliveryTime}`);
-      
+
       res.json(updated);
     } catch (error: any) {
       console.error("Error updating delivery time:", error);
@@ -1736,7 +1783,7 @@ app.post("/api/orders", async (req: any, res) => {
       }
 
       const logs = await storage.getSubscriptionDeliveryLogs(req.params.id);
-      
+
       const scheduleItems = logs.map(log => ({
         date: log.date,
         time: log.time,
@@ -1820,13 +1867,13 @@ app.post("/api/orders", async (req: any, res) => {
 
       const updated = await storage.updateSubscription(req.params.id, { chefId, chefAssignedAt: new Date() });
       console.log(`👨‍🍳 Subscription ${req.params.id} assigned to chef ${chefId}`);
-      
+
       // Broadcast the subscription update
       const { broadcastSubscriptionUpdate } = await import("./websocket");
       if (updated) {
         broadcastSubscriptionUpdate(updated);
       }
-      
+
       res.json(updated);
     } catch (error: any) {
       console.error("Error assigning chef to subscription:", error);
@@ -1840,18 +1887,18 @@ app.post("/api/orders", async (req: any, res) => {
       const allSubscriptions = await storage.getSubscriptions();
       const now = new Date();
       const reassignmentThresholdDays = 2; // Reassign if no delivery in 2 days
-      
+
       const pendingReassignments = allSubscriptions.filter(sub => {
         // Must have a chef assigned
         if (!sub.chefId || !sub.chefAssignedAt) return false;
-        
+
         // Must be active and paid
         if (sub.status !== "active" || !sub.isPaid) return false;
-        
+
         // Check if assigned more than threshold days ago AND no recent delivery
         const daysSinceAssignment = Math.floor((now.getTime() - new Date(sub.chefAssignedAt).getTime()) / (1000 * 60 * 60 * 24));
         const daysSinceLastDelivery = sub.lastDeliveryDate ? Math.floor((now.getTime() - new Date(sub.lastDeliveryDate).getTime()) / (1000 * 60 * 60 * 24)) : daysSinceAssignment;
-        
+
         // Flag for reassignment if assigned 2+ days ago with no delivery
         return daysSinceAssignment >= reassignmentThresholdDays && daysSinceLastDelivery >= reassignmentThresholdDays;
       });
@@ -1898,7 +1945,7 @@ app.post("/api/orders", async (req: any, res) => {
 
       const oldChefId = subscription.chefId;
       const updated = await storage.updateSubscription(req.params.id, { chefId: newChefId, chefAssignedAt: new Date() });
-      
+
       console.log(`🔄 Subscription ${req.params.id} reassigned from chef ${oldChefId} to ${newChefId}`);
       res.json({ 
         message: "Subscription reassigned successfully", 

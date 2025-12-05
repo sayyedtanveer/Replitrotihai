@@ -35,6 +35,11 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
   } | null>(null);
   const [, setLocation] = useLocation();
   
+  // Delivery slot selection for subscription (Roti category)
+  const [showSlotSelectionModal, setShowSlotSelectionModal] = useState(false);
+  const [selectedPlanForSubscription, setSelectedPlanForSubscription] = useState<string | null>(null);
+  const [selectedSubscriptionSlotId, setSelectedSubscriptionSlotId] = useState<string>("");
+  
   // Advanced pause modal state
   const [showPauseModal, setShowPauseModal] = useState(false);
   const [pauseSubscriptionId, setPauseSubscriptionId] = useState<string | null>(null);
@@ -52,6 +57,16 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
     queryFn: async () => {
       const response = await fetch("/api/delivery-slots");
       if (!response.ok) throw new Error("Failed to fetch delivery slots");
+      return response.json();
+    },
+  });
+  
+  // Fetch categories to check if plan is Roti category
+  const { data: categoryList } = useQuery({
+    queryKey: ["/api/categories"],
+    queryFn: async () => {
+      const response = await fetch("/api/categories");
+      if (!response.ok) throw new Error("Failed to fetch categories");
       return response.json();
     },
   });
@@ -119,14 +134,14 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
   });
 
   const subscribeMutation = useMutation({
-    mutationFn: async (planId: string) => {
+    mutationFn: async ({ planId, deliverySlotId }: { planId: string; deliverySlotId?: string }) => {
       const response = await fetch("/api/subscriptions", {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
           ...getAuthHeaders(),
         },
-        body: JSON.stringify({ planId }),
+        body: JSON.stringify({ planId, deliverySlotId }),
       });
       if (!response.ok) {
         if (response.status === 401) {
@@ -381,6 +396,47 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
 
   const subscribedPlanIds = mySubscriptions?.map(s => s.planId) || [];
 
+  // Handler to check if plan needs delivery slot selection
+  const handleSubscribe = (planId: string) => {
+    const plan = plans?.find(p => p.id === planId);
+    if (!plan) return;
+
+    const category = categoryList?.find((c: any) => c.id === plan.categoryId);
+    const isRotiCategory = category?.name?.toLowerCase().includes('roti');
+
+    if (isRotiCategory) {
+      // Show slot selection modal for Roti plans
+      setSelectedPlanForSubscription(planId);
+      setSelectedSubscriptionSlotId("");
+      setShowSlotSelectionModal(true);
+    } else {
+      // Subscribe directly for non-Roti plans
+      subscribeMutation.mutate({ planId });
+    }
+  };
+
+  // Confirm subscription with selected slot
+  const confirmSubscriptionWithSlot = () => {
+    if (!selectedPlanForSubscription) return;
+
+    if (!selectedSubscriptionSlotId) {
+      toast({ 
+        title: "Slot Required", 
+        description: "Please select a delivery time slot", 
+        variant: "destructive" 
+      });
+      return;
+    }
+
+    subscribeMutation.mutate({ 
+      planId: selectedPlanForSubscription, 
+      deliverySlotId: selectedSubscriptionSlotId 
+    });
+    setShowSlotSelectionModal(false);
+    setSelectedPlanForSubscription(null);
+    setSelectedSubscriptionSlotId("");
+  };
+
   return (
     <>
       <Sheet open={isOpen} onOpenChange={onClose}>
@@ -426,7 +482,7 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
                     <SubscriptionCard
                       key={plan.id}
                       plan={plan}
-                      onSubscribe={(planId) => subscribeMutation.mutate(planId)}
+                      onSubscribe={handleSubscribe}
                       isSubscribed={subscribedPlanIds.includes(plan.id)}
                     />
                   ))}
@@ -895,6 +951,73 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowHistoryModal(false)}>
               Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delivery Slot Selection Modal for Subscription */}
+      <Dialog open={showSlotSelectionModal} onOpenChange={(open) => {
+        setShowSlotSelectionModal(open);
+        if (!open) {
+          setSelectedPlanForSubscription(null);
+          setSelectedSubscriptionSlotId("");
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Select Delivery Time Slot</DialogTitle>
+            <DialogDescription>
+              Choose your preferred daily delivery time for fresh rotis
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="subscriptionSlot">Delivery Time Slot *</Label>
+              <Select 
+                value={selectedSubscriptionSlotId} 
+                onValueChange={setSelectedSubscriptionSlotId}
+              >
+                <SelectTrigger data-testid="select-subscription-slot">
+                  <SelectValue placeholder="Choose a delivery time slot" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableSlots
+                    .filter((slot: any) => slot.isActive && slot.currentOrders < slot.capacity)
+                    .map((slot: any) => (
+                      <SelectItem 
+                        key={slot.id} 
+                        value={slot.id}
+                        data-testid={`subscription-slot-${slot.id}`}
+                      >
+                        {slot.label} ({slot.capacity - slot.currentOrders} slots available)
+                      </SelectItem>
+                    ))}
+                  {availableSlots.filter((slot: any) => slot.isActive && slot.currentOrders < slot.capacity).length === 0 && (
+                    <SelectItem value="none" disabled>
+                      No delivery slots available
+                    </SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Your rotis will be delivered daily at your selected time slot
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setShowSlotSelectionModal(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={confirmSubscriptionWithSlot}
+              disabled={!selectedSubscriptionSlotId || subscribeMutation.isPending}
+              data-testid="button-confirm-subscription-slot"
+            >
+              {subscribeMutation.isPending ? "Creating..." : "Continue to Payment"}
             </Button>
           </DialogFooter>
         </DialogContent>

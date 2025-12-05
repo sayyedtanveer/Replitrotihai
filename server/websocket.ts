@@ -183,6 +183,10 @@ export function broadcastSubscriptionUpdate(subscription: any) {
       client.ws.send(message);
       customerNotified = true;
       console.log(`  ✅ Sent to customer ${clientId}`);
+    } else if (client.type === "browser" && client.ws.readyState === WebSocket.OPEN) {
+      // Also send to browser connections (unauthenticated customers)
+      client.ws.send(message);
+      console.log(`  ✅ Sent to browser ${clientId}`);
     }
   });
 

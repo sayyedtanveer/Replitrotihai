@@ -879,8 +879,14 @@ export class MemStorage implements IStorage {
     return this.getSubscriptionDeliveryLog(id);
   }
 
-  async deleteSubscriptionDeliveryLog(id: string): Promise<void> {
+  async deleteSubscriptionDeliveryLog(id: string): Promise<boolean> {
     await db.delete(subscriptionDeliveryLogs).where(eq(subscriptionDeliveryLogs.id, id));
+    return true;
+  }
+
+  async deleteSubscription(id: string): Promise<boolean> {
+    await db.delete(subscriptions).where(eq(subscriptions.id, id));
+    return true;
   }
 
   async getDeliveryLogBySubscriptionAndDate(subscriptionId: string, date: Date): Promise<SubscriptionDeliveryLog | undefined> {
@@ -1324,6 +1330,11 @@ export class MemStorage implements IStorage {
         throw new Error("Invalid referral code");
       }
 
+      // Self-referral prevention
+      if (referrer.id === newUserId) {
+        throw new Error("You cannot use your own referral code");
+      }
+
       const newUser = await tx.query.users.findFirst({
         where: (u, { eq }) => eq(u.id, newUserId),
       });
@@ -1341,29 +1352,132 @@ export class MemStorage implements IStorage {
         throw new Error("User already used a referral code");
       }
 
-      // Create referral record first (creates the pending state)
+      // Get referral settings
+      const settings = await this.getActiveReferralReward();
+      const referrerBonus = settings?.referrerBonus || 50;
+      const referredBonus = settings?.referredBonus || 50;
+      const maxReferralsPerMonth = settings?.maxReferralsPerMonth || 10;
+      const maxEarningsPerMonth = settings?.maxEarningsPerMonth || 500;
+
+      // Check monthly referral limit for referrer
+      const startOfMonth = new Date();
+      startOfMonth.setDate(1);
+      startOfMonth.setHours(0, 0, 0, 0);
+
+      const monthlyReferrals = await tx.query.referrals.findMany({
+        where: (r, { and, eq: eqOp, gte: gteOp }) => and(
+          eqOp(r.referrerId, referrer.id),
+          gteOp(r.createdAt, startOfMonth)
+        ),
+      });
+
+      if (monthlyReferrals.length >= maxReferralsPerMonth) {
+        throw new Error(`Referrer has reached the monthly limit of ${maxReferralsPerMonth} referrals`);
+      }
+
+      // Check monthly earnings cap for referrer
+      const completedThisMonth = monthlyReferrals.filter(r => r.status === "completed");
+      const monthlyEarnings = completedThisMonth.reduce((sum, r) => sum + r.referrerBonus, 0);
+
+      if (monthlyEarnings >= maxEarningsPerMonth) {
+        throw new Error(`Referrer has reached the monthly earnings cap of ₹${maxEarningsPerMonth}`);
+      }
+
+      // Create referral record (pending state until first order)
       const referralData = {
         referrerId: referrer.id,
         referredId: newUserId,
         referralCode: referrer.referralCode!,
         status: "pending",
-        referrerBonus: 100,
-        referredBonus: 50,
+        referrerBonus: referrerBonus,
+        referredBonus: referredBonus,
         referredOrderCompleted: false,
       };
 
       const [referral] = await tx.insert(referrals).values(referralData).returning();
 
       // Give instant bonus to new user with proper wallet transaction
-      // Include referrer's name for clarity in transaction history
       await this.createWalletTransaction({
         userId: newUserId,
-        amount: 50,
+        amount: referredBonus,
         type: "referral_bonus",
         description: `Welcome bonus for using ${referrer.name}'s referral code (${referralCode})`,
         referenceId: referral.id,
         referenceType: "referral",
       }, tx);
+    });
+  }
+
+  // Complete referral when referred user places first order
+  async completeReferralOnFirstOrder(userId: string, orderId: string): Promise<void> {
+    await db.transaction(async (tx) => {
+      // Find pending referral for this user
+      const referral = await tx.query.referrals.findFirst({
+        where: (r, { and, eq: eqOp }) => and(
+          eqOp(r.referredId, userId),
+          eqOp(r.status, "pending")
+        ),
+      });
+
+      if (!referral) {
+        return; // No pending referral, nothing to do
+      }
+
+      // Get referral settings for validation
+      const settings = await this.getActiveReferralReward();
+      const expiryDays = settings?.expiryDays || 30;
+      const maxEarningsPerMonth = settings?.maxEarningsPerMonth || 500;
+
+      // Check if referral has expired
+      const referralDate = new Date(referral.createdAt);
+      const expiryDate = new Date(referralDate);
+      expiryDate.setDate(expiryDate.getDate() + expiryDays);
+
+      if (new Date() > expiryDate) {
+        // Mark as expired
+        await tx.update(referrals)
+          .set({ status: "expired" })
+          .where(eq(referrals.id, referral.id));
+        return;
+      }
+
+      // Check monthly earnings cap before crediting
+      const startOfMonth = new Date();
+      startOfMonth.setDate(1);
+      startOfMonth.setHours(0, 0, 0, 0);
+
+      const completedThisMonth = await tx.query.referrals.findMany({
+        where: (r, { and, eq: eqOp, gte: gteOp }) => and(
+          eqOp(r.referrerId, referral.referrerId),
+          eqOp(r.status, "completed"),
+          gteOp(r.createdAt, startOfMonth)
+        ),
+      });
+
+      const monthlyEarnings = completedThisMonth.reduce((sum, r) => sum + r.referrerBonus, 0);
+      const canCreditBonus = monthlyEarnings + referral.referrerBonus <= maxEarningsPerMonth;
+
+      if (canCreditBonus) {
+        // Credit referrer bonus
+        await this.createWalletTransaction({
+          userId: referral.referrerId,
+          amount: referral.referrerBonus,
+          type: "referral_bonus",
+          description: `Referral bonus - friend completed first order`,
+          referenceId: referral.id,
+          referenceType: "referral",
+        }, tx);
+      }
+
+      // Mark referral as completed
+      await tx.update(referrals)
+        .set({
+          status: "completed",
+          referredOrderCompleted: true,
+          completedAt: new Date(),
+          referrerBonus: canCreditBonus ? referral.referrerBonus : 0,
+        })
+        .where(eq(referrals.id, referral.id));
     });
   }
 
@@ -1654,7 +1768,7 @@ export class MemStorage implements IStorage {
   async updateReferralReward(id: string, data: Partial<ReferralReward>): Promise<ReferralReward | undefined> {
     const [updated] = await db.update(referralRewards)
       .set({ ...data, updatedAt: new Date() })
-      .where(eq(referralRewards.id, id))
+      .where(eq(referrals.id, id))
       .returning();
     return updated || undefined;
   }
@@ -1688,6 +1802,68 @@ export class MemStorage implements IStorage {
   async deleteCoupon(id: string): Promise<boolean> {
     const result = await db.delete(coupons).where(eq(coupons.id, id));
     return (result.rowCount ?? 0) > 0;
+  }
+
+  // Update coupon
+  async updateCoupon(id: string, data: Partial<any>): Promise<any> {
+    const [updated] = await db.update(coupons)
+      .set({ ...data })
+      .where(eq(coupons.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  // ================= NEW REFERRAL MANAGEMENT METHODS =================
+
+  // Get all referrals
+  async getAllReferrals(): Promise<any[]> {
+    return db.query.referrals.findMany({
+      orderBy: (r, { desc }) => [desc(r.createdAt)]
+    });
+  }
+
+  // Get referral by ID
+  async getReferralById(id: string): Promise<any | undefined> {
+    return db.query.referrals.findFirst({
+      where: (r, { eq: equals }) => equals(r.id, id)
+    });
+  }
+
+  // Update referral status
+  async updateReferralStatus(id: string, status: string, referrerBonus: number, referredBonus: number): Promise<void> {
+    await db.update(referrals)
+      .set({
+        status,
+        referrerBonus,
+        referredBonus,
+        referredOrderCompleted: status === "completed",
+        completedAt: status === "completed" ? new Date() : null,
+      })
+      .where(eq(referrals.id, id));
+  }
+
+  // ================= NEW WALLET TRANSACTION METHODS =================
+
+  // Get all wallet transactions (for admin)
+  async getAllWalletTransactions(dateFilter?: string): Promise<any[]> {
+    if (dateFilter) {
+      const filterDate = new Date(dateFilter);
+      const startOfDay = new Date(filterDate.setHours(0, 0, 0, 0));
+      const endOfDay = new Date(filterDate.setHours(23, 59, 59, 999));
+
+      return db.query.walletTransactions.findMany({
+        where: (wt, { and, gte: gteOp, lte: lteOp }) => and(
+          gteOp(wt.createdAt, startOfDay),
+          lteOp(wt.createdAt, endOfDay)
+        ),
+        orderBy: (wt, { desc }) => [desc(wt.createdAt)]
+      });
+    }
+
+    return db.query.walletTransactions.findMany({
+      orderBy: (wt, { desc }) => [desc(wt.createdAt)],
+      limit: 500
+    });
   }
 }
 

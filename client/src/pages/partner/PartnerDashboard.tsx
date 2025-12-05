@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Package, DollarSign, Clock, CheckCircle, Bell, Wifi, WifiOff, TrendingUp, Calendar, UserCircle, LogOut, Store, UtensilsCrossed, ToggleLeft, ToggleRight, Repeat, Truck, Loader2, Star } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Package, DollarSign, Clock, CheckCircle, Bell, Wifi, WifiOff, TrendingUp, Calendar, UserCircle, LogOut, Store, UtensilsCrossed, ToggleLeft, ToggleRight, Repeat, Truck, Loader2, Star, MapPin, Phone } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -495,7 +495,7 @@ export default function PartnerDashboard() {
                             </Badge>
                           </div>
                           <p className="text-xs md:text-sm text-muted-foreground mt-1">
-                            {order.customerName} • {order.phone}
+                            {order.customerName}
                           </p>
                           <p className="text-xs text-muted-foreground">
                             {format(new Date(order.createdAt), "MMM d, h:mm a")}
@@ -766,7 +766,7 @@ export default function PartnerDashboard() {
                             </Badge>
                           </div>
                           <p className="text-xs md:text-sm text-muted-foreground mt-1">
-                            {order.customerName} • {order.phone}
+                            {order.customerName}
                           </p>
                           <p className="text-xs text-muted-foreground">
                             {format(new Date(order.createdAt), "MMM d, h:mm a")}
@@ -948,8 +948,7 @@ export default function PartnerDashboard() {
                         <div className="flex justify-between items-start">
                           <div>
                             <h4 className="font-semibold">{delivery.planName}</h4>
-                            <p className="text-sm text-muted-foreground">{delivery.customerName} - {delivery.phone}</p>
-                            <p className="text-sm text-muted-foreground">{delivery.address}</p>
+                            <p className="text-sm text-muted-foreground">{delivery.customerName}</p>
                             {delivery.deliverySlotId && (
                               <p className="text-sm font-medium text-orange-600 bg-orange-50 dark:bg-orange-950 px-2 py-1 rounded inline-block mt-1">
                                 🕐 Delivery Time: {delivery.nextDeliveryTime}

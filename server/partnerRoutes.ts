@@ -1,5 +1,5 @@
 import type { Express } from "express";
-import { requirePartner, type AuthenticatedPartnerRequest } from "./partnerAuth";
+import { requirePartner, type AuthenticatedPartnerRequest, verifyToken } from "./partnerAuth";
 import { storage } from "./storage";
 import { broadcastOrderUpdate, broadcastPreparedOrderToAvailableDelivery, broadcastProductAvailabilityUpdate, broadcastChefStatusUpdate } from "./websocket";
 import { db, orders } from "@shared/db";
@@ -16,14 +16,21 @@ export function registerPartnerRoutes(app: Express): void {
       }
 
       const orders = await storage.getOrdersByChefId(chefId);
-      res.json(orders);
+      
+      // Remove sensitive customer information
+      const sanitizedOrders = orders.map(order => {
+        const { phone, address, email, ...safeOrder } = order;
+        return safeOrder;
+      });
+      
+      res.json(sanitizedOrders);
     } catch (error) {
       console.error("Error fetching partner orders:", error);
       res.status(500).json({ message: "Failed to fetch orders" });
     }
   });
 
-  // Get subscriptions assigned to this chef
+  // Get subscriptions for this chef/partner
   app.get("/api/partner/subscriptions", requirePartner(), async (req: AuthenticatedPartnerRequest, res) => {
     try {
       const chefId = req.partner?.chefId;
@@ -33,13 +40,15 @@ export function registerPartnerRoutes(app: Express): void {
       }
 
       const allSubscriptions = await storage.getSubscriptions();
-      const chefSubscriptions = allSubscriptions.filter(sub => sub.chefId === chefId);
+      const chefSubscriptions = allSubscriptions.filter(s => s.chefId === chefId && s.isPaid);
 
       const enrichedSubscriptions = await Promise.all(
         chefSubscriptions.map(async (sub) => {
           const plan = await storage.getSubscriptionPlan(sub.planId);
+          // Remove sensitive customer information
+          const { phone, address, email, ...safeSub } = sub;
           return {
-            ...sub,
+            ...safeSub,
             planName: plan?.name,
             planItems: plan?.items,
             planFrequency: plan?.frequency,

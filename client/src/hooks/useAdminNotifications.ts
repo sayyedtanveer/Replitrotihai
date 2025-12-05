@@ -64,6 +64,33 @@ export function useAdminNotifications() {
         }
       }
 
+      // Handle subscription payment verification
+      if (data.type === "subscription_update") {
+        const subscription = data.data;
+        
+        // Invalidate subscription queries
+        queryClient.invalidateQueries({ queryKey: ["/api/admin", "subscriptions"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/admin/dashboard/metrics"] });
+
+        // Show notification if payment transaction ID was just added (user confirmed payment)
+        if (subscription.paymentTransactionId && !subscription.isPaid) {
+          setUnreadCount((prev) => prev + 1);
+
+          toast({
+            title: "💳 New Subscription Payment",
+            description: `${subscription.customerName} submitted payment (TxnID: ${subscription.paymentTransactionId.slice(0, 12)}...)`,
+            duration: 5000,
+          });
+
+          if (Notification.permission === "granted") {
+            new Notification("Subscription Payment Pending", {
+              body: `${subscription.customerName} - Verify payment to activate subscription`,
+              icon: "/favicon.ico",
+            });
+          }
+        }
+      }
+
       if (data.type === "chef_status_update") {
         console.log("🔄 Chef status updated:", data.data);
         // Invalidate chefs query to refresh the list immediately
