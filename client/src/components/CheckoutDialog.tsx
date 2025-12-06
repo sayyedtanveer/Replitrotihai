@@ -101,7 +101,7 @@ export default function CheckoutDialog({
   const applyReferralMutation = useApplyReferral();
 
   // Check if this is a Roti category order
-  const isRotiCategory = cart?.categoryName?.toLowerCase() === 'roti' || 
+  const isRotiCategory = cart?.categoryName?.toLowerCase() === 'roti' ||
                          cart?.categoryName?.toLowerCase().includes('roti');
 
   // Fetch delivery time slots for Roti orders
@@ -125,29 +125,91 @@ export default function CheckoutDialog({
       cutoffDate: Date;
       isPastCutoff: boolean;
       nextAvailableDate: Date;
+      deliveryDateLabel: string;
+      isMorningSlot: boolean;
+      slotHasPassed: boolean;
     }> = {};
     const now = new Date();
+    const currentHour = now.getHours();
+
     deliverySlots.forEach((slot) => {
       const [hStr, mStr] = (slot.startTime || "00:00").split(":");
       const h = parseInt(hStr || "0", 10) || 0;
       const m = parseInt(mStr || "0", 10) || 0;
 
-      const slotDate = new Date(now);
-      slotDate.setHours(h, m, 0, 0);
+      // Check if this is a morning slot (8 AM to 11 AM)
+      const isMorningSlot = h >= 8 && h < 11;
 
-  // Prefer per-slot configured cutoff if available
-  const cutoffHours = typeof (slot as any).cutoffHoursBefore === 'number' ? (slot as any).cutoffHoursBefore : (h <= 8 ? 10 : 4);
+      // Get cutoff hours - prefer slot's configured value, otherwise use defaults
+      let cutoffHours: number;
+      if (typeof (slot as any).cutoffHoursBefore === 'number') {
+        cutoffHours = (slot as any).cutoffHoursBefore;
+      } else if (isMorningSlot) {
+        // Morning slots: default to 11 PM previous day
+        cutoffHours = h + 13; // 8 AM + 13 = 21 (9 PM), 9 AM + 13 = 22 (10 PM), 10 AM + 13 = 23 (11 PM)
+      } else if (h < 8) {
+        cutoffHours = 10;
+      } else if (h >= 12) {
+        // Evening/afternoon slots: use 1 hour cutoff
+        // If it's 2 PM and user selects 2 PM, it will be next day
+        // User must select 3 PM or later for same-day delivery
+        cutoffHours = 1;
+      } else {
+        cutoffHours = 4;
+      }
+
+      // Build today's occurrence of this slot
+      const todaySlot = new Date(now);
+      todaySlot.setHours(h, m, 0, 0);
+
+      // Check if this time slot has already passed today (current time > slot time)
+      const slotHasPassed = now > todaySlot;
+
+      // Calculate cutoff time for today's slot
       const cutoffMs = cutoffHours * 60 * 60 * 1000;
-      const cutoffDate = new Date(slotDate.getTime() - cutoffMs);
-      const isPastCutoff = now > cutoffDate;
-      const nextAvailableDate = new Date(slotDate);
-      if (isPastCutoff) nextAvailableDate.setDate(nextAvailableDate.getDate() + 1);
+      const todayCutoffTime = new Date(todaySlot.getTime() - cutoffMs);
+
+      // Determine if we can still order for today's slot
+      let deliveryDate: Date;
+      let isPastCutoff: boolean;
+
+      // Logic: If slot time has passed OR we're past the cutoff time, deliver tomorrow
+      if (slotHasPassed || now > todayCutoffTime) {
+        // Schedule for tomorrow
+        deliveryDate = new Date(todaySlot);
+        deliveryDate.setDate(deliveryDate.getDate() + 1);
+        isPastCutoff = true;
+      } else {
+        // Can still deliver today
+        deliveryDate = todaySlot;
+        isPastCutoff = false;
+      }
+
+      // Create friendly label for delivery date
+      const todayStart = new Date(now);
+      todayStart.setHours(0, 0, 0, 0);
+      const tomorrowStart = new Date(todayStart);
+      tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+      const deliveryDateStart = new Date(deliveryDate);
+      deliveryDateStart.setHours(0, 0, 0, 0);
+
+      let deliveryDateLabel: string;
+      if (deliveryDateStart.getTime() === todayStart.getTime()) {
+        deliveryDateLabel = "Today";
+      } else if (deliveryDateStart.getTime() === tomorrowStart.getTime()) {
+        deliveryDateLabel = "Tomorrow";
+      } else {
+        deliveryDateLabel = deliveryDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+      }
 
       map[slot.id] = {
         cutoffHoursBefore: cutoffHours,
-        cutoffDate,
+        cutoffDate: todayCutoffTime,
         isPastCutoff,
-        nextAvailableDate,
+        nextAvailableDate: deliveryDate,
+        deliveryDateLabel,
+        isMorningSlot,
+        slotHasPassed,
       };
     });
     return map;
@@ -336,11 +398,32 @@ export default function CheckoutDialog({
       return;
     }
 
+    // Check morning restriction for Roti orders (8 AM - 11 AM)
+    const now = new Date();
+    const currentHour = now.getHours();
+    const inMorningRestriction = currentHour >= 8 && currentHour < 11;
+    
+    if (isRotiCategory && inMorningRestriction && selectedDeliverySlotId) {
+      const selectedSlotInfo = slotCutoffMap[selectedDeliverySlotId];
+      if (selectedSlotInfo?.isMorningSlot) {
+        toast({
+          title: "Morning Slot Unavailable",
+          description: "Morning delivery slots (8 AM - 11 AM) must be ordered by 11 PM the previous day. Please select a later time slot or order after 11 AM.",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
     // Delivery time is optional for Roti orders
 
     setIsLoading(true);
 
     try {
+      // Get delivery date info if slot selected
+      const slotInfo = selectedDeliverySlotId ? slotCutoffMap[selectedDeliverySlotId] : null;
+      const deliveryDateStr = slotInfo ? slotInfo.nextAvailableDate.toISOString().split('T')[0] : undefined;
+
       const orderData = {
         customerName,
         phone,
@@ -362,8 +445,9 @@ export default function CheckoutDialog({
         chefId: cart.chefId || cart.items[0]?.chefId,
         categoryId: cart.categoryId,
         categoryName: cart.categoryName,
-        deliveryTime: isRotiCategory ? selectedDeliveryTime : undefined,
-        deliverySlotId: isRotiCategory ? selectedDeliverySlotId : undefined,
+        deliveryTime: isRotiCategory && selectedDeliveryTime ? selectedDeliveryTime : undefined,
+        deliverySlotId: isRotiCategory && selectedDeliverySlotId ? selectedDeliverySlotId : undefined,
+        deliveryDate: isRotiCategory && deliveryDateStr ? deliveryDateStr : undefined,
         status: "pending" as const,
         paymentStatus: "pending" as const,
       };
@@ -607,7 +691,7 @@ export default function CheckoutDialog({
   return (
     <>
       <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-        <DialogContent className="sm:max-w-[480px] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[calc(100%-2rem)] max-w-[480px] max-h-[85vh] overflow-y-auto rounded-lg mx-4 p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle>Checkout</DialogTitle>
             <DialogDescription>
@@ -632,8 +716,8 @@ export default function CheckoutDialog({
               <TabsTrigger value="checkout" onClick={() => setActiveTab("checkout")}>
                 Checkout
               </TabsTrigger>
-              <TabsTrigger 
-                value="login" 
+              <TabsTrigger
+                value="login"
                 onClick={() => setActiveTab("login")}
                 disabled={!!userToken}
                 className={userToken ? "cursor-not-allowed opacity-50" : ""}
@@ -722,41 +806,61 @@ export default function CheckoutDialog({
                   {/* Delivery Time Selection - OPTIONAL for Roti orders */}
                   {isRotiCategory && (
                     <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-300 dark:border-blue-700 rounded-md p-3">
-                      <Label htmlFor="deliveryTime" className="text-sm font-medium flex items-center gap-2 text-blue-800 dark:text-blue-200">
-                        <Clock className="h-5 w-5" />
+                      <div className="space-y-2 w-full">
+                      <Label htmlFor="delivery-slot" className="flex items-center gap-2">
+                        <Clock className="h-4 w-4" />
                         Select Delivery Time (Optional)
                       </Label>
-                      <p className="text-xs text-blue-700 dark:text-blue-300 mb-2">
-                        💡 Choose a preferred time slot for your fresh rotis
+                      <p className="text-xs text-primary flex items-start gap-1">
+                        <span>💡</span>
+                        <span>Choose a preferred time slot for your fresh rotis</span>
                       </p>
-                      <Select 
-                        value={selectedDeliverySlotId} 
+                      <Select
+                        value={selectedDeliverySlotId}
                         onValueChange={(value) => {
                           setSelectedDeliverySlotId(value);
-                          const slot = deliverySlots.find(s => s.id === value);
+                          const slot = deliverySlots.find((s: any) => s.id === value);
                           if (slot) {
                             setSelectedDeliveryTime(slot.startTime);
                           }
                         }}
                       >
-                        <SelectTrigger data-testid="select-delivery-time">
-                          <SelectValue placeholder="Choose a delivery time slot" />
+                        <SelectTrigger id="delivery-slot" data-testid="select-delivery-slot" className="w-full">
+                          <SelectValue placeholder="Choose a time slot" />
                         </SelectTrigger>
-                        <SelectContent>
-                            {deliverySlots
+                        <SelectContent align="center" className="w-full max-w-[300px]">
+                          {deliverySlots
                               .filter(slot => slot.isActive && slot.currentOrders < slot.capacity)
                               .map((slot) => {
                                 const cutoff = slotCutoffMap[slot.id];
-                                const disabled = !!cutoff && cutoff.isPastCutoff;
+                                const slotsLeft = slot.capacity - slot.currentOrders;
+                                const now = new Date();
+                                const currentHour = now.getHours();
+                                
+                                // Check if we're in morning restriction period (8 AM - 11 AM)
+                                const inMorningRestriction = currentHour >= 8 && currentHour < 11;
+                                const isDisabled = cutoff?.isMorningSlot && inMorningRestriction;
+                                
                                 return (
-                                  <SelectItem 
-                                    key={slot.id} 
+                                  <SelectItem
+                                    key={slot.id}
                                     value={slot.id}
                                     data-testid={`delivery-slot-${slot.id}`}
-                                    disabled={disabled}
+                                    className="w-full"
+                                    disabled={isDisabled}
                                   >
-                                    {slot.label} ({slot.capacity - slot.currentOrders} slots available)
-                                    {disabled ? ` — Cutoff passed; next: ${cutoff?.nextAvailableDate.toLocaleDateString()}` : ''}
+                                    <div className="flex flex-col w-full">
+                                      <span className="font-medium">{slot.label}</span>
+                                      <span className="text-xs text-muted-foreground">
+                                        {cutoff?.deliveryDateLabel} ({slotsLeft} slots)
+                                        {cutoff?.slotHasPassed && !cutoff.isPastCutoff && " - Next day"}
+                                      </span>
+                                      {isDisabled && (
+                                        <span className="text-xs text-red-500">
+                                          ⚠️ Not available during morning hours
+                                        </span>
+                                      )}
+                                    </div>
                                   </SelectItem>
                                 );
                               })}
@@ -767,30 +871,24 @@ export default function CheckoutDialog({
                           )}
                         </SelectContent>
                       </Select>
-                      {selectedDeliveryTime && (
-                        <p className="text-xs text-green-600 dark:text-green-400 mt-1">
-                          ✓ Your rotis will be delivered around {selectedDeliveryTime}
-                        </p>
-                      )}
                       {selectedDeliverySlotId && slotCutoffMap[selectedDeliverySlotId] && (
-                        (() => {
-                          const info = slotCutoffMap[selectedDeliverySlotId];
-                          return info.isPastCutoff ? (
-                            <p className="text-xs text-destructive mt-1">
-                              ⚠️ Cutoff for this slot has passed. Earliest available date: {info.nextAvailableDate.toLocaleString()}.
+                        <div className="mt-1 text-center">
+                          <p className="text-xs text-green-600 dark:text-green-400">
+                            Delivery: {slotCutoffMap[selectedDeliverySlotId].deliveryDateLabel} at {selectedDeliveryTime}
+                          </p>
+                          {slotCutoffMap[selectedDeliverySlotId].slotHasPassed && (
+                            <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">
+                              ℹ️ This time has passed today - your order will be delivered tomorrow
                             </p>
-                          ) : (
-                            <p className="text-xs text-muted-foreground mt-1">
-                              Cutoff for this slot: {info.cutoffDate.toLocaleString()} ({info.cutoffHoursBefore} hours before delivery)
-                            </p>
-                          );
-                        })()
+                          )}
+                        </div>
                       )}
                       {!selectedDeliveryTime && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          If not selected, we'll deliver at the earliest available time
+                        <p className="text-xs text-muted-foreground mt-1 text-center">
+                          Optional - if not selected, we'll deliver at the earliest available time
                         </p>
                       )}
+                    </div>
                     </div>
                   )}
 

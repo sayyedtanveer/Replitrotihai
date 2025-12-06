@@ -1725,6 +1725,7 @@ export class MemStorage implements IStorage {
     const slot: DeliveryTimeSlot = {
       id,
       ...data,
+      cutoffHoursBefore: data.cutoffHoursBefore ?? null,
       currentOrders: 0,
       createdAt: new Date(),
       updatedAt: new Date(),

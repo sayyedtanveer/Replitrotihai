@@ -164,25 +164,23 @@ export default function CartCard({
                   <Button
                     size="icon"
                     variant="outline"
-                    className="h-6 w-6"
                     onClick={() => onUpdateQuantity?.(item.id, item.quantity - 1)}
                     disabled={isUnavailable}
                     data-testid={`button-decrease-${item.id}`}
                   >
-                    <Minus className="h-3 w-3" />
+                    <Minus className="h-4 w-4" />
                   </Button>
-                  <span className="w-6 text-center text-xs font-medium" data-testid={`text-quantity-${item.id}`}>
+                  <span className="w-8 text-center text-sm font-medium" data-testid={`text-quantity-${item.id}`}>
                     {item.quantity}
                   </span>
                   <Button
                     size="icon"
                     variant="outline"
-                    className="h-6 w-6"
                     onClick={() => onUpdateQuantity?.(item.id, item.quantity + 1)}
                     disabled={isUnavailable}
                     data-testid={`button-increase-${item.id}`}
                   >
-                    <Plus className="h-3 w-3" />
+                    <Plus className="h-4 w-4" />
                   </Button>
                 </div>
               </div>

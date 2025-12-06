@@ -197,11 +197,17 @@ export default function AdminDeliveryTimeSlots() {
                   id="cutoff"
                   type="number"
                   min={0}
-                  placeholder="e.g., 10"
+                  placeholder="e.g., 13 for 11 PM cutoff"
                   value={newSlot.cutoffHoursBefore ?? ""}
                   onChange={(e) => setNewSlot({ ...newSlot, cutoffHoursBefore: e.target.value === "" ? undefined : parseInt(e.target.value, 10) })}
                   data-testid="input-cutoff"
                 />
+                <p className="text-xs text-muted-foreground">
+                  💡 Morning slots (8-11 AM): Use 13+ hours for 11 PM cutoff. Example: 8 AM slot with 13 hours = 7 PM cutoff
+                </p>
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  ⚠️ Morning slots cannot be ordered between 8-11 AM same day
+                </p>
               </div>
               <div className="flex items-end">
                 <Button

@@ -21,10 +21,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Helper: compute cutoff hours before a slot based on its start time.
   // We don't currently store per-slot cutoff in the DB, so infer a reasonable default:
-  // - Early morning slots (<= 08:00) require ordering the previous day by ~10 hours
+  // - Morning Roti slots (08:00 to 11:00) require ordering the previous day by 11 PM
+  //   This means: 8 AM slot = 9 hours before, 9 AM = 10 hours, 10 AM = 11 hours, 11 AM = 12 hours
+  // - Very early morning slots (before 08:00) require ordering previous day ~10 hours before
   // - Other slots default to 4 hours cutoff
   // Determine cutoff hours for a slot. Prefer per-slot config `cutoffHoursBefore` when available,
-  // otherwise fall back to a reasonable default based on startTime (early slots -> 10h, others -> 4h).
+  // otherwise fall back to a reasonable default based on startTime.
   const getCutoffHoursBefore = (slotOrStartTime: any) => {
     try {
       // If slot object passed and has explicit cutoff configured, use it
@@ -37,7 +39,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const parts = (startTime || "00:00").split(":");
       const hour = parseInt(parts[0], 10);
       if (!isFinite(hour)) return 4;
-      return hour <= 8 ? 10 : 4;
+
+      // Morning Roti slots (8 AM to 11 AM inclusive) require booking by 11 PM previous day
+      // Formula: cutoffHours = hour + 13 (e.g., 8 AM slot needs 21 hours before = 11 PM previous day)
+      if (hour >= 8 && hour < 11) {
+        return hour + 13;
+      }
+
+      // Very early morning slots (before 8 AM) require 10 hours advance booking
+      if (hour < 8) {
+        return 10;
+      }
+
+      // Evening/afternoon slots (noon onwards): use 1 hour cutoff
+      // This means if it's 2 PM and user selects 2 PM, it will be next day
+      // User must select 3 PM or later for same-day delivery
+      if (hour >= 12) {
+        return 1;
+      }
+
+      // Mid-morning slots (11 AM - noon): 4 hours cutoff
+      return 4;
     } catch (e) {
       return 4;
     }
@@ -45,28 +67,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   const computeSlotCutoffInfo = (slot: any) => {
     const now = new Date();
+    const currentHour = now.getHours();
     const [hStr, mStr] = (slot?.startTime || "00:00").split(":");
     const h = parseInt(hStr || "0", 10) || 0;
     const m = parseInt(mStr || "0", 10) || 0;
 
+    // Check if this is a morning slot (8 AM to 11 AM)
+    const isMorningSlot = h >= 8 && h < 11;
+
     // Build a Date for today's occurrence of the slot
-    const slotDate = new Date(now);
-    slotDate.setHours(h, m, 0, 0);
+    const todaySlot = new Date(now);
+    todaySlot.setHours(h, m, 0, 0);
 
-  // prefer per-slot cutoff if available
-  const cutoffHours = getCutoffHoursBefore(slot);
+    // Check if this time slot has already passed today (current time > slot time)
+    const slotHasPassed = now > todaySlot;
+
+    // Get cutoff hours
+    const cutoffHours = getCutoffHoursBefore(slot);
+    
+    // For today's delivery, calculate cutoff time
     const cutoffMs = cutoffHours * 60 * 60 * 1000;
-    const cutoffDate = new Date(slotDate.getTime() - cutoffMs);
+    const todayCutoffTime = new Date(todaySlot.getTime() - cutoffMs);
+    
+    // Determine if we can still order for today's slot
+    let deliveryDate: Date;
+    let isPastCutoff: boolean;
+    let cutoffDate: Date;
 
-    // If now is past the cutoff, next available date is tomorrow at the same slot time
-    const nextAvailable = new Date(slotDate);
-    if (now > cutoffDate) nextAvailable.setDate(nextAvailable.getDate() + 1);
+    // Logic: If slot time has passed OR we're past the cutoff time, deliver tomorrow
+    if (slotHasPassed || now > todayCutoffTime) {
+      // Schedule for tomorrow
+      deliveryDate = new Date(todaySlot);
+      deliveryDate.setDate(deliveryDate.getDate() + 1);
+      isPastCutoff = true;
+      
+      // Calculate tomorrow's cutoff
+      const tomorrowSlot = new Date(deliveryDate);
+      cutoffDate = new Date(tomorrowSlot.getTime() - cutoffMs);
+    } else {
+      // Can still deliver today
+      deliveryDate = todaySlot;
+      isPastCutoff = false;
+      cutoffDate = todayCutoffTime;
+    }
 
     return {
       cutoffHoursBefore: cutoffHours,
+      cutoffHours: cutoffHours,
       cutoffDate,
-      isPastCutoff: now > cutoffDate,
-      nextAvailableDate: nextAvailable,
+      isPastCutoff,
+      nextAvailableDate: deliveryDate,
+      isMorningSlot,
+      slotHasPassed,
+      inMorningRestriction: currentHour >= 8 && currentHour < 11,
     };
   };
 
@@ -717,7 +770,7 @@ app.post("/api/user/logout", async (req, res) => {
     }
   });
 
-  
+
 
   // Get subscription delivery schedule
   app.get("/api/subscriptions/:id/schedule", requireUser(), async (req: AuthenticatedUserRequest, res) => {
@@ -978,6 +1031,16 @@ app.post("/api/orders", async (req: any, res) => {
         return res.status(400).json({ message: "Selected delivery slot not found" });
       }
       const cutoffInfo = computeSlotCutoffInfo(slot);
+      
+      // Check morning restriction (8 AM - 11 AM)
+      if (cutoffInfo.inMorningRestriction && cutoffInfo.isMorningSlot) {
+        return res.status(400).json({
+          message: "Morning delivery slots (8 AM - 11 AM) cannot be ordered during morning hours. Please order by 11 PM the previous day or select a later time slot.",
+          morningRestriction: true,
+          availableAfter: "11:00 AM",
+        });
+      }
+      
       if (cutoffInfo.isPastCutoff) {
         return res.status(400).json({
           message: "Selected delivery slot missed the ordering cutoff. Please schedule for the next available date.",
@@ -1838,7 +1901,7 @@ app.post("/api/orders", async (req: any, res) => {
         const payload = verifyUserToken(token);
         if (payload?.userId) {
           userId = payload.userId;
-          
+
           // If authenticated, verify the subscription belongs to this user
           if (subscription.userId !== userId) {
             res.status(403).json({ message: "Unauthorized - This subscription belongs to another user" });
