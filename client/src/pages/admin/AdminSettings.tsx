@@ -94,6 +94,45 @@ export default function AdminSettings() {
           </p>
         </div>
 
+        {/* Quick Links to Specialized Settings */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => window.location.href = '/admin/roti-settings'}>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Clock className="w-5 h-5" />
+                Roti Time Settings
+              </CardTitle>
+              <CardDescription>
+                Configure morning block period and delivery cutoff times for Roti orders
+              </CardDescription>
+            </CardHeader>
+          </Card>
+
+          <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => window.location.href = '/admin/cart-settings'}>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <DollarSign className="w-5 h-5" />
+                Cart Settings
+              </CardTitle>
+              <CardDescription>
+                Manage minimum order amounts per category
+              </CardDescription>
+            </CardHeader>
+          </Card>
+
+          <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => window.location.href = '/admin/delivery-settings'}>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <MapPin className="w-5 h-5" />
+                Delivery Settings
+              </CardTitle>
+              <CardDescription>
+                Configure delivery fees and distance ranges
+              </CardDescription>
+            </CardHeader>
+          </Card>
+        </div>
+
         <Tabs defaultValue="site" className="w-full">
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="site" data-testid="tab-site">

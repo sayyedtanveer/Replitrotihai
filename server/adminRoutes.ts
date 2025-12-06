@@ -14,7 +14,7 @@ import {
 import { db, walletSettings } from "@shared/db";
 import { adminLoginSchema, insertAdminUserSchema, insertCategorySchema, insertProductSchema, insertDeliveryPersonnelSchema, insertDeliveryTimeSlotsSchema, insertReferralRewardSchema, insertCouponSchema } from "@shared/schema";
 import { fromZodError } from "zod-validation-error";
-import { broadcastOrderUpdate, broadcastNewOrder, notifyDeliveryAssignment, cancelPreparedOrderTimeout, broadcastProductAvailabilityUpdate, broadcastChefStatusUpdate, broadcastSubscriptionAssignmentToPartner } from "./websocket";
+import { broadcastOrderUpdate, broadcastNewOrder, notifyDeliveryAssignment, cancelPreparedOrderTimeout, broadcastProductAvailabilityUpdate, broadcastChefStatusUpdate, broadcastSubscriptionAssignmentToPartner, broadcastSubscriptionUpdate } from "./websocket";
 import { hashPassword as hashDeliveryPassword } from "./deliveryAuth";
 import { eq } from "drizzle-orm";
 import { subscriptions } from "@shared/schema";
@@ -1121,7 +1121,7 @@ export function registerAdminRoutes(app: Express) {
       if (updated) {
         // Get plan name and chef name for notifications
         const plan = await storage.getSubscriptionPlan(updated.planId);
-        
+
         // First broadcast general update
         broadcastSubscriptionUpdate(updated);
         console.log(`📣 Broadcasted subscription activation to all connected clients`);
@@ -2247,14 +2247,14 @@ export function registerAdminRoutes(app: Express) {
       }
 
       const newStartDate = startDate ? new Date(startDate) : new Date();
-      
+
       // Calculate duration based on frequency and original subscription settings
       const deliveryDays = plan.deliveryDays as string[] || [];
       const deliveriesPerWeek = deliveryDays.length || 1;
-      
+
       // Use original subscription's total deliveries (nullish coalescing to preserve 0), fallback to 30 only if null/undefined
       const totalDeliveries = subscription.totalDeliveries ?? 30;
-      
+
       // Calculate duration based on deliveries and frequency
       let durationDays = 30; // default
       if (plan.frequency === "daily") {
@@ -2264,7 +2264,7 @@ export function registerAdminRoutes(app: Express) {
       } else if (plan.frequency === "monthly") {
         durationDays = totalDeliveries * 30;
       }
-      
+
       const newEndDate = new Date(newStartDate);
       newEndDate.setDate(newEndDate.getDate() + durationDays);
 
@@ -2686,7 +2686,7 @@ export function registerAdminRoutes(app: Express) {
   });
 
   // ================= REFERRAL REWARDS SETTINGS =================
-  
+
   // Get all referral reward settings
   app.get("/api/admin/referral-rewards", requireAdmin(), async (req: AuthenticatedAdminRequest, res) => {
     try {
@@ -2829,7 +2829,7 @@ export function registerAdminRoutes(app: Express) {
   app.get("/api/admin/referrals", requireAdmin(), async (req: AuthenticatedAdminRequest, res) => {
     try {
       const referrals = await storage.getAllReferrals();
-      
+
       // Enrich referrals with user details
       const enrichedReferrals = await Promise.all(
         referrals.map(async (referral) => {
@@ -2844,7 +2844,7 @@ export function registerAdminRoutes(app: Express) {
           };
         })
       );
-      
+
       res.json(enrichedReferrals);
     } catch (error) {
       console.error("Error fetching referrals:", error);
@@ -2856,14 +2856,14 @@ export function registerAdminRoutes(app: Express) {
   app.get("/api/admin/referral-stats", requireAdmin(), async (req: AuthenticatedAdminRequest, res) => {
     try {
       const referrals = await storage.getAllReferrals();
-      
+
       const totalReferrals = referrals.length;
       const pendingReferrals = referrals.filter(r => r.status === "pending").length;
       const completedReferrals = referrals.filter(r => r.status === "completed").length;
       const totalBonusPaid = referrals
         .filter(r => r.status === "completed")
         .reduce((sum, r) => sum + r.referrerBonus + r.referredBonus, 0);
-      
+
       res.json({
         totalReferrals,
         pendingReferrals,
@@ -2881,24 +2881,24 @@ export function registerAdminRoutes(app: Express) {
     try {
       const { id } = req.params;
       const { status } = req.body;
-      
+
       if (!["pending", "completed", "expired"].includes(status)) {
         res.status(400).json({ message: "Invalid status" });
         return;
       }
-      
+
       const referral = await storage.getReferralById(id);
       if (!referral) {
         res.status(404).json({ message: "Referral not found" });
         return;
       }
-      
+
       if (status === "completed" && referral.status !== "completed") {
         // Credit bonuses to both users
         const settings = await storage.getActiveReferralReward();
         const referrerBonus = settings?.referrerBonus || 50;
         const referredBonus = settings?.referredBonus || 50;
-        
+
         // Credit referrer
         const referrer = await storage.getUser(referral.referrerId);
         if (referrer) {
@@ -2914,12 +2914,12 @@ export function registerAdminRoutes(app: Express) {
             referenceType: "referral",
           });
         }
-        
+
         await storage.updateReferralStatus(id, "completed", referrerBonus, referredBonus);
       } else {
         await storage.updateReferralStatus(id, status, 0, 0);
       }
-      
+
       res.json({ message: "Referral status updated successfully" });
     } catch (error) {
       console.error("Error updating referral status:", error);
@@ -2934,7 +2934,7 @@ export function registerAdminRoutes(app: Express) {
     try {
       const { date } = req.query;
       const transactions = await storage.getAllWalletTransactions(date as string | undefined);
-      
+
       // Enrich transactions with user details
       const enrichedTransactions = await Promise.all(
         transactions.map(async (tx) => {
@@ -2946,7 +2946,7 @@ export function registerAdminRoutes(app: Express) {
           };
         })
       );
-      
+
       res.json(enrichedTransactions);
     } catch (error) {
       console.error("Error fetching wallet transactions:", error);
@@ -2958,12 +2958,12 @@ export function registerAdminRoutes(app: Express) {
   app.get("/api/admin/wallet-stats", requireAdmin(), async (req: AuthenticatedAdminRequest, res) => {
     try {
       const transactions = await storage.getAllWalletTransactions();
-      
+
       let totalCredits = 0;
       let totalDebits = 0;
       let totalReferralBonus = 0;
       let totalOrderDiscounts = 0;
-      
+
       for (const tx of transactions) {
         if (tx.type === "credit") {
           totalCredits += Math.abs(tx.amount);
@@ -2975,7 +2975,7 @@ export function registerAdminRoutes(app: Express) {
           totalOrderDiscounts += Math.abs(tx.amount);
         }
       }
-      
+
       res.json({
         totalCredits,
         totalDebits,

@@ -40,6 +40,9 @@ import AdminWalletLogs from "@/pages/admin/AdminWalletLogs";
 // Add AdminCartSettings import here
 const AdminCartSettings = lazy(() => import("@/pages/admin/AdminCartSettings"));
 
+// Add AdminRotiSettings import
+const AdminRotiSettings = lazy(() => import("@/pages/admin/AdminRotiSettings"));
+
 // Import AdminPromotionalBanners component
 const AdminPromotionalBanners = lazy(() => import("@/pages/admin/AdminPromotionalBanners"));
 
@@ -90,6 +93,7 @@ function Router() {
       <Route path="/admin/wallet-logs" component={AdminWalletLogs} />
       {/* Add cart settings admin route */}
       <Route path="/admin/cart-settings" component={AdminCartSettings} />
+      <Route path="/admin/roti-settings" component={AdminRotiSettings} />
 
 
       {/* ---------- PARTNER / DELIVERY ROUTES ---------- */}

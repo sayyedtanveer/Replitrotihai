@@ -41,5 +41,6 @@ export const {
   walletSettings,
   referralRewards,
   promotionalBanners,
-  deliveryTimeSlots
+  deliveryTimeSlots,
+  rotiSettings
 } = schema;

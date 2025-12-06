@@ -700,3 +700,30 @@ export const insertDeliveryTimeSlotsSchema = createInsertSchema(deliveryTimeSlot
 
 export type InsertDeliveryTimeSlot = z.infer<typeof insertDeliveryTimeSlotsSchema>;
 export type DeliveryTimeSlot = typeof deliveryTimeSlots.$inferSelect;
+
+// Roti Order Settings - Admin-configurable time restrictions
+export const rotiSettings = pgTable("roti_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  morningBlockStartTime: varchar("morning_block_start_time", { length: 5 }).notNull().default("08:00"),
+  morningBlockEndTime: varchar("morning_block_end_time", { length: 5 }).notNull().default("11:00"),
+  lastOrderTime: varchar("last_order_time", { length: 5 }).notNull().default("23:00"),
+  blockMessage: text("block_message").notNull().default("Roti orders are not available from 8 AM to 11 AM. Please order before 11 PM for next morning delivery."),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+  updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
+});
+
+export const insertRotiSettingsSchema = createInsertSchema(rotiSettings, {
+  morningBlockStartTime: z.string().regex(/^\d{2}:\d{2}$/, "Invalid time format (HH:mm)"),
+  morningBlockEndTime: z.string().regex(/^\d{2}:\d{2}$/, "Invalid time format (HH:mm)"),
+  lastOrderTime: z.string().regex(/^\d{2}:\d{2}$/, "Invalid time format (HH:mm)"),
+  blockMessage: z.string().min(1, "Block message is required"),
+  isActive: z.boolean().default(true),
+}).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertRotiSettings = z.infer<typeof insertRotiSettingsSchema>;
+export type RotiSettings = typeof rotiSettings.$inferSelect;

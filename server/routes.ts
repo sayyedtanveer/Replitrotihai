@@ -1013,41 +1013,64 @@ app.post("/api/orders", async (req: any, res) => {
       deliverySlotId: body.deliverySlotId || undefined,
     };
 
-    // Validate: If order is for Roti category, deliverySlotId is required (deliveryTime is optional legacy field)
+    // Roti category validation - strict enforcement
     const isRotiCategory = sanitized.categoryName?.toLowerCase() === 'roti' || 
                            sanitized.categoryName?.toLowerCase().includes('roti');
-    if (isRotiCategory && !sanitized.deliverySlotId) {
-      return res.status(400).json({
-        message: "Delivery time slot is required for Roti category orders",
-        requiresDeliverySlot: true,
-        categoryName: sanitized.categoryName
-      });
-    }
-
-    // If Roti order and slot provided, ensure the selection meets cutoff constraints
-    if (isRotiCategory && sanitized.deliverySlotId) {
-      const slot = await storage.getDeliveryTimeSlot(sanitized.deliverySlotId);
-      if (!slot) {
-        return res.status(400).json({ message: "Selected delivery slot not found" });
-      }
-      const cutoffInfo = computeSlotCutoffInfo(slot);
+    
+    if (isRotiCategory) {
+      // Get roti settings
+      const rotiSettings = await storage.getRotiSettings();
+      const now = new Date();
+      const currentHour = now.getHours();
+      const currentMinutes = now.getMinutes();
       
-      // Check morning restriction (8 AM - 11 AM)
-      if (cutoffInfo.inMorningRestriction && cutoffInfo.isMorningSlot) {
-        return res.status(400).json({
-          message: "Morning delivery slots (8 AM - 11 AM) cannot be ordered during morning hours. Please order by 11 PM the previous day or select a later time slot.",
-          morningRestriction: true,
-          availableAfter: "11:00 AM",
-        });
+      if (rotiSettings?.isActive) {
+        // Parse morning block window
+        const [blockStartH, blockStartM] = rotiSettings.morningBlockStartTime.split(':').map(Number);
+        const [blockEndH, blockEndM] = rotiSettings.morningBlockEndTime.split(':').map(Number);
+        
+        const blockStartMinutes = blockStartH * 60 + blockStartM;
+        const blockEndMinutes = blockEndH * 60 + blockEndM;
+        const currentTimeMinutes = currentHour * 60 + currentMinutes;
+        
+        // STRICTLY BLOCK orders during morning window (8 AM - 11 AM by default)
+        if (currentTimeMinutes >= blockStartMinutes && currentTimeMinutes < blockEndMinutes) {
+          console.log(`🚫 Roti order blocked - current time ${currentHour}:${currentMinutes} is within morning restriction`);
+          return res.status(403).json({
+            message: rotiSettings.blockMessage || "Roti orders are not available from 8 AM to 11 AM. Please order before 11 PM for next morning delivery.",
+            morningRestriction: true,
+            isBlocked: true,
+            blockStartTime: rotiSettings.morningBlockStartTime,
+            blockEndTime: rotiSettings.morningBlockEndTime,
+            currentTime: `${currentHour.toString().padStart(2, '0')}:${currentMinutes.toString().padStart(2, '0')}`,
+          });
+        }
       }
       
-      if (cutoffInfo.isPastCutoff) {
-        return res.status(400).json({
-          message: "Selected delivery slot missed the ordering cutoff. Please schedule for the next available date.",
-          requiresReschedule: true,
-          nextAvailableDate: cutoffInfo.nextAvailableDate.toISOString(),
-          cutoffHoursBefore: cutoffInfo.cutoffHoursBefore,
-        });
+      // If slot provided, validate it and enforce next-day logic
+      if (sanitized.deliverySlotId) {
+        const slot = await storage.getDeliveryTimeSlot(sanitized.deliverySlotId);
+        if (!slot) {
+          return res.status(400).json({ message: "Selected delivery slot not found" });
+        }
+        const cutoffInfo = computeSlotCutoffInfo(slot);
+        
+        // PREVENT selecting morning slot during morning restriction hours
+        if (cutoffInfo.inMorningRestriction && cutoffInfo.isMorningSlot) {
+          console.log(`🚫 Morning slot selection blocked during morning hours`);
+          return res.status(403).json({
+            message: "Morning delivery slots (8 AM - 11 AM) cannot be selected during morning hours. Please order by 11 PM the previous day or select a later time slot.",
+            morningRestriction: true,
+            isBlocked: true,
+            availableAfter: rotiSettings?.morningBlockEndTime || "11:00",
+            suggestLaterSlot: true,
+          });
+        }
+        
+        // Auto next-day scheduling notification
+        if (cutoffInfo.isPastCutoff) {
+          console.log(`📅 Auto-scheduling Roti order for next day - slot cutoff passed`);
+        }
       }
     }
 
@@ -2177,6 +2200,91 @@ app.post("/api/orders", async (req: any, res) => {
     } catch (error: any) {
       console.error("Error fetching cart setting:", error);
       res.status(500).json({ message: error.message || "Failed to fetch cart setting" });
+    }
+  });
+
+  // ================== Roti Settings APIs ==================
+  
+  // Public: Get roti time settings (for checkout blocking logic)
+  app.get("/api/roti-settings", async (req, res) => {
+    try {
+      let settings = await storage.getRotiSettings();
+      
+      // Return default settings if none exist
+      if (!settings) {
+        settings = {
+          id: "",
+          morningBlockStartTime: "08:00",
+          morningBlockEndTime: "11:00",
+          lastOrderTime: "23:00",
+          blockMessage: "Roti orders are not available from 8 AM to 11 AM. Please order before 11 PM for next morning delivery.",
+          isActive: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+      }
+      
+      // Calculate if currently in blocked period
+      const now = new Date();
+      const currentHour = now.getHours();
+      const currentMinutes = now.getMinutes();
+      const currentTimeMinutes = currentHour * 60 + currentMinutes;
+      
+      const [startHour, startMin] = settings.morningBlockStartTime.split(":").map(Number);
+      const [endHour, endMin] = settings.morningBlockEndTime.split(":").map(Number);
+      const [lastHour, lastMin] = settings.lastOrderTime.split(":").map(Number);
+      
+      const blockStartMinutes = startHour * 60 + startMin;
+      const blockEndMinutes = endHour * 60 + endMin;
+      const lastOrderMinutes = lastHour * 60 + lastMin;
+      
+      const isInBlockedPeriod = currentTimeMinutes >= blockStartMinutes && currentTimeMinutes < blockEndMinutes;
+      const isPastLastOrderTime = currentTimeMinutes >= lastOrderMinutes;
+      
+      res.json({
+        ...settings,
+        isInBlockedPeriod,
+        isPastLastOrderTime,
+        currentTime: `${String(currentHour).padStart(2, "0")}:${String(currentMinutes).padStart(2, "0")}`,
+      });
+    } catch (error: any) {
+      console.error("Error fetching roti settings:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch roti settings" });
+    }
+  });
+
+  // Admin: Update roti time settings
+  app.put("/api/admin/roti-settings", requireAdmin(), async (req: any, res) => {
+    try {
+      const { morningBlockStartTime, morningBlockEndTime, lastOrderTime, blockMessage, isActive } = req.body;
+      
+      // Validate time formats
+      const timeRegex = /^\d{2}:\d{2}$/;
+      if (morningBlockStartTime && !timeRegex.test(morningBlockStartTime)) {
+        res.status(400).json({ message: "Invalid morningBlockStartTime format. Use HH:mm" });
+        return;
+      }
+      if (morningBlockEndTime && !timeRegex.test(morningBlockEndTime)) {
+        res.status(400).json({ message: "Invalid morningBlockEndTime format. Use HH:mm" });
+        return;
+      }
+      if (lastOrderTime && !timeRegex.test(lastOrderTime)) {
+        res.status(400).json({ message: "Invalid lastOrderTime format. Use HH:mm" });
+        return;
+      }
+      
+      const settings = await storage.updateRotiSettings({
+        morningBlockStartTime,
+        morningBlockEndTime,
+        lastOrderTime,
+        blockMessage,
+        isActive,
+      });
+      
+      res.json(settings);
+    } catch (error: any) {
+      console.error("Error updating roti settings:", error);
+      res.status(500).json({ message: error.message || "Failed to update roti settings" });
     }
   });
 

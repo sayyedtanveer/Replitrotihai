@@ -1,9 +1,9 @@
-import { type Category, type InsertCategory, type Product, type InsertProduct, type Order, type InsertOrder, type User, type UpsertUser, type Chef, type AdminUser, type InsertAdminUser, type PartnerUser, type Subscription, type SubscriptionPlan, type DeliverySetting, type InsertDeliverySetting, type CartSetting, type InsertCartSetting, type DeliveryPersonnel, type InsertDeliveryPersonnel, type WalletTransaction, type ReferralReward, type PromotionalBanner, type InsertPromotionalBanner, type SubscriptionDeliveryLog, type InsertSubscriptionDeliveryLog, type DeliveryTimeSlot, type InsertDeliveryTimeSlot, type Coupon } from "@shared/schema";
+import { type Category, type InsertCategory, type Product, type InsertProduct, type Order, type InsertOrder, type User, type UpsertUser, type Chef, type AdminUser, type InsertAdminUser, type PartnerUser, type Subscription, type SubscriptionPlan, type DeliverySetting, type InsertDeliverySetting, type CartSetting, type InsertCartSetting, type DeliveryPersonnel, type InsertDeliveryPersonnel, type WalletTransaction, type ReferralReward, type PromotionalBanner, type InsertPromotionalBanner, type SubscriptionDeliveryLog, type InsertSubscriptionDeliveryLog, type DeliveryTimeSlot, type InsertDeliveryTimeSlot, type Coupon, type RotiSettings, type InsertRotiSettings } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { nanoid } from "nanoid";
 import { eq, and, gte, lte, desc, asc, or, isNull, sql } from "drizzle-orm";
 import { db, users, categories, products, orders, chefs, adminUsers, partnerUsers, subscriptions,
-  subscriptionPlans, subscriptionDeliveryLogs, deliverySettings, cartSettings, deliveryPersonnel, coupons, couponUsages, referrals, walletTransactions, referralRewards, promotionalBanners, deliveryTimeSlots } from "@shared/db";
+  subscriptionPlans, subscriptionDeliveryLogs, deliverySettings, cartSettings, deliveryPersonnel, coupons, couponUsages, referrals, walletTransactions, referralRewards, promotionalBanners, deliveryTimeSlots, rotiSettings } from "@shared/db";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -202,6 +202,10 @@ export interface IStorage {
 
   // Wallet transaction methods
   getAllWalletTransactions(dateFilter?: string): Promise<WalletTransaction[]>;
+
+  // Roti Settings methods
+  getRotiSettings(): Promise<RotiSettings | undefined>;
+  updateRotiSettings(data: Partial<InsertRotiSettings>): Promise<RotiSettings>;
 }
 
 export class MemStorage implements IStorage {
@@ -1760,6 +1764,33 @@ export class MemStorage implements IStorage {
     };
   }
 
+  // Roti Settings Management
+  async getRotiSettings(): Promise<RotiSettings | undefined> {
+    const settings = await db.query.rotiSettings.findFirst({
+      where: (rs, { eq }) => eq(rs.isActive, true),
+      orderBy: (rs, { desc }) => [desc(rs.createdAt)],
+    });
+    return settings || undefined;
+  }
+
+  async updateRotiSettings(data: Partial<InsertRotiSettings>): Promise<RotiSettings> {
+    // Get existing settings or create new
+    const existing = await this.getRotiSettings();
+    
+    if (existing) {
+      const [updated] = await db.update(rotiSettings)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(rotiSettings.id, existing.id))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db.insert(rotiSettings)
+        .values({ ...data, isActive: true } as any)
+        .returning();
+      return created;
+    }
+  }
+
   // Referral Rewards Settings
   async getAllReferralRewards(): Promise<ReferralReward[]> {
     return db.query.referralRewards.findMany({
@@ -1886,6 +1917,7 @@ export class MemStorage implements IStorage {
       limit: 500
     });
   }
-}
+
+  }
 
 export const storage = new MemStorage();
