@@ -40,14 +40,17 @@ export default function PartnerDashboard() {
         if (response.ok) {
           const data = await response.json();
           localStorage.setItem("partnerToken", data.accessToken);
+          console.log("✅ Partner token refreshed successfully");
+        } else {
+          console.warn("⚠️ Token refresh failed, user may need to re-login");
         }
       } catch (error) {
-        console.error("Token refresh failed:", error);
+        console.error("❌ Token refresh failed:", error);
       }
     };
 
-    // Refresh token every 10 minutes (before 15min expiry)
-    const tokenRefreshInterval = setInterval(refreshToken, 10 * 60 * 1000);
+    // Refresh token every 6 days (before 7-day expiry)
+    const tokenRefreshInterval = setInterval(refreshToken, 6 * 24 * 60 * 60 * 1000);
 
     return () => clearInterval(tokenRefreshInterval);
   }, []);
@@ -94,8 +97,13 @@ export default function PartnerDashboard() {
       const response = await fetch("/api/partner/subscriptions", {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!response.ok) throw new Error("Failed to fetch subscriptions");
-      return response.json();
+      if (!response.ok) {
+        console.error("Failed to fetch subscriptions:", response.status);
+        throw new Error("Failed to fetch subscriptions");
+      }
+      const data = await response.json();
+      console.log(`📦 Partner - Received ${data.length} subscriptions:`, data);
+      return data;
     },
   });
 
@@ -421,9 +429,9 @@ export default function PartnerDashboard() {
             <TabsTrigger value="subscriptions" className="text-xs md:text-sm py-2 relative">
               <span className="hidden md:inline">Subscriptions</span>
               <span className="md:hidden">Subs</span>
-              {subscriptionDeliveries?.todayCount > 0 && (
+              {(subscriptionDeliveries?.todayCount > 0 || subscriptions.length > 0) && (
                 <Badge variant="destructive" className="absolute -top-1 -right-1 h-4 w-4 p-0 flex items-center justify-center text-xs">
-                  {subscriptionDeliveries.todayCount}
+                  {subscriptionDeliveries?.todayCount || subscriptions.length}
                 </Badge>
               )}
             </TabsTrigger>
@@ -877,6 +885,55 @@ export default function PartnerDashboard() {
           </TabsContent>
 
           <TabsContent value="subscriptions" className="space-y-6">
+            {/* All Subscriptions Overview */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Repeat className="w-5 h-5" />
+                  My Subscriptions ({subscriptions.length})
+                </CardTitle>
+                <CardDescription>All subscriptions assigned to you</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {subscriptionsLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  </div>
+                ) : subscriptions.length > 0 ? (
+                  <div className="space-y-4">
+                    {subscriptions.map((sub: any) => (
+                      <div
+                        key={sub.id}
+                        className="border rounded-lg p-4 space-y-2"
+                        data-testid={`subscription-${sub.id}`}
+                      >
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h4 className="font-semibold">{sub.planName || 'Subscription'}</h4>
+                            <p className="text-sm text-muted-foreground">{sub.phone}</p>
+                          </div>
+                          <Badge className={sub.status === "active" ? "bg-green-500" : "bg-yellow-500"}>
+                            {sub.status}
+                          </Badge>
+                        </div>
+                        <div className="text-sm grid gap-1">
+                          <p>Next Delivery: {new Date(sub.nextDeliveryDate).toLocaleDateString()}</p>
+                          <p>Time: {sub.nextDeliveryTime}</p>
+                          <p>Remaining: {sub.remainingDeliveries} / {sub.totalDeliveries} deliveries</p>
+                          <p className="text-sm">{sub.address}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Repeat className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p>No subscriptions assigned yet</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
             {/* Today's Subscription Deliveries Stats */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <Card>
@@ -948,7 +1005,7 @@ export default function PartnerDashboard() {
                         <div className="flex justify-between items-start">
                           <div>
                             <h4 className="font-semibold">{delivery.planName}</h4>
-                            <p className="text-sm text-muted-foreground">{delivery.customerName}</p>
+                            {/* customer name removed for privacy */}
                             {delivery.deliverySlotId && (
                               <p className="text-sm font-medium text-orange-600 bg-orange-50 dark:bg-orange-950 px-2 py-1 rounded inline-block mt-1">
                                 🕐 Delivery Time: {delivery.nextDeliveryTime}

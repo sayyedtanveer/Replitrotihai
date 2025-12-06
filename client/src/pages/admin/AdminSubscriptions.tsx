@@ -755,7 +755,8 @@ export default function AdminSubscriptions() {
                         </TableHeader>
                         <TableBody>
                           {Object.entries(chefGroups).map(([chefId, group]) => {
-                            const { chef, subscriptions: subs } = group;
+                            // give the group a concrete type for TS
+                            const { chef, subscriptions: subs } = group as { chef: any; subscriptions: any[] };
                             return (
                             <TableRow key={chefId} className="bg-red-50">
                               <TableCell>
@@ -769,7 +770,7 @@ export default function AdminSubscriptions() {
                               </TableCell>
                               <TableCell>
                                 <div className="space-y-1">
-                                  {subs.slice(0, 3).map(s => (
+                                  {subs.slice(0, 3).map((s: any) => (
                                     <div key={s.id} className="text-sm">{s.customerName}</div>
                                   ))}
                                   {subs.length > 3 && (
@@ -781,7 +782,7 @@ export default function AdminSubscriptions() {
                                 <div className="text-xs text-amber-600 font-medium mb-2">
                                   Please reassign these subscriptions to available chefs
                                 </div>
-                                {subs.map(s => (
+                                {subs.map((s: any) => (
                                   <div key={s.id} className="mb-2">
                                     <Select
                                       onValueChange={(newChefId) => {
@@ -795,7 +796,7 @@ export default function AdminSubscriptions() {
                                         <SelectValue placeholder={`Reassign ${s.customerName}`} />
                                       </SelectTrigger>
                                       <SelectContent>
-                                        {chefs?.filter(c => c.id !== chefId && c.isActive).map(c => (
+                                        {chefs?.filter(c => c.id !== chefId && c.isActive).map((c: any) => (
                                           <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                                         ))}
                                       </SelectContent>

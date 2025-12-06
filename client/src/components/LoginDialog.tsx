@@ -2,7 +2,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { Loader2, LogIn, ArrowLeft } from "lucide-react";
@@ -11,12 +11,14 @@ interface LoginDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onLoginSuccess?: () => void;
+  prefillPhone?: string;
 }
 
 export default function LoginDialog({
   isOpen,
   onClose,
   onLoginSuccess,
+  prefillPhone,
 }: LoginDialogProps) {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
@@ -129,6 +131,15 @@ export default function LoginDialog({
       onClose();
     }
   };
+
+  // Prefill phone when provided (useful when opening dialog from other flows)
+  // Update phone state whenever prefillPhone changes while dialog is open
+  useEffect(() => {
+    if (prefillPhone && isOpen) {
+      setPhone(prefillPhone.replace(/\D/g, "").slice(0, 10));
+      setResetPhone(prefillPhone.replace(/\D/g, "").slice(0, 10));
+    }
+  }, [prefillPhone, isOpen]);
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>

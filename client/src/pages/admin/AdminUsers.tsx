@@ -18,7 +18,7 @@ export default function AdminUsers() {
   const { toast } = useToast();
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [deletingUser, setDeletingUser] = useState<User | null>(null);
-  const [formData, setFormData] = useState({ firstName: "", lastName: "", email: "" });
+  const [formData, setFormData] = useState({ name: "", email: "" });
 
   const { data: users, isLoading } = useQuery<User[]>({
     queryKey: ["/api/admin", "users"],
@@ -69,9 +69,10 @@ export default function AdminUsers() {
 
   const handleEdit = (user: User) => {
     setEditingUser(user);
+    // user shape may vary between deployments (some have firstName/lastName, others have name)
+    const existingName = (user as any).name || `${(user as any).firstName || ""} ${(user as any).lastName || ""}`.trim();
     setFormData({
-      firstName: user.firstName || "",
-      lastName: user.lastName || "",
+      name: existingName,
       email: user.email || "",
     });
   };
@@ -123,14 +124,14 @@ export default function AdminUsers() {
                       <TableRow key={user.id} data-testid={`row-user-${user.id}`}>
                         <TableCell>
                           <div className="flex items-center gap-3">
-                            {user.profileImageUrl && (
+                            {((user as any).profileImageUrl) && (
                               <img
-                                src={user.profileImageUrl}
-                                alt={`${user.firstName} ${user.lastName}`}
+                                src={(user as any).profileImageUrl}
+                                alt={(user as any).name ?? `${(user as any).firstName || ""} ${(user as any).lastName || ""}`}
                                 className="w-8 h-8 rounded-full"
                               />
                             )}
-                            <span>{user.firstName} {user.lastName}</span>
+                            <span>{(user as any).name ?? `${(user as any).firstName || ""} ${(user as any).lastName || ""}`}</span>
                           </div>
                         </TableCell>
                         <TableCell>{user.email}</TableCell>
@@ -177,21 +178,12 @@ export default function AdminUsers() {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="firstName">First Name</Label>
+              <Label htmlFor="name">Name</Label>
               <Input
-                id="firstName"
-                value={formData.firstName}
-                onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                data-testid="input-edit-firstname"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="lastName">Last Name</Label>
-              <Input
-                id="lastName"
-                value={formData.lastName}
-                onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                data-testid="input-edit-lastname"
+                id="name"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                data-testid="input-edit-name"
               />
             </div>
             <div className="space-y-2">
@@ -226,7 +218,7 @@ export default function AdminUsers() {
           <DialogHeader>
             <DialogTitle>Delete User</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete {deletingUser?.firstName} {deletingUser?.lastName}? This action cannot be undone.
+              Are you sure you want to delete {(deletingUser as any)?.name ?? `${(deletingUser as any)?.firstName || ""} ${(deletingUser as any)?.lastName || ""}`.trim()}? This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

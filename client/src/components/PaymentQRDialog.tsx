@@ -185,6 +185,19 @@ export default function PaymentQRDialog({
 
   const handleDialogChange = (open: boolean) => {
     if (!open) {
+      // Prevent closing the dialog by clicking outside or pressing Escape if the user has
+      // already marked the payment as paid or confirmation is in progress. This avoids
+      // the user accidentally closing the dialog after paying but before clicking
+      // "Confirm Payment" which would leave the admin unaware of the payment.
+      if (hasPaid || isConfirming) {
+        toast({
+          title: "Payment pending",
+          description: "You've indicated payment — please click 'Confirm Payment' so we can verify it. Closing is disabled until you confirm.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       onClose();
     }
   };

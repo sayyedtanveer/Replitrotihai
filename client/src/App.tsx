@@ -7,6 +7,7 @@ import { TooltipProvider } from "@radix-ui/react-tooltip";
 import { useAuth } from "@/hooks/useAuth";
 import Home from "@/pages/Home";
 import MyOrders from "@/pages/MyOrders";
+import MySubscriptions from "@/pages/MySubscriptions";
 import Profile from "@/pages/Profile";
 import NotFound from "@/pages/not-found";
 import Landing from "@/pages/Landing";
@@ -110,6 +111,10 @@ function Router() {
       <Route
         path="/profile"
         component={() => <ProtectedRoute component={Profile} />}
+      />
+      <Route
+        path="/my-subscriptions"
+        component={() => <ProtectedRoute component={MySubscriptions} />}
       />
 
       {/* Alias for /orders → same as /my-orders */}

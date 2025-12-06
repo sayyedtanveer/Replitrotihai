@@ -361,11 +361,9 @@ export default function Header({ cartItemCount = 0, onCartClick, onMenuClick, se
             <Button variant="ghost" size="icon" onClick={onChefListClick} data-testid="button-chefs" className="h-8 w-8 sm:h-9 sm:w-9">
               <ChefHat className="h-4 w-4 sm:h-5 sm:w-5" />
             </Button>
-            {isAuthenticated && (
-              <Button variant="ghost" size="icon" onClick={onSubscriptionClick} data-testid="button-subscriptions" className="h-8 w-8 sm:h-9 sm:w-9">
-                <Calendar className="h-4 w-4 sm:h-5 sm:w-5" />
-              </Button>
-            )}
+            <Button variant="ghost" size="icon" onClick={onSubscriptionClick} data-testid="button-subscriptions" className="h-8 w-8 sm:h-9 sm:w-9">
+              <Calendar className="h-4 w-4 sm:h-5 sm:w-5" />
+            </Button>
           </div>
         </div>
 

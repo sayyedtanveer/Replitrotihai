@@ -8,16 +8,19 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SubscriptionCard } from "./SubscriptionCard";
 import { SubscriptionSchedule } from "./SubscriptionSchedule";
 import PaymentQRDialog from "./PaymentQRDialog";
+import LoginDialog from "./LoginDialog";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { format, addDays, differenceInDays, isPast, isAfter } from "date-fns";
-import { Calendar, Pause, Play, Clock, CheckCircle2, AlertCircle, Settings2, CalendarDays, History, RefreshCw, AlertTriangle } from "lucide-react";
+import { Calendar, Pause, Play, Clock, CheckCircle2, AlertCircle, Settings2, CalendarDays, History, RefreshCw, AlertTriangle, User } from "lucide-react";
 import type { SubscriptionPlan, Subscription } from "@shared/schema";
 import { useLocation } from "wouter";
+import { useAuth } from "@/hooks/useAuth";
 
 interface SubscriptionDrawerProps {
   isOpen: boolean;
@@ -26,31 +29,35 @@ interface SubscriptionDrawerProps {
 
 function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showPaymentQR, setShowPaymentQR] = useState(false);
   const [paymentDetails, setPaymentDetails] = useState<{
     subscriptionId: string;
     amount: number;
     planName: string;
+    accountCreated?: boolean;
+    defaultPassword?: string;
+    phone?: string;
   } | null>(null);
   const [, setLocation] = useLocation();
-  
+
   // Delivery slot selection for subscription (Roti category)
   const [showSlotSelectionModal, setShowSlotSelectionModal] = useState(false);
   const [selectedPlanForSubscription, setSelectedPlanForSubscription] = useState<string | null>(null);
   const [selectedSubscriptionSlotId, setSelectedSubscriptionSlotId] = useState<string>("");
-  
+
   // Advanced pause modal state
   const [showPauseModal, setShowPauseModal] = useState(false);
   const [pauseSubscriptionId, setPauseSubscriptionId] = useState<string | null>(null);
   const [pauseStartDate, setPauseStartDate] = useState<string>("");
   const [pauseResumeDate, setPauseResumeDate] = useState<string>("");
-  
+
   // Delivery time modal state
   const [showTimeModal, setShowTimeModal] = useState(false);
   const [timeSubscriptionId, setTimeSubscriptionId] = useState<string | null>(null);
   const [selectedDeliveryTime, setSelectedDeliveryTime] = useState<string>("09:00");
-  
+
   // Fetch available delivery time slots
   const { data: availableSlots = [] } = useQuery({
     queryKey: ["/api/delivery-slots"],
@@ -60,7 +67,7 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
       return response.json();
     },
   });
-  
+
   // Fetch categories to check if plan is Roti category
   const { data: categoryList } = useQuery({
     queryKey: ["/api/categories"],
@@ -70,14 +77,46 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
       return response.json();
     },
   });
-  
+
   // Delivery history modal state
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [historySubscriptionId, setHistorySubscriptionId] = useState<string | null>(null);
-  
+
   // Renewal modal state
   const [showRenewalModal, setShowRenewalModal] = useState(false);
   const [renewalSubscription, setRenewalSubscription] = useState<Subscription | null>(null);
+
+  // Guest subscription form state
+  const [showGuestForm, setShowGuestForm] = useState(false);
+  const [guestPlanId, setGuestPlanId] = useState<string | null>(null);
+  const [guestSlotId, setGuestSlotId] = useState<string>("");
+  const [guestFormData, setGuestFormData] = useState({
+    name: "",
+    phone: "",
+    email: "",
+    address: "",
+  });
+  const [guestPhoneExists, setGuestPhoneExists] = useState<boolean | null>(null);
+  const [guestPhoneChecking, setGuestPhoneChecking] = useState(false);
+  const [showLoginDialog, setShowLoginDialog] = useState(false);
+  const [loginPrefillPhone, setLoginPrefillPhone] = useState<string | undefined>(undefined);
+
+  // Success confirmation state
+  const [showSuccessDialog, setShowSuccessDialog] = useState(false);
+  const [successDetails, setSuccessDetails] = useState<{
+    planName: string;
+    planItems: { name: string; quantity: number }[];
+    frequency: string;
+    nextDeliveryDate: string;
+    totalDeliveries: number;
+    amount: number;
+    isNewUser?: boolean;
+    phone?: string;
+  } | null>(null);
+
+  // Check if user is logged in (using both useAuth hook and localStorage token)
+  const userToken = localStorage.getItem("userToken");
+  const isAuthenticated = !!(user || userToken);
 
   const { data: plans, isLoading: plansLoading, error: plansError } = useQuery<SubscriptionPlan[]>({
     queryKey: ["/api/subscription-plans"],
@@ -104,13 +143,13 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
       });
       if (!response.ok) throw new Error("Failed to fetch profile");
       const data = await response.json();
-      
+
       // Store in localStorage for payment dialog
       localStorage.setItem("userName", data.name || "");
       localStorage.setItem("userPhone", data.phone || "");
       localStorage.setItem("userEmail", data.email || "");
       localStorage.setItem("userAddress", data.address || "");
-      
+
       return data;
     },
     enabled: !!localStorage.getItem("userToken"),
@@ -159,7 +198,7 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
       const user = localStorage.getItem("userToken");
       let userName = "User";
       let userPhone = "";
-      
+
       if (user) {
         // Decode token to get user info (simplified - in production use proper JWT decode)
         try {
@@ -188,12 +227,93 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
     },
   });
 
+  // Guest subscription mutation (for users not logged in)
+  const guestSubscribeMutation = useMutation({
+    mutationFn: async ({ planId, deliverySlotId, customerName, phone, email, address }: { 
+      planId: string; 
+      deliverySlotId?: string;
+      customerName: string;
+      phone: string;
+      email: string;
+      address: string;
+    }) => {
+      const response = await fetch("/api/subscriptions/public", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          planId, 
+          deliverySlotId,
+          customerName,
+          phone,
+          email,
+          address
+        }),
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to create subscription");
+      }
+      return response.json();
+    },
+    onSuccess: (data) => {
+      const plan = plans?.find(p => p.id === data.subscription.planId);
+
+      // Auto-login if new user account was created
+      if (data.isNewUser && (data.accessToken || data.access_token)) {
+        const token = data.accessToken || data.access_token;
+        localStorage.setItem("userToken", token);
+        if (data.refreshToken) {
+          localStorage.setItem("refreshToken", data.refreshToken);
+        }
+        if (data.user) {
+          localStorage.setItem('userData', JSON.stringify(data.user));
+        }
+        console.log("✅ User auto-logged in after subscription");
+
+        // Invalidate auth queries to update UI
+        queryClient.invalidateQueries({ queryKey: ['/api/user/profile'] });
+      }
+
+      // Invalidate queries to refresh subscriptions list
+      queryClient.invalidateQueries({ queryKey: ["/api/subscriptions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
+
+      // Reset guest form
+      setShowGuestForm(false);
+      setGuestPlanId(null);
+      setGuestSlotId("");
+      setGuestFormData({ name: "", phone: "", email: "", address: "" });
+
+      // Show payment QR dialog
+      setPaymentDetails({
+        subscriptionId: data.subscription.id,
+        amount: plan?.price || 0,
+        planName: plan?.name || "Subscription",
+      });
+      setShowPaymentQR(true);
+
+      toast({ 
+        title: "Subscription Created!", 
+        description: data.isNewUser 
+          ? `Account created! Complete payment of ₹${plan?.price || 0} to activate your subscription. Your login credentials have been sent to your email.`
+          : `Complete payment of ₹${plan?.price || 0} to activate your subscription`
+      });
+    },
+    onError: (error: Error) => {
+      toast({ 
+        title: "Error", 
+        description: error.message || "Failed to create subscription", 
+        variant: "destructive" 
+      });
+    },
+  });
+
   const confirmPaymentMutation = useMutation({
     mutationFn: async ({ subscriptionId, paymentTransactionId }: { subscriptionId: string; paymentTransactionId: string }) => {
       if (!paymentTransactionId || paymentTransactionId.trim() === "") {
         throw new Error("Transaction ID is required");
       }
-      
+
       const response = await fetch(`/api/subscriptions/${subscriptionId}/payment-confirmed`, {
         method: "POST",
         headers: { 
@@ -202,36 +322,73 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
         },
         body: JSON.stringify({ paymentTransactionId: paymentTransactionId.trim() }),
       });
-      
+
       if (!response.ok) {
+        const contentType = response.headers.get("content-type");
         let errorMessage = "Failed to confirm payment";
-        try {
-          const contentType = response.headers.get("content-type");
-          if (contentType && contentType.includes("application/json")) {
+
+        if (contentType?.includes("application/json")) {
+          try {
             const error = await response.json();
             errorMessage = error.message || errorMessage;
-          } else {
-            // Handle HTML or other non-JSON responses
-            const errorText = await response.text();
-            console.error("Non-JSON error response:", errorText);
-            errorMessage = "Server error occurred. Please try again or contact support.";
+          } catch {
+            errorMessage = "Server error occurred. Please try again.";
           }
-        } catch (parseError) {
-          console.error("Error parsing error response:", parseError);
-          errorMessage = "Unexpected error occurred. Please contact support.";
+        } else {
+          // Non-JSON response (likely HTML error page)
+          errorMessage = `Server error (${response.status}). Please contact support.`;
         }
+
         throw new Error(errorMessage);
       }
+
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/subscriptions"] });
+
+      // Auto-login for guest users if accountCreated and defaultPassword are present
+      if (paymentDetails?.accountCreated && paymentDetails?.defaultPassword && paymentDetails?.phone) {
+        fetch("/api/user/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phone: paymentDetails.phone, password: paymentDetails.defaultPassword })
+        })
+          .then(async (res) => {
+            if (!res.ok) throw new Error("Auto-login failed");
+            const loginData = await res.json();
+            localStorage.setItem("userToken", loginData.accessToken);
+            if (loginData.refreshToken) localStorage.setItem("refreshToken", loginData.refreshToken);
+            if (loginData.user) localStorage.setItem("userData", JSON.stringify(loginData.user));
+            await queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
+            await queryClient.invalidateQueries({ queryKey: ["/api/subscriptions"] });
+          })
+          .catch((err) => {
+            console.error("Auto-login error:", err);
+            toast({ title: "Auto-login failed", description: "Please login manually.", variant: "destructive" });
+          });
+      }
+
+      // Get plan details for success dialog
+      const plan = plans?.find(p => p.id === paymentDetails?.subscriptionId ? 
+        mySubscriptions?.find(s => s.id === paymentDetails?.subscriptionId)?.planId : null) ||
+        plans?.find(p => p.name === paymentDetails?.planName);
+
+      // Set success details and show success dialog
+      // Get the subscription to access totalDeliveries
+      const subscription = mySubscriptions?.find(s => s.id === paymentDetails?.subscriptionId);
+      setSuccessDetails({
+        planName: paymentDetails?.planName || plan?.name || "Subscription",
+        planItems: (plan?.items as { name: string; quantity: number }[]) || [],
+        frequency: plan?.frequency || "daily",
+        nextDeliveryDate: format(addDays(new Date(), 1), "EEEE, MMM d, yyyy"),
+        totalDeliveries: subscription?.totalDeliveries || 30,
+        amount: paymentDetails?.amount || plan?.price || 0,
+      });
+
       setShowPaymentQR(false);
       setPaymentDetails(null);
-      toast({ 
-        title: "Payment Submitted!", 
-        description: "Admin will verify and activate your subscription shortly" 
-      });
+      setShowSuccessDialog(true);
     },
     onError: (error: Error) => {
       console.error("Payment confirmation error:", error);
@@ -266,7 +423,7 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
       setPauseSubscriptionId(null);
       setPauseStartDate("");
       setPauseResumeDate("");
-      
+
       let message = "Subscription paused successfully";
       if (data.pauseResumeDate) {
         message = `Subscription paused until ${format(new Date(data.pauseResumeDate), "PPP")}`;
@@ -329,7 +486,7 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
       queryClient.invalidateQueries({ queryKey: ["/api/subscriptions"] });
       setShowRenewalModal(false);
       setRenewalSubscription(null);
-      
+
       // Show payment QR for renewal
       const plan = plans?.find(p => p.id === data.planId);
       setPaymentDetails({
@@ -338,7 +495,7 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
         planName: plan?.name || "Subscription",
       });
       setShowPaymentQR(true);
-      
+
       toast({ 
         title: "Renewal Created!", 
         description: "Complete payment to activate your renewal" 
@@ -354,7 +511,7 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
     if (sub.remainingDeliveries <= 0) {
       return { isExpired: true, isExpiringSoon: false, daysRemaining: 0 };
     }
-    
+
     const endDate = sub.endDate ? new Date(sub.endDate) : null;
     if (endDate) {
       const daysRemaining = differenceInDays(endDate, new Date());
@@ -364,7 +521,7 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
         daysRemaining
       };
     }
-    
+
     // Check based on remaining deliveries
     const isExpiringSoon = sub.remainingDeliveries <= 3;
     return { isExpired: false, isExpiringSoon, daysRemaining: sub.remainingDeliveries };
@@ -404,6 +561,18 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
     const category = categoryList?.find((c: any) => c.id === plan.categoryId);
     const isRotiCategory = category?.name?.toLowerCase().includes('roti');
 
+    // For guest users, show guest subscription form
+    if (!isAuthenticated) {
+      setGuestPlanId(planId);
+      if (isRotiCategory) {
+        // Will show slot selection in guest form
+        setGuestSlotId("");
+      }
+      setShowGuestForm(true);
+      return;
+    }
+
+    // For authenticated users, proceed with normal flow
     if (isRotiCategory) {
       // Show slot selection modal for Roti plans
       setSelectedPlanForSubscription(planId);
@@ -413,6 +582,63 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
       // Subscribe directly for non-Roti plans
       subscribeMutation.mutate({ planId });
     }
+  };
+
+  // Handle guest form submission
+  const handleGuestFormSubmit = async () => {
+    if (!guestPlanId) return;
+
+    // Validate form
+    if (!guestFormData.name.trim()) {
+      toast({ title: "Name Required", description: "Please enter your name", variant: "destructive" });
+      return;
+    }
+    if (!guestFormData.phone.trim() || !/^\d{10}$/.test(guestFormData.phone.trim())) {
+      toast({ title: "Valid Phone Required", description: "Please enter a valid 10-digit phone number", variant: "destructive" });
+      return;
+    }
+    if (!guestFormData.address.trim()) {
+      toast({ title: "Address Required", description: "Please enter your delivery address", variant: "destructive" });
+      return;
+    }
+
+    const plan = plans?.find(p => p.id === guestPlanId);
+    const category = categoryList?.find((c: any) => c.id === plan?.categoryId);
+    const isRotiCategory = category?.name?.toLowerCase().includes('roti');
+
+    // Check slot required for Roti plans
+    if (isRotiCategory && !guestSlotId) {
+      toast({ title: "Slot Required", description: "Please select a delivery time slot", variant: "destructive" });
+      return;
+    }
+
+    // Check if phone already exists — if so, ask user to login instead of creating duplicate account
+    try {
+      const resp = await fetch(`/api/users/exists?phone=${encodeURIComponent(guestFormData.phone.trim())}`);
+      if (resp.ok) {
+        const body = await resp.json();
+        if (body.exists) {
+          // Open login dialog prefilled with phone so user can sign in and continue
+          const phone = guestFormData.phone.trim();
+          setLoginPrefillPhone(phone);
+          setShowLoginDialog(true);
+          setShowGuestForm(false);
+          return;
+        }
+      }
+    } catch (err) {
+      console.error("Failed to check phone existence", err);
+      // If the check fails for any reason, we proceed with the guest subscription flow
+    }
+
+    guestSubscribeMutation.mutate({
+      planId: guestPlanId,
+      deliverySlotId: guestSlotId || undefined,
+      customerName: guestFormData.name.trim(),
+      phone: guestFormData.phone.trim(),
+      email: guestFormData.email.trim(),
+      address: guestFormData.address.trim(),
+    });
   };
 
   // Confirm subscription with selected slot
@@ -431,16 +657,22 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
     subscribeMutation.mutate({ 
       planId: selectedPlanForSubscription, 
       deliverySlotId: selectedSubscriptionSlotId 
+    }, {
+      onSuccess: () => {
+        setShowSlotSelectionModal(false);
+        setSelectedPlanForSubscription(null);
+        setSelectedSubscriptionSlotId("");
+      },
+      onError: () => {
+        // Modal stays open so user can retry
+      }
     });
-    setShowSlotSelectionModal(false);
-    setSelectedPlanForSubscription(null);
-    setSelectedSubscriptionSlotId("");
   };
 
   return (
-    <>
+  <>
       <Sheet open={isOpen} onOpenChange={onClose}>
-        <SheetContent side="right" className="w-full sm:max-w-2xl overflow-y-auto">
+        <SheetContent side="right" className="w-full sm:max-w-2xl !overflow-y-auto !max-h-screen">
           <SheetHeader>
             <SheetTitle>Subscriptions</SheetTitle>
             <SheetDescription>
@@ -570,7 +802,7 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
                                 </div>
                               </div>
                             )}
-                            
+
                             <div className="flex justify-between gap-2 text-sm">
                               <span className="text-muted-foreground">Price:</span>
                               <span className="font-medium">₹{plan?.price}/{plan?.frequency}</span>
@@ -600,7 +832,7 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
                                 </Button>
                               </div>
                             )}
-                            
+
                             {/* Step 2: Payment Submitted - Waiting for Admin */}
                             {!sub.isPaid && sub.paymentTransactionId && (
                               <div className="space-y-3 pt-2">
@@ -618,7 +850,7 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
                                 </div>
                               </div>
                             )}
-                            
+
                             {/* Step 3: Active Subscription - Can Pause and Configure */}
                             {sub.isPaid && sub.status === "active" && (
                               <div className="space-y-3 pt-2">
@@ -641,7 +873,7 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
                                     </Button>
                                   </div>
                                 </div>
-                                
+
                                 <div className="flex flex-wrap gap-2">
                                   <Button
                                     size="sm"
@@ -672,7 +904,7 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
                                 </div>
                               </div>
                             )}
-                            
+
                             {/* Paused State - Can Resume */}
                             {sub.isPaid && sub.status === "paused" && (
                               <div className="space-y-3 pt-2">
@@ -964,14 +1196,14 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
           setSelectedSubscriptionSlotId("");
         }
       }}>
-        <DialogContent>
-          <DialogHeader>
+        <DialogContent className="max-w-md max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader className="flex-shrink-0">
             <DialogTitle>Select Delivery Time Slot</DialogTitle>
             <DialogDescription>
               Choose your preferred daily delivery time for fresh rotis
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 py-4 overflow-y-auto flex-1">
             <div className="space-y-2">
               <Label htmlFor="subscriptionSlot">Delivery Time Slot *</Label>
               <Select 
@@ -1005,7 +1237,7 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
               </p>
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="flex-shrink-0">
             <Button 
               variant="outline" 
               onClick={() => setShowSlotSelectionModal(false)}
@@ -1078,6 +1310,317 @@ function SubscriptionDrawer({ isOpen, onClose }: SubscriptionDrawerProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Guest Subscription Form Modal */}
+      <Dialog open={showGuestForm} onOpenChange={(open) => {
+        setShowGuestForm(open);
+        if (!open) {
+          setGuestPlanId(null);
+          setGuestSlotId("");
+          setGuestFormData({ name: "", phone: "", email: "", address: "" });
+        }
+      }}>
+        <DialogContent className="max-w-md max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader className="flex-shrink-0">
+            <DialogTitle className="flex items-center gap-2">
+              <User className="h-5 w-5" />
+              Subscribe Without Login
+            </DialogTitle>
+            <DialogDescription>
+              Enter your details to subscribe. An account will be created for you automatically.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4 overflow-y-auto flex-1">
+            {/* Plan Info */}
+            {guestPlanId && (() => {
+              const plan = plans?.find(p => p.id === guestPlanId);
+              return plan ? (
+                <div className="p-3 bg-muted rounded-md">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">{plan.name}</span>
+                    <Badge>{plan.frequency}</Badge>
+                  </div>
+                  <div className="flex items-center justify-between text-sm mt-2">
+                    <span className="text-muted-foreground">Price:</span>
+                    <span className="font-bold">₹{plan.price}</span>
+                  </div>
+                </div>
+              ) : null;
+            })()}
+
+            {/* Name */}
+            <div className="space-y-2">
+              <Label htmlFor="guest-name">Name *</Label>
+              <Input
+                id="guest-name"
+                placeholder="Enter your full name"
+                value={guestFormData.name}
+                onChange={(e) => setGuestFormData(prev => ({ ...prev, name: e.target.value }))}
+                data-testid="input-guest-name"
+              />
+            </div>
+
+            {/* Phone */}
+            <div className="space-y-2">
+              <Label htmlFor="guest-phone">Phone Number *</Label>
+              <Input
+                id="guest-phone"
+                placeholder="Enter 10-digit phone number"
+                value={guestFormData.phone}
+                onChange={(e) => {
+                  const cleaned = e.target.value.replace(/\D/g, '').slice(0, 10);
+                  setGuestFormData(prev => ({ ...prev, phone: cleaned }));
+                  // reset phone-exists status while typing
+                  setGuestPhoneExists(null);
+                }}
+                onBlur={async () => {
+                  const phone = guestFormData.phone.trim();
+                  if (!phone || !/^\d{10}$/.test(phone)) return;
+                  try {
+                    setGuestPhoneChecking(true);
+                    const resp = await fetch(`/api/users/exists?phone=${encodeURIComponent(phone)}`);
+                    if (resp.ok) {
+                      const body = await resp.json();
+                      setGuestPhoneExists(!!body.exists);
+                      if (body.exists) {
+                        // Open login dialog prefilled with phone instead of forcing redirect
+                        const phone = guestFormData.phone.trim();
+                        setLoginPrefillPhone(phone);
+                        setShowLoginDialog(true);
+                        setShowGuestForm(false);
+                        toast({ title: "Account Exists", description: "We've detected an account with this phone. Please login to continue.", variant: "destructive" });
+                      }
+                    }
+                  } catch (err) {
+                    console.error('Phone existence check failed', err);
+                  } finally {
+                    setGuestPhoneChecking(false);
+                  }
+                }}
+                data-testid="input-guest-phone"
+              />
+              {guestPhoneChecking ? (
+                <p className="text-xs text-muted-foreground mt-1">Checking phone...</p>
+              ) : guestPhoneExists ? (
+                <p className="text-xs text-destructive mt-1">This phone is registered. Please login instead.</p>
+              ) : null}
+            </div>
+
+            {/* Email */}
+            <div className="space-y-2">
+              <Label htmlFor="guest-email">Email (Optional)</Label>
+              <Input
+                id="guest-email"
+                type="email"
+                placeholder="Enter your email"
+                value={guestFormData.email}
+                onChange={(e) => setGuestFormData(prev => ({ ...prev, email: e.target.value }))}
+                data-testid="input-guest-email"
+              />
+            </div>
+
+            {/* Address */}
+            <div className="space-y-2">
+              <Label htmlFor="guest-address">Delivery Address *</Label>
+              <Textarea
+                id="guest-address"
+                placeholder="Enter your complete delivery address"
+                value={guestFormData.address}
+                onChange={(e) => setGuestFormData(prev => ({ ...prev, address: e.target.value }))}
+                rows={3}
+                data-testid="input-guest-address"
+              />
+            </div>
+
+            {/* Delivery Slot (for Roti category) */}
+            {guestPlanId && (() => {
+              const plan = plans?.find(p => p.id === guestPlanId);
+              const category = categoryList?.find((c: any) => c.id === plan?.categoryId);
+              const isRotiCategory = category?.name?.toLowerCase().includes('roti');
+
+              if (!isRotiCategory) return null;
+
+              return (
+                <div className="space-y-2">
+                  <Label htmlFor="guest-slot">Delivery Time Slot *</Label>
+                  <Select value={guestSlotId} onValueChange={setGuestSlotId}>
+                    <SelectTrigger data-testid="select-guest-slot">
+                      <SelectValue placeholder="Choose a delivery time slot" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableSlots
+                        .filter((slot: any) => slot.isActive && slot.currentOrders < slot.capacity)
+                        .map((slot: any) => (
+                          <SelectItem key={slot.id} value={slot.id}>
+                            {slot.label} ({slot.capacity - slot.currentOrders} slots available)
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Your rotis will be delivered daily at your selected time slot
+                  </p>
+                </div>
+              );
+            })()}
+
+            <p className="text-xs text-muted-foreground">
+              By subscribing, an account will be created for you. Your login details will be sent to your phone/email.
+            </p>
+          </div>
+          <DialogFooter className="flex-shrink-0">
+            <Button variant="outline" onClick={() => setShowGuestForm(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleGuestFormSubmit}
+              disabled={guestSubscribeMutation.isPending}
+              data-testid="button-guest-subscribe"
+            >
+              {guestSubscribeMutation.isPending ? "Creating..." : "Subscribe Now"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+  {/* Success Confirmation Dialog */}
+      <Dialog open={showSuccessDialog} onOpenChange={setShowSuccessDialog}>
+        <DialogContent className="sm:max-w-md max-h-[90vh] flex flex-col !overflow-y-auto">
+          <DialogHeader className="text-center flex-shrink-0">
+            <div className="mx-auto w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mb-4">
+              <CheckCircle2 className="w-10 h-10 text-green-600 dark:text-green-400" />
+            </div>
+            <DialogTitle className="text-xl">Payment Submitted Successfully</DialogTitle>
+            <DialogDescription>
+              Your subscription is pending verification. We'll activate it within 24 hours.
+            </DialogDescription>
+          </DialogHeader>
+
+          {successDetails && (
+            <div className="space-y-4 py-4 overflow-y-auto flex-1">
+              {/* Subscription Details */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">{successDetails.planName}</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {successDetails.planItems && successDetails.planItems.length > 0 && (
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground mb-1">Includes:</p>
+                      <ul className="text-sm space-y-1">
+                        {successDetails.planItems.map((item, idx) => (
+                          <li key={idx} className="flex items-center gap-2">
+                            <CheckCircle2 className="w-3 h-3 text-green-500" />
+                            {item.name} x {item.quantity}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div className="bg-muted/50 p-2 rounded">
+                      <p className="text-muted-foreground text-xs">Frequency</p>
+                      <p className="font-medium capitalize">{successDetails.frequency}</p>
+                    </div>
+                    <div className="bg-muted/50 p-2 rounded">
+                      <p className="text-muted-foreground text-xs">Total Deliveries</p>
+                      <p className="font-medium">{successDetails.totalDeliveries}</p>
+                    </div>
+                  </div>
+
+                  <div className="text-sm">
+                    <p className="text-muted-foreground text-xs">Amount Paid</p>
+                    <p className="font-bold text-lg">₹{successDetails.amount}</p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Next Steps */}
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 space-y-3">
+                <p className="font-medium text-blue-800 dark:text-blue-200 flex items-center gap-2">
+                  <Calendar className="w-4 h-4" />
+                  What Happens Next?
+                </p>
+                <ol className="text-sm text-blue-700 dark:text-blue-300 space-y-2 list-decimal list-inside">
+                  <li>Our team will verify your payment (within 24 hours)</li>
+                  <li>A chef will be assigned to prepare your meals</li>
+                  <li>Your first delivery will arrive at your selected time</li>
+                  <li>Track all your subscriptions in "My Subscriptions"</li>
+                </ol>
+              </div>
+
+              {/* New User Tip */}
+              {successDetails.isNewUser && successDetails.phone && (
+                <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-3">
+                  <p className="text-xs text-green-700 dark:text-green-300">
+                    Your account has been created! Login with your phone number and password (last 6 digits of your phone).
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter className="flex-col gap-2 sm:flex-col flex-shrink-0">
+            <Button 
+              onClick={() => {
+                setShowSuccessDialog(false);
+                setSuccessDetails(null);
+                onClose();
+                setLocation("/my-subscriptions");
+              }}
+              className="w-full"
+              data-testid="button-view-subscriptions"
+            >
+              View My Subscriptions
+            </Button>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setShowSuccessDialog(false);
+                setSuccessDetails(null);
+              }}
+              className="w-full"
+              data-testid="button-continue-browsing"
+            >
+              Continue Browsing
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* Login dialog for existing users (prefill phone when detected) */}
+      <LoginDialog
+        isOpen={showLoginDialog}
+        onClose={() => setShowLoginDialog(false)}
+        prefillPhone={loginPrefillPhone}
+        onLoginSuccess={async () => {
+          // After successful login, try to subscribe the user for the intended plan
+          setShowLoginDialog(false);
+          // If there was a guest plan intent, proceed as authenticated user
+          if (guestPlanId) {
+            const plan = plans?.find(p => p.id === guestPlanId);
+            const category = categoryList?.find((c: any) => c.id === plan?.categoryId);
+            const requiresSlot = category?.name?.toLowerCase().includes('roti');
+
+            if (requiresSlot && !guestSlotId) {
+              // Ask user to select slot
+              setSelectedPlanForSubscription(guestPlanId);
+              setSelectedSubscriptionSlotId("");
+              setShowSlotSelectionModal(true);
+              return;
+            }
+
+            try {
+              await subscribeMutation.mutateAsync({ planId: guestPlanId, deliverySlotId: guestSlotId || undefined });
+            } catch (e) {
+              // subscribeMutation handles toasts; nothing extra here
+            } finally {
+              setGuestPlanId(null);
+              setGuestSlotId("");
+            }
+          }
+        }}
+      />
     </>
   );
 }

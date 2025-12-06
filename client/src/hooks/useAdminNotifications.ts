@@ -64,6 +64,34 @@ export function useAdminNotifications() {
         }
       }
 
+      // Handle new subscription created notification
+      if (data.type === "new_subscription_created") {
+        const subscriptionData = data.data;
+        
+        // Invalidate subscription queries
+        queryClient.invalidateQueries({ queryKey: ["/api/admin", "subscriptions"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/admin/dashboard/metrics"] });
+
+        setUnreadCount((prev) => prev + 1);
+
+        toast({
+          title: "New Subscription",
+          description: `${subscriptionData.customerName} (${subscriptionData.phone}) subscribed to ${subscriptionData.planName}`,
+          duration: 5000,
+        });
+
+        if (Notification.permission === "granted") {
+          new Notification("New Subscription Created", {
+            body: `${subscriptionData.customerName} subscribed to ${subscriptionData.planName}`,
+            icon: "/favicon.ico",
+          });
+
+          // Play notification sound
+          const audio = new Audio("data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBTGH0fPTgjMGHm7A7+OZURE=");
+          audio.play().catch(() => {});
+        }
+      }
+
       // Handle subscription payment verification
       if (data.type === "subscription_update") {
         const subscription = data.data;
@@ -77,7 +105,7 @@ export function useAdminNotifications() {
           setUnreadCount((prev) => prev + 1);
 
           toast({
-            title: "💳 New Subscription Payment",
+            title: "Subscription Payment",
             description: `${subscription.customerName} submitted payment (TxnID: ${subscription.paymentTransactionId.slice(0, 12)}...)`,
             duration: 5000,
           });
@@ -87,7 +115,39 @@ export function useAdminNotifications() {
               body: `${subscription.customerName} - Verify payment to activate subscription`,
               icon: "/favicon.ico",
             });
+
+            // Play notification sound
+            const audio = new Audio("data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBTGH0fPTgjMGHm7A7+OZURE=");
+            audio.play().catch(() => {});
           }
+        }
+      }
+
+      // Handle subscription payment pending notification (specific event)
+      if (data.type === "subscription_payment_pending") {
+        const subscriptionData = data.data;
+        
+        // Invalidate subscription queries
+        queryClient.invalidateQueries({ queryKey: ["/api/admin", "subscriptions"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/admin/dashboard/metrics"] });
+        
+        setUnreadCount((prev) => prev + 1);
+
+        toast({
+          title: "New Subscription Payment",
+          description: `${subscriptionData.customerName} - ${subscriptionData.planName} (₹${subscriptionData.amount})`,
+          duration: 7000,
+        });
+
+        if (Notification.permission === "granted") {
+          new Notification("Subscription Payment Pending Verification", {
+            body: `${subscriptionData.customerName} - ${subscriptionData.planName} - TxnID: ${subscriptionData.paymentTransactionId.slice(0, 12)}...`,
+            icon: "/favicon.ico",
+          });
+
+          // Play notification sound
+          const audio = new Audio("data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBTGH0fPTgjMGHm7A7+OZURE=");
+          audio.play().catch(() => {});
         }
       }
 

@@ -677,6 +677,8 @@ export const deliveryTimeSlots = pgTable("delivery_time_slots", {
   label: varchar("label", { length: 100 }).notNull(),
   capacity: integer("capacity").notNull().default(50),
   currentOrders: integer("current_orders").notNull().default(0),
+  // Optional per-slot cutoff in hours before the slot start when ordering must be placed
+  cutoffHoursBefore: integer("cutoff_hours_before"),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
   updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
@@ -688,6 +690,7 @@ export const insertDeliveryTimeSlotsSchema = createInsertSchema(deliveryTimeSlot
   label: z.string().min(1, "Label is required"),
   capacity: z.number().int().min(1, "Capacity must be at least 1"),
   isActive: z.boolean().default(true),
+  cutoffHoursBefore: z.number().int().min(0).optional(),
 }).omit({
   id: true,
   currentOrders: true,

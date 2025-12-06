@@ -145,6 +145,20 @@ export default function MenuDrawer({ isOpen, onClose, categories = [], onCategor
                     <ShoppingBag className="h-4 w-4 mr-3" />
                     My Orders
                   </Button>
+                  {isAuthenticated && (
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start"
+                      onClick={() => {
+                        onClose();
+                        setLocation("/my-subscriptions");
+                      }}
+                      data-testid="button-nav-subscriptions"
+                    >
+                      <Calendar className="h-4 w-4 mr-3" />
+                      My Subscriptions
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     className="w-full justify-start"
@@ -195,6 +209,25 @@ export default function MenuDrawer({ isOpen, onClose, categories = [], onCategor
 
               <div>
                 <h3 className="text-sm font-semibold text-muted-foreground mb-3" data-testid="text-settings-heading">
+                  Subscription
+                </h3>
+                <div className="space-y-1">
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start"
+                    onClick={onSubscriptionClick}
+                    data-testid="button-subscription"
+                  >
+                    <Calendar className="h-4 w-4 mr-3" />
+                    Subscribe Now
+                  </Button>
+                </div>
+              </div>
+
+              <Separator />
+
+              <div>
+                <h3 className="text-sm font-semibold text-muted-foreground mb-3" data-testid="text-account-heading">
                   {isAuthenticated ? "Settings" : "Account"}
                 </h3>
                 <div className="space-y-1">
@@ -208,15 +241,6 @@ export default function MenuDrawer({ isOpen, onClose, categories = [], onCategor
                       >
                         <Settings className="h-4 w-4 mr-3" />
                         Settings
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        className="w-full justify-start"
-                        onClick={onSubscriptionClick}
-                        data-testid="button-subscription"
-                      >
-                        <Calendar className="h-4 w-4 mr-3" />
-                        Subscription
                       </Button>
                       <Button
                         variant="ghost"

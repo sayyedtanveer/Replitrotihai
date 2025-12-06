@@ -39,14 +39,16 @@ export function registerPartnerRoutes(app: Express): void {
         return;
       }
 
-      const allSubscriptions = await storage.getSubscriptions();
-      const chefSubscriptions = allSubscriptions.filter(s => s.chefId === chefId && s.isPaid);
+      // Fetch subscriptions directly for this chef from DB to avoid any accidental cross-chef leaks
+      const chefSubscriptionsRaw = await storage.getActiveSubscriptionsByChef(chefId);
+
+      console.log(`Partner subscriptions (DB): chefId=${chefId}, matchedSubs=${chefSubscriptionsRaw.length}`);
 
       const enrichedSubscriptions = await Promise.all(
-        chefSubscriptions.map(async (sub) => {
+        chefSubscriptionsRaw.map(async (sub) => {
           const plan = await storage.getSubscriptionPlan(sub.planId);
           // Remove sensitive customer information
-          const { phone, address, email, ...safeSub } = sub;
+          const { phone, address, email, ...safeSub } = sub as any;
           return {
             ...safeSub,
             planName: plan?.name,
@@ -536,7 +538,13 @@ export function registerPartnerRoutes(app: Express): void {
             phone: sub.phone,
             address: sub.address,
             planName: plan?.name || "Unknown Plan",
-            time: sub.nextDeliveryTime || "09:00",
+            // Frontend expects these exact keys
+            nextDeliveryDate: sub.nextDeliveryDate,
+            nextDeliveryTime: deliveryLog?.time || sub.nextDeliveryTime || "09:00",
+            remainingDeliveries: sub.remainingDeliveries,
+            totalDeliveries: sub.totalDeliveries,
+            planItems: plan?.items || [],
+            deliverySlotId: sub.deliverySlotId,
             status: currentStatus,
             chefName,
           });

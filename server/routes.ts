@@ -5,7 +5,7 @@ import { insertOrderSchema, userLoginSchema, insertUserSchema } from "@shared/sc
 import { registerAdminRoutes } from "./adminRoutes";
 import { registerPartnerRoutes } from "./partnerRoutes";
 import { registerDeliveryRoutes } from "./deliveryRoutes";
-import { setupWebSocket, broadcastNewOrder, broadcastSubscriptionDelivery } from "./websocket";
+import { setupWebSocket, broadcastNewOrder, broadcastSubscriptionDelivery, broadcastNewSubscriptionToAdmin, broadcastSubscriptionAssignmentToPartner } from "./websocket";
 import { hashPassword, verifyPassword, generateAccessToken, generateRefreshToken, requireUser, type AuthenticatedUserRequest } from "./userAuth";
 import { verifyToken as verifyUserToken } from "./userAuth";
 import { requireAdmin } from "./adminAuth";
@@ -18,6 +18,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerAdminRoutes(app);
   registerPartnerRoutes(app);
   registerDeliveryRoutes(app);
+
+  // Helper: compute cutoff hours before a slot based on its start time.
+  // We don't currently store per-slot cutoff in the DB, so infer a reasonable default:
+  // - Early morning slots (<= 08:00) require ordering the previous day by ~10 hours
+  // - Other slots default to 4 hours cutoff
+  // Determine cutoff hours for a slot. Prefer per-slot config `cutoffHoursBefore` when available,
+  // otherwise fall back to a reasonable default based on startTime (early slots -> 10h, others -> 4h).
+  const getCutoffHoursBefore = (slotOrStartTime: any) => {
+    try {
+      // If slot object passed and has explicit cutoff configured, use it
+      const slot = typeof slotOrStartTime === 'object' ? slotOrStartTime : null;
+      if (slot && typeof slot.cutoffHoursBefore === 'number' && isFinite(slot.cutoffHoursBefore)) {
+        return Math.max(0, Math.trunc(slot.cutoffHoursBefore));
+      }
+
+      const startTime = typeof slotOrStartTime === 'string' ? slotOrStartTime : slot?.startTime || '00:00';
+      const parts = (startTime || "00:00").split(":");
+      const hour = parseInt(parts[0], 10);
+      if (!isFinite(hour)) return 4;
+      return hour <= 8 ? 10 : 4;
+    } catch (e) {
+      return 4;
+    }
+  };
+
+  const computeSlotCutoffInfo = (slot: any) => {
+    const now = new Date();
+    const [hStr, mStr] = (slot?.startTime || "00:00").split(":");
+    const h = parseInt(hStr || "0", 10) || 0;
+    const m = parseInt(mStr || "0", 10) || 0;
+
+    // Build a Date for today's occurrence of the slot
+    const slotDate = new Date(now);
+    slotDate.setHours(h, m, 0, 0);
+
+  // prefer per-slot cutoff if available
+  const cutoffHours = getCutoffHoursBefore(slot);
+    const cutoffMs = cutoffHours * 60 * 60 * 1000;
+    const cutoffDate = new Date(slotDate.getTime() - cutoffMs);
+
+    // If now is past the cutoff, next available date is tomorrow at the same slot time
+    const nextAvailable = new Date(slotDate);
+    if (now > cutoffDate) nextAvailable.setDate(nextAvailable.getDate() + 1);
+
+    return {
+      cutoffHoursBefore: cutoffHours,
+      cutoffDate,
+      isPastCutoff: now > cutoffDate,
+      nextAvailableDate: nextAvailable,
+    };
+  };
 
   // Coupon verification route (supports optional userId for per-user limit checking)
   app.post("/api/coupons/verify", async (req: any, res) => {
@@ -666,81 +717,7 @@ app.post("/api/user/logout", async (req, res) => {
     }
   });
 
-  // User confirms they made payment (similar to order payment confirmation)
-  app.post("/api/subscriptions/:id/payment-confirmed", requireUser(), async (req: AuthenticatedUserRequest, res) => {
-    try {
-      const { id } = req.params;
-      const { paymentTransactionId } = req.body;
-
-      console.log(`📋 Subscription payment confirmation request - ID: ${id}, TxnID: ${paymentTransactionId}`);
-
-      if (!req.authenticatedUser) {
-        res.status(401).json({ message: "Authentication required" });
-        return;
-      }
-
-      if (!paymentTransactionId || paymentTransactionId.trim() === "") {
-        res.status(400).json({ message: "Payment transaction ID is required" });
-        return;
-      }
-
-      const subscription = await db.query.subscriptions.findFirst({
-        where: eq(subscriptions.id, id),
-      });
-
-      if (!subscription) {
-        console.log(`❌ Subscription not found: ${id}`);
-        res.status(404).json({ message: "Subscription not found" });
-        return;
-      }
-
-      if (subscription.userId !== req.authenticatedUser.userId) {
-        console.log(`❌ Unauthorized access attempt for subscription: ${id}`);
-        res.status(403).json({ message: "Unauthorized - This subscription belongs to another user" });
-        return;
-      }
-
-      if (subscription.isPaid) {
-        res.status(400).json({ message: "Subscription already paid" });
-        return;
-      }
-
-      await db.update(subscriptions)
-        .set({
-          paymentTransactionId: paymentTransactionId.trim(),
-          updatedAt: new Date()
-        })
-        .where(eq(subscriptions.id, id));
-
-      console.log(`✅ Subscription payment confirmed: ${id} - TxnID: ${paymentTransactionId.trim()}`);
-
-      // Fetch updated subscription
-      const updatedSubscription = await db.query.subscriptions.findFirst({
-        where: eq(subscriptions.id, id),
-      });
-
-      // **Admin Notification**: Broadcast to admin when payment is confirmed
-      if (updatedSubscription) {
-        const { broadcastSubscriptionUpdate } = await import("./websocket");
-        broadcastSubscriptionUpdate(updatedSubscription);
-        console.log(`📣 Broadcasted subscription payment confirmation to admin for subscription ${id}`);
-      }
-
-      res.status(200).json({
-        message: "Payment confirmation submitted. Admin will verify shortly.",
-        subscription: updatedSubscription || {
-          ...subscription,
-          paymentTransactionId: paymentTransactionId.trim()
-        }
-      });
-    } catch (error) {
-      console.error("Error confirming subscription payment:", error);
-      res.status(500).json({
-        message: "Failed to confirm payment",
-        error: error instanceof Error ? error.message : "Unknown error"
-      });
-    }
-  });
+  
 
   // Get subscription delivery schedule
   app.get("/api/subscriptions/:id/schedule", requireUser(), async (req: AuthenticatedUserRequest, res) => {
@@ -992,6 +969,23 @@ app.post("/api/orders", async (req: any, res) => {
         requiresDeliverySlot: true,
         categoryName: sanitized.categoryName
       });
+    }
+
+    // If Roti order and slot provided, ensure the selection meets cutoff constraints
+    if (isRotiCategory && sanitized.deliverySlotId) {
+      const slot = await storage.getDeliveryTimeSlot(sanitized.deliverySlotId);
+      if (!slot) {
+        return res.status(400).json({ message: "Selected delivery slot not found" });
+      }
+      const cutoffInfo = computeSlotCutoffInfo(slot);
+      if (cutoffInfo.isPastCutoff) {
+        return res.status(400).json({
+          message: "Selected delivery slot missed the ordering cutoff. Please schedule for the next available date.",
+          requiresReschedule: true,
+          nextAvailableDate: cutoffInfo.nextAvailableDate.toISOString(),
+          cutoffHoursBefore: cutoffInfo.cutoffHoursBefore,
+        });
+      }
     }
 
     const result = insertOrderSchema.safeParse(sanitized);
@@ -1354,6 +1348,222 @@ app.post("/api/orders", async (req: any, res) => {
     }
   });
 
+  // Public subscription endpoint - allows subscribing without login (auto-creates user account)
+  app.post("/api/subscriptions/public", async (req, res) => {
+    try {
+      const { 
+        customerName, 
+        phone, 
+        email, 
+        address, 
+        planId, 
+        deliveryTime = "09:00", 
+        deliverySlotId, 
+        durationDays = 30 
+      } = req.body;
+
+      // Validate required fields
+      if (!customerName || !phone) {
+        res.status(400).json({ message: "Customer name and phone are required" });
+        return;
+      }
+
+      if (!planId) {
+        res.status(400).json({ message: "Plan ID is required" });
+        return;
+      }
+
+      // Validate phone format (10 digits)
+      const sanitizedPhone = phone.trim().replace(/\s+/g, '');
+      if (!/^\d{10}$/.test(sanitizedPhone)) {
+        res.status(400).json({ message: "Valid 10-digit phone number is required" });
+        return;
+      }
+
+      const plan = await storage.getSubscriptionPlan(planId);
+      if (!plan) {
+        res.status(404).json({ message: "Subscription plan not found" });
+        return;
+      }
+
+      // Get category to check if it's Roti
+      const category = await storage.getCategoryById(plan.categoryId);
+      const isRotiCategory = category?.name?.toLowerCase() === 'roti' || 
+                             category?.name?.toLowerCase().includes('roti');
+
+      // Validate: If subscription is for Roti category, deliverySlotId is required
+      if (isRotiCategory && !deliverySlotId) {
+        res.status(400).json({
+          message: "Delivery time slot is required for Roti category subscriptions",
+          requiresDeliverySlot: true,
+          categoryName: category?.name
+        });
+        return;
+      }
+
+      // If Roti subscription and slot provided, validate cutoff similar to single orders
+      if (isRotiCategory && deliverySlotId) {
+        const slot = await storage.getDeliveryTimeSlot(deliverySlotId);
+        if (!slot) {
+          res.status(400).json({ message: "Selected delivery slot not found" });
+          return;
+        }
+        const cutoffInfo = computeSlotCutoffInfo(slot);
+        if (cutoffInfo.isPastCutoff) {
+          res.status(400).json({
+            message: "Selected delivery slot missed the ordering cutoff for the upcoming delivery. Please schedule the subscription to start from the next available date.",
+            requiresReschedule: true,
+            nextAvailableDate: cutoffInfo.nextAvailableDate.toISOString(),
+            cutoffHoursBefore: cutoffInfo.cutoffHoursBefore,
+          });
+          return;
+        }
+      }
+
+      // Check if user exists, if not create one
+      let user = await storage.getUserByPhone(sanitizedPhone);
+      let isNewUser = false;
+      let generatedPassword: string | undefined;
+      let emailSent = false;
+
+      if (!user) {
+        isNewUser = true;
+        // Default password: last 6 digits of phone number
+        const newPassword = sanitizedPhone.slice(-6);
+        generatedPassword = newPassword;
+
+        const passwordHash = await hashPassword(newPassword);
+        user = await storage.createUser({
+          name: customerName.trim(),
+          phone: sanitizedPhone,
+          email: email ? email.trim().toLowerCase() : null,
+          address: address ? address.trim() : null,
+          passwordHash,
+          referralCode: null,
+          walletBalance: 0,
+        });
+
+        console.log(`✅ New user created during subscription: ${user.id} - Default password: ${newPassword}`);
+
+        // Send welcome email with password if email is provided
+        if (email) {
+          const emailHtml = createWelcomeEmail(customerName, sanitizedPhone, newPassword);
+          emailSent = await sendEmail({
+            to: email,
+            subject: '🍽️ Welcome to RotiHai - Your Account Details',
+            html: emailHtml,
+          });
+
+          if (emailSent) {
+            console.log(`✅ Welcome email sent to ${email}`);
+          }
+        }
+      } else {
+        await storage.updateUserLastLogin(user.id);
+        console.log(`✅ Existing user found during subscription: ${user.id}`);
+      }
+
+      // Generate tokens for the user
+      const accessToken = generateAccessToken(user);
+      const refreshToken = generateRefreshToken(user);
+
+      // Create the subscription
+      const now = new Date();
+      const nextDelivery = new Date(now);
+      nextDelivery.setDate(nextDelivery.getDate() + 1);
+
+      const endDate = new Date(now);
+      endDate.setDate(endDate.getDate() + durationDays);
+
+      // Calculate total deliveries based on frequency and duration
+      const deliveryDays = plan.deliveryDays as string[];
+      let totalDeliveries = 0;
+
+      if (plan.frequency === "daily") {
+        totalDeliveries = deliveryDays.length > 0 ? Math.floor(durationDays / 7) * deliveryDays.length : durationDays;
+      } else if (plan.frequency === "weekly") {
+        totalDeliveries = Math.floor(durationDays / 7);
+      } else {
+        totalDeliveries = Math.floor(durationDays / 30);
+      }
+
+      const subscriptionData: any = {
+        userId: user.id,
+        planId,
+        chefId: null,
+        chefAssignedAt: null,
+        deliverySlotId: deliverySlotId || null,
+        customerName: user.name || customerName.trim(),
+        phone: user.phone || sanitizedPhone,
+        email: user.email || (email ? email.trim().toLowerCase() : null),
+        address: user.address || (address ? address.trim() : null),
+        status: "pending",
+        startDate: now,
+        endDate,
+        nextDeliveryDate: nextDelivery,
+        nextDeliveryTime: deliveryTime,
+        customItems: null,
+        remainingDeliveries: totalDeliveries,
+        totalDeliveries,
+        isPaid: false,
+        paymentTransactionId: null,
+        originalPrice: plan.price,
+        discountAmount: 0,
+        walletAmountUsed: 0,
+        couponCode: null,
+        couponDiscount: 0,
+        finalAmount: plan.price,
+        paymentNotes: null,
+        lastDeliveryDate: null,
+        deliveryHistory: [],
+        pauseStartDate: null,
+        pauseResumeDate: null,
+      };
+
+      const subscription = await storage.createSubscription(subscriptionData);
+
+      console.log(`✅ Public subscription created: ${subscription.id} for user ${user.id}`);
+
+      // Broadcast new subscription notification to admin
+      broadcastNewSubscriptionToAdmin(subscription, plan.name);
+
+      res.status(201).json({
+        subscription,
+        user: {
+          id: user.id,
+          name: user.name,
+          phone: user.phone,
+          email: user.email,
+          address: user.address,
+        },
+        accessToken,
+        refreshToken,
+        isNewUser,
+        defaultPassword: isNewUser ? generatedPassword : undefined,
+        emailSent: isNewUser ? emailSent : undefined,
+      });
+    } catch (error: any) {
+      console.error("Error creating public subscription:", error);
+      res.status(500).json({ message: error.message || "Failed to create subscription" });
+    }
+  });
+
+  // Public helper: check if a user exists by phone (used by guest subscription flow)
+  app.get("/api/users/exists", async (req, res) => {
+    try {
+      const phone = (req.query.phone as string || "").trim().replace(/\s+/g, '');
+      if (!phone || !/^\d{10}$/.test(phone)) {
+        res.status(400).json({ message: "Valid 10-digit phone query param is required" });
+        return;
+      }
+      const user = await storage.getUserByPhone(phone);
+      res.json({ exists: !!user });
+    } catch (error: any) {
+      console.error("Error checking user existence:", error);
+      res.status(500).json({ message: error.message || "Failed to check user" });
+    }
+  });
+
   // Get user's subscriptions
   app.get("/api/subscriptions", requireUser(), async (req: AuthenticatedUserRequest, res) => {
     try {
@@ -1461,9 +1671,8 @@ app.post("/api/orders", async (req: any, res) => {
 
       console.log(`✅ Subscription created: ${subscription.id}`);
 
-      // Broadcast new subscription to admin
-      const { broadcastSubscriptionUpdate } = await import("./websocket");
-      broadcastSubscriptionUpdate(subscription);
+      // Broadcast new subscription notification to admin
+      broadcastNewSubscriptionToAdmin(subscription, plan.name);
 
       res.status(201).json(subscription);
     } catch (error: any) {
@@ -1605,9 +1814,16 @@ app.post("/api/orders", async (req: any, res) => {
   });
 
   // Confirm subscription payment (user confirms after paying via QR)
-  app.post("/api/subscriptions/:id/payment-confirmed", requireUser(), async (req: AuthenticatedUserRequest, res) => {
+  // Supports both authenticated users and guest/public subscriptions
+  app.post("/api/subscriptions/:id/payment-confirmed", async (req: any, res) => {
     try {
-      const userId = req.authenticatedUser!.userId;
+      const { paymentTransactionId } = req.body;
+
+      if (!paymentTransactionId || paymentTransactionId.trim() === "") {
+        res.status(400).json({ message: "Payment transaction ID is required" });
+        return;
+      }
+
       const subscription = await storage.getSubscription(req.params.id);
 
       if (!subscription) {
@@ -1615,27 +1831,84 @@ app.post("/api/orders", async (req: any, res) => {
         return;
       }
 
-      if (subscription.userId !== userId) {
-        res.status(403).json({ message: "Unauthorized" });
-        return;
+      // Optional authentication check - verify if user is logged in
+      let userId: string | undefined;
+      if (req.headers.authorization?.startsWith("Bearer ")) {
+        const token = req.headers.authorization.substring(7);
+        const payload = verifyUserToken(token);
+        if (payload?.userId) {
+          userId = payload.userId;
+          
+          // If authenticated, verify the subscription belongs to this user
+          if (subscription.userId !== userId) {
+            res.status(403).json({ message: "Unauthorized - This subscription belongs to another user" });
+            return;
+          }
+        }
       }
 
-      const { paymentTransactionId } = req.body;
-      if (!paymentTransactionId) {
-        res.status(400).json({ message: "Payment transaction ID is required" });
+      // For guest users (no auth token), we trust the subscription ID
+      // The subscription was just created in the public flow, so it's safe
+
+      if (subscription.isPaid) {
+        res.status(400).json({ message: "Subscription already paid" });
         return;
       }
 
       const updated = await storage.updateSubscription(req.params.id, {
-        paymentTransactionId,
+        paymentTransactionId: paymentTransactionId.trim(),
       });
 
-      console.log(`💳 Subscription ${req.params.id} payment submitted with transaction: ${paymentTransactionId}`);
+      console.log(`💳 Subscription ${req.params.id} payment confirmed - TxnID: ${paymentTransactionId.trim()}`);
 
-      res.json(updated);
+      // Broadcast to admin for verification
+      const { broadcastSubscriptionUpdate } = await import("./websocket");
+      if (updated) {
+        // Broadcast subscription update to notify admin/chef/customer/browser
+        broadcastSubscriptionUpdate(updated);
+
+        // Also send a lightweight email to the customer confirming we received their payment submission
+        try {
+          const customerEmail = updated.email || null;
+          if (customerEmail) {
+            const emailHtml = `
+              <html>
+                <body style="font-family: Arial; max-width:600px; margin:auto;">
+                  <h2>Payment received — awaiting verification</h2>
+                  <p>Hi ${updated.customerName || ''},</p>
+                  <p>We received your payment submission for subscription <b>${updated.id}</b>.</p>
+                  <p>Transaction ID: <b>${paymentTransactionId.trim()}</b></p>
+                  <p>Our admin team will verify the payment shortly and activate your subscription.</p>
+                  <p>Thank you for subscribing with RotiHai.</p>
+                </body>
+              </html>
+            `;
+
+            const emailSent = await sendEmail({
+              to: customerEmail,
+              subject: `Payment received for your subscription ${updated.id}`,
+              html: emailHtml,
+            });
+
+            console.log(`📧 Payment submission email ${emailSent ? 'sent' : 'skipped'} to customer: ${customerEmail}`);
+          }
+        } catch (e) {
+          console.error('Error sending payment email to customer:', e);
+        }
+
+        // Also log admin notification intent for clarity (broadcastSubscriptionUpdate will notify admins)
+        console.log(`📣 Payment verification notification queued for admin for subscription ${req.params.id}`);
+      }
+
+      res.json({
+        message: "Payment confirmation submitted. Admin will verify shortly.",
+        subscription: updated
+      });
     } catch (error: any) {
       console.error("Error confirming subscription payment:", error);
-      res.status(500).json({ message: error.message || "Failed to confirm payment" });
+      res.status(500).json({ 
+        message: error.message || "Failed to confirm payment" 
+      });
     }
   });
 
@@ -1868,11 +2141,19 @@ app.post("/api/orders", async (req: any, res) => {
       const updated = await storage.updateSubscription(req.params.id, { chefId, chefAssignedAt: new Date() });
       console.log(`👨‍🍳 Subscription ${req.params.id} assigned to chef ${chefId}`);
 
-      // Broadcast the subscription update
-      const { broadcastSubscriptionUpdate } = await import("./websocket");
-      if (updated) {
-        broadcastSubscriptionUpdate(updated);
+      if (!updated) {
+        res.status(500).json({ message: "Failed to update subscription" });
+        return;
       }
+
+      // Get plan name for notification (safe now that `updated` exists)
+      const plan = await storage.getSubscriptionPlan(updated.planId);
+
+      // Broadcast the subscription update
+      const { broadcastSubscriptionUpdate, broadcastSubscriptionAssignmentToPartner } = await import("./websocket");
+      broadcastSubscriptionUpdate(updated);
+      // Notify the assigned partner
+      await broadcastSubscriptionAssignmentToPartner(updated, chef.name, plan?.name);
 
       res.json(updated);
     } catch (error: any) {

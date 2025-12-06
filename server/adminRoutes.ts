@@ -14,7 +14,7 @@ import {
 import { db, walletSettings } from "@shared/db";
 import { adminLoginSchema, insertAdminUserSchema, insertCategorySchema, insertProductSchema, insertDeliveryPersonnelSchema, insertDeliveryTimeSlotsSchema, insertReferralRewardSchema, insertCouponSchema } from "@shared/schema";
 import { fromZodError } from "zod-validation-error";
-import { broadcastOrderUpdate, broadcastNewOrder, notifyDeliveryAssignment, cancelPreparedOrderTimeout, broadcastProductAvailabilityUpdate, broadcastChefStatusUpdate } from "./websocket";
+import { broadcastOrderUpdate, broadcastNewOrder, notifyDeliveryAssignment, cancelPreparedOrderTimeout, broadcastProductAvailabilityUpdate, broadcastChefStatusUpdate, broadcastSubscriptionAssignmentToPartner } from "./websocket";
 import { hashPassword as hashDeliveryPassword } from "./deliveryAuth";
 import { eq } from "drizzle-orm";
 import { subscriptions } from "@shared/schema";
@@ -834,11 +834,27 @@ export function registerAdminRoutes(app: Express) {
         return;
       }
 
+      // Prevent creating a partner for a chef that already has a partner
+      const allPartners = await storage.getAllPartners();
+      const partnerForChef = allPartners.find(p => p.chefId === chefId);
+      if (partnerForChef) {
+        res.status(400).json({ message: "A partner account for this chef already exists" });
+        return;
+      }
+
+      // Prevent duplicate partner email
+      const normalizedEmail = (email || "").trim().toLowerCase();
+      const emailConflict = allPartners.find(p => p.email === normalizedEmail);
+      if (emailConflict) {
+        res.status(400).json({ message: "Email already in use by another partner" });
+        return;
+      }
+
       const passwordHash = await hashPassword(password);
       const partner = await storage.createPartner({
         chefId,
         username: normalizedUsername,
-        email: email.trim().toLowerCase(),
+        email: normalizedEmail,
         passwordHash,
       } as any);
 
@@ -1101,10 +1117,21 @@ export function registerAdminRoutes(app: Express) {
       console.log(`✅ Admin confirmed payment for subscription ${subscriptionId} (TxnID: ${subscription.paymentTransactionId}) - Subscription activated`);
 
       // Broadcast the subscription update to customer, admin, and chef
-      const { broadcastSubscriptionUpdate } = await import("./websocket");
+      const { broadcastSubscriptionUpdate, broadcastSubscriptionAssignmentToPartner } = await import("./websocket");
       if (updated) {
+        // Get plan name and chef name for notifications
+        const plan = await storage.getSubscriptionPlan(updated.planId);
+        
+        // First broadcast general update
         broadcastSubscriptionUpdate(updated);
         console.log(`📣 Broadcasted subscription activation to all connected clients`);
+
+        // Then send specific assignment notification to partner
+        if (chefId) {
+          const chef = await storage.getChefById(chefId);
+          broadcastSubscriptionAssignmentToPartner(updated, chef?.name, plan?.name);
+          console.log(`📣 Broadcasted assignment notification to partner (Chef: ${chef?.name})`);
+        }
       }
 
       // Create today's delivery log if the subscription starts today and notify chef
@@ -1251,6 +1278,9 @@ export function registerAdminRoutes(app: Express) {
       if (updated) {
         const { broadcastSubscriptionUpdate } = await import("./websocket");
         broadcastSubscriptionUpdate(updated);
+
+        // Notify the newly assigned partner about the subscription
+        broadcastSubscriptionAssignmentToPartner(updated, chef.name, plan?.name);
       }
 
       res.json({ 

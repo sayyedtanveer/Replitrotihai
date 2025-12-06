@@ -1,4 +1,4 @@
-import { type Category, type InsertCategory, type Product, type InsertProduct, type Order, type InsertOrder, type User, type UpsertUser, type Chef, type AdminUser, type InsertAdminUser, type PartnerUser, type Subscription, type SubscriptionPlan, type DeliverySetting, type InsertDeliverySetting, type CartSetting, type InsertCartSetting, type DeliveryPersonnel, type InsertDeliveryPersonnel, type WalletTransaction, type ReferralReward, type PromotionalBanner, type InsertPromotionalBanner, type SubscriptionDeliveryLog, type InsertSubscriptionDeliveryLog, type DeliveryTimeSlot, type InsertDeliveryTimeSlot } from "@shared/schema";
+import { type Category, type InsertCategory, type Product, type InsertProduct, type Order, type InsertOrder, type User, type UpsertUser, type Chef, type AdminUser, type InsertAdminUser, type PartnerUser, type Subscription, type SubscriptionPlan, type DeliverySetting, type InsertDeliverySetting, type CartSetting, type InsertCartSetting, type DeliveryPersonnel, type InsertDeliveryPersonnel, type WalletTransaction, type ReferralReward, type PromotionalBanner, type InsertPromotionalBanner, type SubscriptionDeliveryLog, type InsertSubscriptionDeliveryLog, type DeliveryTimeSlot, type InsertDeliveryTimeSlot, type Coupon } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { nanoid } from "nanoid";
 import { eq, and, gte, lte, desc, asc, or, isNull, sql } from "drizzle-orm";
@@ -80,7 +80,7 @@ export interface IStorage {
   getSubscriptionsByUserId(userId: string): Promise<Subscription[]>;
   createSubscription(data: Omit<Subscription, "id" | "createdAt" | "updatedAt">): Promise<Subscription>;
   updateSubscription(id: string, data: Partial<Subscription>): Promise<Subscription | undefined>;
-  deleteSubscription(id: string): Promise<void>;
+  deleteSubscription(id: string): Promise<boolean>;
   getActiveSubscriptionCountByChef(chefId: string): Promise<number>; // Added for load balancing
   findBestChefForCategory(categoryId: string): Promise<Chef | null>; // Added for load balancing
   assignChefToSubscription(subscriptionId: string, chefId: string): Promise<Subscription | undefined>;
@@ -181,6 +181,27 @@ export interface IStorage {
   createDeliveryTimeSlot(data: InsertDeliveryTimeSlot): Promise<DeliveryTimeSlot>;
   updateDeliveryTimeSlot(id: string, data: Partial<InsertDeliveryTimeSlot>): Promise<DeliveryTimeSlot | undefined>;
   deleteDeliveryTimeSlot(id: string): Promise<boolean>;
+
+  // Referral Rewards Settings methods
+  getAllReferralRewards(): Promise<ReferralReward[]>;
+  getActiveReferralReward(): Promise<ReferralReward | undefined>;
+  createReferralReward(data: Omit<ReferralReward, "id" | "createdAt" | "updatedAt">): Promise<ReferralReward>;
+  updateReferralReward(id: string, data: Partial<ReferralReward>): Promise<ReferralReward | undefined>;
+  deleteReferralReward(id: string): Promise<boolean>;
+
+  // Coupon management methods
+  getAllCoupons(): Promise<Coupon[]>;
+  createCoupon(data: any): Promise<Coupon>;
+  deleteCoupon(id: string): Promise<boolean>;
+  updateCoupon(id: string, data: Partial<Coupon>): Promise<Coupon | undefined>;
+
+  // Referral management methods
+  getAllReferrals(): Promise<any[]>;
+  getReferralById(id: string): Promise<any | undefined>;
+  updateReferralStatus(id: string, status: string, referrerBonus: number, referredBonus: number): Promise<void>;
+
+  // Wallet transaction methods
+  getAllWalletTransactions(dateFilter?: string): Promise<WalletTransaction[]>;
 }
 
 export class MemStorage implements IStorage {
@@ -483,15 +504,23 @@ export class MemStorage implements IStorage {
   }
 
   async createPartner(data: Omit<PartnerUser, "id" | "createdAt" | "lastLoginAt">): Promise<PartnerUser> {
-    const id = randomUUID();
-    const newPartner: PartnerUser = {
-      id,
-      ...data,
-      createdAt: new Date(),
-      lastLoginAt: null,
-    };
-    await db.insert(partnerUsers).values(newPartner);
-    return newPartner;
+    try {
+      const id = randomUUID();
+      const newPartner: PartnerUser = {
+        id,
+        ...data,
+        createdAt: new Date(),
+        lastLoginAt: null,
+      };
+      await db.insert(partnerUsers).values(newPartner);
+      return newPartner;
+    } catch (error: any) {
+      console.error("DB error creating partner:", error?.message || error);
+      if (error?.code) console.error("DB error code:", error.code);
+      if (error?.detail) console.error("DB error detail:", error.detail);
+      if (error?.stack) console.error(error.stack);
+      throw error;
+    }
   }
 
   async updatePartner(id: string, data: Partial<Pick<PartnerUser, "email" | "passwordHash" | "profilePictureUrl">>): Promise<void> {
@@ -709,10 +738,6 @@ export class MemStorage implements IStorage {
     };
   }
 
-  async updateCoupon(id: string, data: { usedCount?: number; isActive?: boolean }): Promise<void> {
-    await db.update(coupons).set(data).where(eq(coupons.id, id));
-  }
-
   // Subscription Plans
   async getSubscriptionPlans(): Promise<SubscriptionPlan[]> {
     return db.query.subscriptionPlans.findMany();
@@ -769,8 +794,9 @@ export class MemStorage implements IStorage {
     return this.getSubscription(id);
   }
 
-  async deleteSubscription(id: string): Promise<void> {
+  async deleteSubscription(id: string): Promise<boolean> {
     await db.delete(subscriptions).where(eq(subscriptions.id, id));
+    return true;
   }
 
   async getSubscriptionsByUserId(userId: string): Promise<Subscription[]> {
@@ -879,14 +905,8 @@ export class MemStorage implements IStorage {
     return this.getSubscriptionDeliveryLog(id);
   }
 
-  async deleteSubscriptionDeliveryLog(id: string): Promise<boolean> {
+  async deleteSubscriptionDeliveryLog(id: string): Promise<void> {
     await db.delete(subscriptionDeliveryLogs).where(eq(subscriptionDeliveryLogs.id, id));
-    return true;
-  }
-
-  async deleteSubscription(id: string): Promise<boolean> {
-    await db.delete(subscriptions).where(eq(subscriptions.id, id));
-    return true;
   }
 
   async getDeliveryLogBySubscriptionAndDate(subscriptionId: string, date: Date): Promise<SubscriptionDeliveryLog | undefined> {
@@ -1768,7 +1788,7 @@ export class MemStorage implements IStorage {
   async updateReferralReward(id: string, data: Partial<ReferralReward>): Promise<ReferralReward | undefined> {
     const [updated] = await db.update(referralRewards)
       .set({ ...data, updatedAt: new Date() })
-      .where(eq(referrals.id, id))
+      .where(eq(referralRewards.id, id))
       .returning();
     return updated || undefined;
   }
@@ -1779,14 +1799,14 @@ export class MemStorage implements IStorage {
   }
 
   // Get all coupons (for admin)
-  async getAllCoupons(): Promise<any[]> {
+  async getAllCoupons(): Promise<Coupon[]> {
     return db.query.coupons.findMany({
       orderBy: (c, { desc }) => [desc(c.createdAt)]
     });
   }
 
   // Create coupon
-  async createCoupon(data: any): Promise<any> {
+  async createCoupon(data: any): Promise<Coupon> {
     const id = randomUUID();
     const coupon = {
       id,
@@ -1805,7 +1825,7 @@ export class MemStorage implements IStorage {
   }
 
   // Update coupon
-  async updateCoupon(id: string, data: Partial<any>): Promise<any> {
+  async updateCoupon(id: string, data: Partial<Coupon>): Promise<Coupon | undefined> {
     const [updated] = await db.update(coupons)
       .set({ ...data })
       .where(eq(coupons.id, id))
@@ -1845,7 +1865,7 @@ export class MemStorage implements IStorage {
   // ================= NEW WALLET TRANSACTION METHODS =================
 
   // Get all wallet transactions (for admin)
-  async getAllWalletTransactions(dateFilter?: string): Promise<any[]> {
+  async getAllWalletTransactions(dateFilter?: string): Promise<WalletTransaction[]> {
     if (dateFilter) {
       const filterDate = new Date(dateFilter);
       const startOfDay = new Date(filterDate.setHours(0, 0, 0, 0));

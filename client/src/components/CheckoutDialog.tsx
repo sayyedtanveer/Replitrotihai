@@ -5,7 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
@@ -117,6 +117,43 @@ export default function CheckoutDialog({
     queryKey: ["/api/delivery-slots"],
     enabled: isRotiCategory,
   });
+
+  // Compute cutoff info for each slot (client-side advisory). Keep in sync with server logic.
+  const slotCutoffMap = useMemo(() => {
+    const map: Record<string, {
+      cutoffHoursBefore: number;
+      cutoffDate: Date;
+      isPastCutoff: boolean;
+      nextAvailableDate: Date;
+    }> = {};
+    const now = new Date();
+    deliverySlots.forEach((slot) => {
+      const [hStr, mStr] = (slot.startTime || "00:00").split(":");
+      const h = parseInt(hStr || "0", 10) || 0;
+      const m = parseInt(mStr || "0", 10) || 0;
+
+      const slotDate = new Date(now);
+      slotDate.setHours(h, m, 0, 0);
+
+  // Prefer per-slot configured cutoff if available
+  const cutoffHours = typeof (slot as any).cutoffHoursBefore === 'number' ? (slot as any).cutoffHoursBefore : (h <= 8 ? 10 : 4);
+      const cutoffMs = cutoffHours * 60 * 60 * 1000;
+      const cutoffDate = new Date(slotDate.getTime() - cutoffMs);
+      const isPastCutoff = now > cutoffDate;
+      const nextAvailableDate = new Date(slotDate);
+      if (isPastCutoff) nextAvailableDate.setDate(nextAvailableDate.getDate() + 1);
+
+      map[slot.id] = {
+        cutoffHoursBefore: cutoffHours,
+        cutoffDate,
+        isPastCutoff,
+        nextAvailableDate,
+      };
+    });
+    return map;
+  }, [deliverySlots]);
+
+  const [suggestedReschedule, setSuggestedReschedule] = useState<null | { slotId: string; nextAvailableDate: string }>(null);
 
   // Get token from localStorage (for authenticated users)
   const userToken = localStorage.getItem("userToken");
@@ -349,16 +386,29 @@ export default function CheckoutDialog({
       });
 
       if (!response.ok) {
-        const error = await response.json();
+        const error = await response.json().catch(() => ({}));
         if (error.requiresLogin) {
           toast({
             title: "Login Required",
             description: error.message || "This phone number is already registered. Please login.",
             variant: "destructive",
           });
-          setIsLoading(false); // Changed from setIsSubmitting to setIsLoading
+          setIsLoading(false);
           return;
         }
+
+        // Handle server telling client to reschedule due to cutoff
+        if (error.requiresReschedule) {
+          setSuggestedReschedule({ slotId: orderData.deliverySlotId as string, nextAvailableDate: error.nextAvailableDate });
+          toast({
+            title: "Selected slot passed cutoff",
+            description: error.message || "Selected delivery slot missed the ordering cutoff. Please schedule for the next available date.",
+            variant: "destructive",
+          });
+          setIsLoading(false);
+          return;
+        }
+
         throw new Error(error.message || "Failed to create order");
       }
 
@@ -693,17 +743,23 @@ export default function CheckoutDialog({
                           <SelectValue placeholder="Choose a delivery time slot" />
                         </SelectTrigger>
                         <SelectContent>
-                          {deliverySlots
-                            .filter(slot => slot.isActive && slot.currentOrders < slot.capacity)
-                            .map((slot) => (
-                              <SelectItem 
-                                key={slot.id} 
-                                value={slot.id}
-                                data-testid={`delivery-slot-${slot.id}`}
-                              >
-                                {slot.label} ({slot.capacity - slot.currentOrders} slots available)
-                              </SelectItem>
-                            ))}
+                            {deliverySlots
+                              .filter(slot => slot.isActive && slot.currentOrders < slot.capacity)
+                              .map((slot) => {
+                                const cutoff = slotCutoffMap[slot.id];
+                                const disabled = !!cutoff && cutoff.isPastCutoff;
+                                return (
+                                  <SelectItem 
+                                    key={slot.id} 
+                                    value={slot.id}
+                                    data-testid={`delivery-slot-${slot.id}`}
+                                    disabled={disabled}
+                                  >
+                                    {slot.label} ({slot.capacity - slot.currentOrders} slots available)
+                                    {disabled ? ` — Cutoff passed; next: ${cutoff?.nextAvailableDate.toLocaleDateString()}` : ''}
+                                  </SelectItem>
+                                );
+                              })}
                           {deliverySlots.filter(slot => slot.isActive && slot.currentOrders < slot.capacity).length === 0 && (
                             <SelectItem value="none" disabled>
                               No delivery slots available
@@ -715,6 +771,20 @@ export default function CheckoutDialog({
                         <p className="text-xs text-green-600 dark:text-green-400 mt-1">
                           ✓ Your rotis will be delivered around {selectedDeliveryTime}
                         </p>
+                      )}
+                      {selectedDeliverySlotId && slotCutoffMap[selectedDeliverySlotId] && (
+                        (() => {
+                          const info = slotCutoffMap[selectedDeliverySlotId];
+                          return info.isPastCutoff ? (
+                            <p className="text-xs text-destructive mt-1">
+                              ⚠️ Cutoff for this slot has passed. Earliest available date: {info.nextAvailableDate.toLocaleString()}.
+                            </p>
+                          ) : (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Cutoff for this slot: {info.cutoffDate.toLocaleString()} ({info.cutoffHoursBefore} hours before delivery)
+                            </p>
+                          );
+                        })()
                       )}
                       {!selectedDeliveryTime && (
                         <p className="text-xs text-muted-foreground mt-1">

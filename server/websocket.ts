@@ -591,3 +591,95 @@ export function broadcastProductAvailabilityUpdate(product: any) {
   console.log(`  - Partners notified: ${partnerNotified}`);
   console.log(`================================================\n`);
 }
+
+// Broadcast new subscription created notification to admins
+export function broadcastNewSubscriptionToAdmin(subscription: any, planName?: string) {
+  const message = JSON.stringify({
+    type: "new_subscription_created",
+    data: {
+      subscriptionId: subscription.id,
+      customerName: subscription.customerName,
+      phone: subscription.phone,
+      email: subscription.email,
+      address: subscription.address,
+      planId: subscription.planId,
+      planName: planName || "Unknown Plan",
+      status: subscription.status,
+      startDate: subscription.startDate,
+      finalAmount: subscription.finalAmount,
+      isPaid: subscription.isPaid,
+    },
+    message: `New subscription from ${subscription.customerName} (${subscription.phone})`,
+    timestamp: new Date().toISOString(),
+  });
+
+  console.log(`\n📣 ========== BROADCASTING NEW SUBSCRIPTION TO ADMINS ==========`);
+  console.log(`Subscription ID: ${subscription.id}`);
+  console.log(`Customer: ${subscription.customerName}`);
+  console.log(`Phone: ${subscription.phone}`);
+  console.log(`Plan: ${planName || subscription.planId}`);
+
+  let adminNotified = 0;
+
+  clients.forEach((client, clientId) => {
+    if (client.type === "admin" && client.ws.readyState === WebSocket.OPEN) {
+      client.ws.send(message);
+      adminNotified++;
+      console.log(`  ✅ Sent to admin ${clientId}`);
+    }
+  });
+
+  console.log(`\n📊 Notification Summary:`);
+  console.log(`  - Admins notified: ${adminNotified}`);
+  console.log(`================================================\n`);
+}
+
+// Broadcast subscription assignment notification to the assigned partner/chef
+export function broadcastSubscriptionAssignmentToPartner(subscription: any, chefName?: string, planName?: string) {
+  if (!subscription.chefId) {
+    console.log(`⚠️ No chef assigned to subscription ${subscription.id}, skipping partner notification`);
+    return;
+  }
+
+  const message = JSON.stringify({
+    type: "subscription_assigned",
+    data: {
+      subscriptionId: subscription.id,
+      customerName: subscription.customerName,
+      phone: subscription.phone,
+      address: subscription.address,
+      planId: subscription.planId,
+      planName: planName || "Unknown Plan",
+      status: subscription.status,
+      nextDeliveryDate: subscription.nextDeliveryDate,
+      nextDeliveryTime: subscription.nextDeliveryTime,
+      chefId: subscription.chefId,
+    },
+    message: `New subscription assigned: ${subscription.customerName} - ${planName || "Subscription"}`,
+    timestamp: new Date().toISOString(),
+  });
+
+  console.log(`\n📣 ========== BROADCASTING SUBSCRIPTION ASSIGNMENT TO PARTNER ==========`);
+  console.log(`Subscription ID: ${subscription.id}`);
+  console.log(`Customer: ${subscription.customerName}`);
+  console.log(`Assigned Chef: ${chefName || subscription.chefId}`);
+  console.log(`Plan: ${planName || subscription.planId}`);
+
+  let partnerNotified = false;
+
+  clients.forEach((client, clientId) => {
+    if (client.type === "chef" && client.chefId === subscription.chefId && client.ws.readyState === WebSocket.OPEN) {
+      client.ws.send(message);
+      partnerNotified = true;
+      console.log(`  ✅ Sent to partner ${clientId} (chefId: ${client.chefId})`);
+    }
+  });
+
+  if (!partnerNotified) {
+    console.log(`  ⚠️ WARNING: No partner WebSocket connected for chefId: ${subscription.chefId}`);
+  }
+
+  console.log(`\n📊 Notification Summary:`);
+  console.log(`  - Partner notified: ${partnerNotified ? 'YES' : 'NO'}`);
+  console.log(`================================================\n`);
+}

@@ -159,6 +159,40 @@ app.use((req, res, next) => {
     }
   });
 
+  // Partner token refresh
+  app.post("/api/partner/auth/refresh", async (req, res) => {
+    try {
+      const refreshToken = req.cookies.partnerRefreshToken;
+
+      if (!refreshToken) {
+        res.status(401).json({ message: "No refresh token provided" });
+        return;
+      }
+
+      const { verifyToken: verifyPartnerToken } = await import("./partnerAuth");
+      const payload = verifyPartnerToken(refreshToken);
+
+      if (!payload) {
+        res.status(401).json({ message: "Invalid or expired refresh token" });
+        return;
+      }
+
+      const partner = await storage.getPartnerById(payload.partnerId);
+      if (!partner) {
+        res.status(404).json({ message: "Partner not found" });
+        return;
+      }
+
+      const newAccessToken = generateAccessToken(partner);
+
+      console.log("✅ Partner token refreshed:", partner.username);
+      res.json({ accessToken: newAccessToken });
+    } catch (error) {
+      console.error("Partner token refresh error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Get partner profile
   app.get("/api/partner/profile", requirePartner(), async (req, res) => {
     try {

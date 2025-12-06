@@ -21,14 +21,16 @@ interface DeliveryTimeSlot {
   startTime: string;
   label: string;
   isActive: boolean;
+  cutoffHoursBefore?: number;
 }
 
 export default function AdminDeliveryTimeSlots() {
   const { toast } = useToast();
-  const [newSlot, setNewSlot] = useState({
+  const [newSlot, setNewSlot] = useState<{ startTime: string; label: string; isActive: boolean; cutoffHoursBefore?: number | undefined }>({
     startTime: "09:00",
     label: "9:00 AM - 10:00 AM",
     isActive: true,
+    cutoffHoursBefore: undefined,
   });
 
   const buildHeaders = (includeContentType = false): Record<string, string> => {
@@ -74,6 +76,7 @@ export default function AdminDeliveryTimeSlots() {
         startTime: "09:00",
         label: "9:00 AM - 10:00 AM",
         isActive: true,
+        cutoffHoursBefore: undefined,
       });
       toast({ title: "Success", description: "Delivery slot added" });
     },
@@ -188,6 +191,18 @@ export default function AdminDeliveryTimeSlots() {
                   data-testid="input-label"
                 />
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="cutoff">Cutoff (hours before)</Label>
+                <Input
+                  id="cutoff"
+                  type="number"
+                  min={0}
+                  placeholder="e.g., 10"
+                  value={newSlot.cutoffHoursBefore ?? ""}
+                  onChange={(e) => setNewSlot({ ...newSlot, cutoffHoursBefore: e.target.value === "" ? undefined : parseInt(e.target.value, 10) })}
+                  data-testid="input-cutoff"
+                />
+              </div>
               <div className="flex items-end">
                 <Button
                   onClick={() => createMutation.mutate(newSlot)}
@@ -230,6 +245,9 @@ export default function AdminDeliveryTimeSlots() {
                       </p>
                       <p className="text-sm text-slate-600 dark:text-slate-400">
                         Start: {slot.startTime}
+                        {typeof slot.cutoffHoursBefore === 'number' && (
+                          <span className="ml-2 text-xs text-muted-foreground">(cutoff: {slot.cutoffHoursBefore}h)</span>
+                        )}
                       </p>
                     </div>
                     <div className="flex items-center gap-4">
