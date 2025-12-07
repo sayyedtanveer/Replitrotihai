@@ -42,15 +42,6 @@ export default function AdminSubscriptions() {
   const [todaysDeliveriesOpen, setTodaysDeliveriesOpen] = useState(false);
   const [deletingSubscription, setDeletingSubscription] = useState<Subscription | null>(null);
 
-  // Delivery time slots
-  const [newSlot, setNewSlot] = useState({
-    startTime: "09:00",
-    endTime: "10:00",
-    label: "9:00 AM - 10:00 AM",
-    capacity: 50,
-    isActive: true,
-  });
-
   const token = localStorage.getItem("adminToken");
 
   const { data: categories } = useQuery<Category[]>({
@@ -113,78 +104,6 @@ export default function AdminSubscriptions() {
       return response.json();
     },
     enabled: !!token,
-  });
-
-  const { data: deliverySlots = [], isLoading: slotsLoading } = useQuery<any[]>({
-    queryKey: ["/api/admin/delivery-slots"],
-    queryFn: async () => {
-      const response = await fetch("/api/admin/delivery-slots", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!response.ok) throw new Error("Failed to fetch delivery slots");
-      return response.json();
-    },
-    enabled: !!token,
-  });
-
-  // Create delivery slot
-  const createSlotMutation = useMutation({
-    mutationFn: async (data: any) => {
-      const response = await fetch("/api/admin/delivery-slots", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(data),
-      });
-      if (!response.ok) throw new Error("Failed to create slot");
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/delivery-slots"] });
-      setNewSlot({ startTime: "09:00", endTime: "10:00", label: "9:00 AM - 10:00 AM", capacity: 50, isActive: true });
-      toast({ title: "Success", description: "Delivery slot added" });
-    },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to add delivery slot", variant: "destructive" });
-    },
-  });
-
-  // Update delivery slot
-  const updateSlotMutation = useMutation({
-    mutationFn: async ({ id, data }: any) => {
-      const response = await fetch(`/api/admin/delivery-slots/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(data),
-      });
-      if (!response.ok) throw new Error("Failed to update slot");
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/delivery-slots"] });
-      toast({ title: "Success", description: "Delivery slot updated" });
-    },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to update delivery slot", variant: "destructive" });
-    },
-  });
-
-  // Delete delivery slot
-  const deleteSlotMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const response = await fetch(`/api/admin/delivery-slots/${id}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!response.ok) throw new Error("Failed to delete slot");
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/delivery-slots"] });
-      toast({ title: "Success", description: "Delivery slot deleted" });
-    },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to delete delivery slot", variant: "destructive" });
-    },
   });
 
   const form = useForm<InsertSubscriptionPlan>({
@@ -649,7 +568,6 @@ export default function AdminSubscriptions() {
           <TabsList>
             <TabsTrigger value="plans">Subscription Plans</TabsTrigger>
             <TabsTrigger value="active">Active Subscriptions</TabsTrigger>
-            <TabsTrigger value="slots">Delivery Time Slots</TabsTrigger>
           </TabsList>
 
           <TabsContent value="plans">
@@ -920,12 +838,6 @@ export default function AdminSubscriptions() {
                               <p className="text-sm text-slate-600 dark:text-slate-400">Plan: {plan?.name}</p>
                               <p className="text-sm text-slate-600 dark:text-slate-400">Phone: {sub.phone}</p>
                               <p className="text-sm text-slate-600 dark:text-slate-400">Amount: ₹{plan?.price}</p>
-                              {sub.deliverySlotId && deliverySlots.find((s: any) => s.id === sub.deliverySlotId) && (
-                                <p className="text-sm text-slate-600 dark:text-slate-400">
-                                  <Clock className="w-3 h-3 inline mr-1" />
-                                  Delivery Slot: {deliverySlots.find((s: any) => s.id === sub.deliverySlotId)?.label}
-                                </p>
-                              )}
                               <div className="p-2 bg-slate-100 dark:bg-slate-800 rounded text-sm">
                                 <span className="font-medium">Transaction ID: </span>
                                 <span className="font-mono">{sub.paymentTransactionId}</span>
@@ -1130,14 +1042,6 @@ export default function AdminSubscriptions() {
                                   </div>
                                 )}
                               </div>
-                              {sub.deliverySlotId && deliverySlots.find((s: any) => s.id === sub.deliverySlotId) && (
-                                <div className="mt-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded border border-blue-200 dark:border-blue-800">
-                                  <p className="text-xs font-medium text-blue-700 dark:text-blue-400">
-                                    <Clock className="w-3 h-3 inline mr-1" />
-                                    Delivery Slot: {deliverySlots.find((s: any) => s.id === sub.deliverySlotId)?.label}
-                                  </p>
-                                </div>
-                              )}
                               {sub.pauseStartDate && (
                                 <div className="mt-2 text-xs text-amber-600 dark:text-amber-400">
                                   Paused since: {format(new Date(sub.pauseStartDate), "PPP")}
@@ -1199,130 +1103,6 @@ export default function AdminSubscriptions() {
                   </div>
                 ) : (
                   <p className="text-center text-slate-600 dark:text-slate-400 py-8">No active subscriptions</p>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="slots" className="space-y-4">
-            {/* Add New Slot */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Plus className="w-5 h-5" />
-                  Add New Time Slot
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="startTime">Start Time</Label>
-                    <Input
-                      id="startTime"
-                      type="time"
-                      value={newSlot.startTime}
-                      onChange={(e) =>
-                        setNewSlot({ ...newSlot, startTime: e.target.value })
-                      }
-                      data-testid="input-start-time"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="endTime">End Time</Label>
-                    <Input
-                      id="endTime"
-                      type="time"
-                      value={newSlot.endTime}
-                      onChange={(e) =>
-                        setNewSlot({ ...newSlot, endTime: e.target.value })
-                      }
-                      data-testid="input-end-time"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="label">Display Label</Label>
-                    <Input
-                      id="label"
-                      placeholder="e.g., 9:00 AM - 10:00 AM"
-                      value={newSlot.label}
-                      onChange={(e) =>
-                        setNewSlot({ ...newSlot, label: e.target.value })
-                      }
-                      data-testid="input-label"
-                    />
-                  </div>
-                  <div className="flex items-end">
-                    <Button
-                      onClick={() => createSlotMutation.mutate(newSlot)}
-                      disabled={createSlotMutation.isPending}
-                      data-testid="button-add-slot"
-                      className="w-full"
-                    >
-                      {createSlotMutation.isPending ? "Adding..." : "Add Slot"}
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* List of Slots */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Active Time Slots</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {slotsLoading ? (
-                  <p className="text-slate-600 dark:text-slate-400">
-                    Loading slots...
-                  </p>
-                ) : deliverySlots.length === 0 ? (
-                  <p className="text-slate-600 dark:text-slate-400">
-                    No delivery slots created yet. Add one to get started.
-                  </p>
-                ) : (
-                  <div className="space-y-3">
-                    {deliverySlots.map((slot: any) => (
-                      <div
-                        key={slot.id}
-                        className="flex items-center justify-between p-4 border border-slate-200 dark:border-slate-700 rounded-lg"
-                      >
-                        <div className="flex-1">
-                          <p className="font-semibold text-slate-900 dark:text-slate-100">
-                            {slot.label}
-                          </p>
-                          <p className="text-sm text-slate-600 dark:text-slate-400">
-                            Start: {slot.startTime}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-4">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm text-slate-600 dark:text-slate-400">
-                              Active
-                            </span>
-                            <Switch
-                              checked={slot.isActive}
-                              onCheckedChange={(checked) =>
-                                updateSlotMutation.mutate({
-                                  id: slot.id,
-                                  data: { isActive: checked },
-                                })
-                              }
-                              data-testid={`switch-active-${slot.id}`}
-                            />
-                          </div>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => deleteSlotMutation.mutate(slot.id)}
-                            disabled={deleteSlotMutation.isPending}
-                            data-testid={`button-delete-${slot.id}`}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
                 )}
               </CardContent>
             </Card>

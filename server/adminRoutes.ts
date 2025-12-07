@@ -311,6 +311,12 @@ export function registerAdminRoutes(app: Express) {
 
         if (confirmedOrder) {
           console.log(`✅ Admin confirmed payment for order ${orderId} - Broadcasting to chef ${confirmedOrder.chefId}`);
+          
+          // For scheduled delivery orders (roti category with deliveryTime), log the scheduled delivery
+          if (confirmedOrder.deliveryTime && confirmedOrder.deliverySlotId && confirmedOrder.chefId) {
+            console.log(`📋 Scheduled delivery order detected for ${orderId} - Delivery Time: ${confirmedOrder.deliveryTime}`);
+          }
+          
           // Broadcast to chef and admin
           broadcastOrderUpdate(confirmedOrder);
         }

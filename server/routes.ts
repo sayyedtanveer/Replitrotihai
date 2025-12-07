@@ -1071,6 +1071,14 @@ app.post("/api/orders", async (req: any, res) => {
         if (cutoffInfo.isPastCutoff) {
           console.log(`📅 Auto-scheduling Roti order for next day - slot cutoff passed`);
         }
+      } else {
+        // NO SLOT SELECTED - Auto-calculate delivery time as 1 hour from now
+        const deliveryTime = new Date(now);
+        deliveryTime.setHours(deliveryTime.getHours() + 1);
+        const deliveryHour = String(deliveryTime.getHours()).padStart(2, '0');
+        const deliveryMinute = String(deliveryTime.getMinutes()).padStart(2, '0');
+        sanitized.deliveryTime = `${deliveryHour}:${deliveryMinute}`;
+        console.log(`⏰ No slot selected: auto-set delivery time to ${sanitized.deliveryTime} (1 hour from now)`);
       }
     }
 

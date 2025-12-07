@@ -1,16 +1,3 @@
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { AdminLayout } from "@/components/admin/AdminLayout";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
-import { useToast } from "@/hooks/use-toast";
-import { queryClient } from "@/lib/queryClient";
-import { Clock, Save, AlertTriangle } from "lucide-react";
-import { useState, useEffect } from "react";
-
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -22,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Clock, Save, AlertCircle, CheckCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import AdminLayout from "@/components/admin/AdminLayout";
+import { AdminLayout } from "@/components/admin/AdminLayout";
 
 interface RotiSettings {
   id: string;
@@ -140,7 +127,7 @@ export default function AdminRotiSettings() {
           <Card className={settings.isInBlockedPeriod ? "border-orange-300 dark:border-orange-700" : ""}>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <AlertTriangle className={`w-5 h-5 ${settings.isInBlockedPeriod ? "text-orange-500" : "text-green-500"}`} />
+                <AlertCircle className={`w-5 h-5 ${settings.isInBlockedPeriod ? "text-orange-500" : "text-green-500"}`} />
                 Current Status
               </CardTitle>
             </CardHeader>

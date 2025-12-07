@@ -276,6 +276,74 @@ async function seed() {
 
   await db.insert(orders).values(ordersData).onConflictDoNothing();
 
+  // Seed Delivery Time Slots
+  console.log("Seeding delivery time slots...");
+  const { deliveryTimeSlots } = await import("@shared/db");
+  const deliverySlotsData = [
+    {
+      id: "slot1",
+      startTime: "09:00",
+      endTime: "10:30",
+      label: "Morning (9:00 AM - 10:30 AM)",
+      capacity: 50,
+      currentOrders: 0,
+      cutoffHoursBefore: 4, // Must order 4 hours before 9:00 AM = by 5:00 AM
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    {
+      id: "slot2",
+      startTime: "10:30",
+      endTime: "12:00",
+      label: "Late Morning (10:30 AM - 12:00 PM)",
+      capacity: 50,
+      currentOrders: 0,
+      cutoffHoursBefore: 3, // Must order 3 hours before 10:30 AM = by 7:30 AM
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    {
+      id: "slot3",
+      startTime: "17:00",
+      endTime: "18:30",
+      label: "Evening (5:00 PM - 6:30 PM)",
+      capacity: 50,
+      currentOrders: 0,
+      cutoffHoursBefore: 4, // Must order 4 hours before 5:00 PM = by 1:00 PM
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    {
+      id: "slot4",
+      startTime: "18:30",
+      endTime: "20:00",
+      label: "Late Evening (6:30 PM - 8:00 PM)",
+      capacity: 50,
+      currentOrders: 0,
+      cutoffHoursBefore: 3, // Must order 3 hours before 6:30 PM = by 3:30 PM
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    {
+      id: "slot5",
+      startTime: "08:00",
+      endTime: "09:00",
+      label: "Early Morning (8:00 AM - 9:00 AM)",
+      capacity: 30,
+      currentOrders: 0,
+      cutoffHoursBefore: 6, // Must order 6 hours before 8:00 AM = by 2:00 AM
+      isActive: false, // Disabled by default
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+  ];
+
+  await db.insert(deliveryTimeSlots).values(deliverySlotsData).onConflictDoNothing();
+
   // Seed Delivery Settings
   console.log("Seeding delivery settings...");
   const { deliverySettings } = await import("@shared/db");

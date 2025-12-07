@@ -132,6 +132,7 @@ export const orders = pgTable("orders", {
   categoryId: varchar("category_id"), // Category of the order (for Roti validation)
   categoryName: text("category_name"), // Category name for display
   deliveryTime: text("delivery_time"), // Required for Roti orders (HH:mm format)
+  deliveryDate: text("delivery_date"), // Date for scheduled orders (YYYY-MM-DD format)
   deliverySlotId: varchar("delivery_slot_id"), // Reference to delivery time slot
   approvedBy: text("approved_by"),
   rejectedAt: timestamp("rejected_at"),

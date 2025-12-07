@@ -154,6 +154,15 @@ export default function AdminDeliveryTimeSlots() {
           <p className="text-slate-600 dark:text-slate-400 mt-1">
             Create and manage delivery time slots that customers can select from
           </p>
+          <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800">
+            <p className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-2">📋 Slot Configuration Guide:</p>
+            <ul className="text-xs text-blue-800 dark:text-blue-200 space-y-1 list-disc list-inside">
+              <li><strong>Format:</strong> Use 1-hour ranges (e.g., "9:00 AM - 10:00 AM")</li>
+              <li><strong>Default cutoff:</strong> 15 minutes (0.25 hours) before slot time</li>
+              <li><strong>Example:</strong> "9:00 AM - 10:00 AM" with default = Order until 8:45 AM</li>
+              <li><strong>Custom cutoff:</strong> Set hours before (e.g., 2 for 2 hours, 0.5 for 30 min)</li>
+            </ul>
+          </div>
         </div>
 
         {/* Add New Slot */}
@@ -196,18 +205,24 @@ export default function AdminDeliveryTimeSlots() {
                 <Input
                   id="cutoff"
                   type="number"
+                  step="0.25"
                   min={0}
-                  placeholder="e.g., 13 for 11 PM cutoff"
+                  placeholder="Leave blank for 15 min default"
                   value={newSlot.cutoffHoursBefore ?? ""}
-                  onChange={(e) => setNewSlot({ ...newSlot, cutoffHoursBefore: e.target.value === "" ? undefined : parseInt(e.target.value, 10) })}
+                  onChange={(e) => setNewSlot({ ...newSlot, cutoffHoursBefore: e.target.value === "" ? undefined : parseFloat(e.target.value) })}
                   data-testid="input-cutoff"
                 />
-                <p className="text-xs text-muted-foreground">
-                  💡 Morning slots (8-11 AM): Use 13+ hours for 11 PM cutoff. Example: 8 AM slot with 13 hours = 7 PM cutoff
-                </p>
-                <p className="text-xs text-amber-600 dark:text-amber-400">
-                  ⚠️ Morning slots cannot be ordered between 8-11 AM same day
-                </p>
+                <div className="space-y-1">
+                  <p className="text-xs text-green-600 dark:text-green-400">
+                    ✅ Default: 0.25 hours (15 minutes) before slot
+                  </p>
+                  <p className="text-xs text-blue-600 dark:text-blue-400">
+                    💡 Use 0.5 for 30 min, 1 for 1 hour, 2 for 2 hours, etc.
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Example: 9 AM slot with default = Order until 8:45 AM
+                  </p>
+                </div>
               </div>
               <div className="flex items-end">
                 <Button

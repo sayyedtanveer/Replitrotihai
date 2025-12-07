@@ -1,12 +1,12 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Package, DollarSign, Clock, CheckCircle, Bell, Wifi, WifiOff, TrendingUp, Calendar, UserCircle, LogOut, Store, UtensilsCrossed, ToggleLeft, ToggleRight, Repeat, Truck, Loader2, Star, MapPin, Phone } from "lucide-react";
+import { Package, DollarSign, Clock, CheckCircle, Bell, Wifi, WifiOff, TrendingUp, Calendar, UserCircle, LogOut, Store, UtensilsCrossed, ToggleLeft, ToggleRight, Repeat, Truck, Loader2, Star, MapPin, Phone, AlertCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Switch } from "@/components/ui/switch";
-import { format, startOfMonth, endOfMonth, subMonths } from "date-fns";
+import { format, startOfMonth, endOfMonth, subMonths, parse, isBefore, subHours, isAfter } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { usePartnerNotifications } from "@/hooks/usePartnerNotifications";
@@ -21,12 +21,22 @@ export default function PartnerDashboard() {
   const [, setLocation] = useLocation();
   const { wsConnected, newOrdersCount, requestNotificationPermission, clearNewOrdersCount } = usePartnerNotifications();
   const [selectedTab, setSelectedTab] = useState("dashboard");
+  const [currentTime, setCurrentTime] = useState(new Date());
 
   const handleLogout = () => {
     localStorage.removeItem("partnerToken");
     localStorage.removeItem("partnerChefName");
     setLocation("/partner/login");
   };
+
+  // Update current time every minute for prepare button logic
+  useEffect(() => {
+    setCurrentTime(new Date());
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 60000); // Update every minute
+    return () => clearInterval(interval);
+  }, []);
 
   // Add automatic token refresh for partners
   useEffect(() => {
@@ -59,6 +69,13 @@ export default function PartnerDashboard() {
   useEffect(() => {
     requestNotificationPermission();
   }, []);
+
+  // Clear new orders count when viewing the scheduled tab
+  useEffect(() => {
+    if (selectedTab === "scheduled") {
+      clearNewOrdersCount();
+    }
+  }, [selectedTab, clearNewOrdersCount]);
 
   const { data: metrics } = useQuery({
     queryKey: ["/api/partner/dashboard/metrics"],
@@ -352,6 +369,45 @@ export default function PartnerDashboard() {
     }
   };
 
+  // Helper function to check if a scheduled order can have the prepare button enabled
+  // Prepare button should be enabled 2 hours before the scheduled delivery time
+  const canEnablePrepareButton = (order: Order): boolean => {
+    if (!order.deliveryTime || order.status !== "confirmed") {
+      return false;
+    }
+
+    try {
+      // Parse the delivery time (HH:mm format)
+      const [hours, minutes] = order.deliveryTime.split(":").map(Number);
+      
+      // Use deliveryDate if available, otherwise use today
+      let deliveryDate: Date;
+      if (order.deliveryDate) {
+        const [year, month, day] = order.deliveryDate.split("-").map(Number);
+        deliveryDate = new Date(year, month - 1, day, 0, 0, 0);
+      } else {
+        deliveryDate = new Date(currentTime.getFullYear(), currentTime.getMonth(), currentTime.getDate(), 0, 0, 0);
+      }
+      
+      const deliveryDateTime = new Date(deliveryDate.getFullYear(), deliveryDate.getMonth(), deliveryDate.getDate(), hours, minutes, 0);
+
+      // Calculate 2 hours before delivery time
+      const twoHoursBefore = subHours(deliveryDateTime, 2);
+
+      // Check if current time is at or after 2 hours before delivery AND before or at delivery time
+      const canPrepare = isAfter(currentTime, twoHoursBefore) && isBefore(currentTime, deliveryDateTime);
+      
+      return canPrepare;
+    } catch (error) {
+      console.error("Error parsing delivery time:", error);
+      return false;
+    }
+  };
+
+  // Get scheduled orders (orders with deliveryTime)
+  const scheduledOrders = (orders || []).filter((order: Order) => order.deliveryTime);
+  const regularOrders = (orders || []).filter((order: Order) => !order.deliveryTime);
+
   return (
     <div className="min-h-screen bg-white dark:bg-slate-950">
       {/* Mobile Header */}
@@ -422,9 +478,18 @@ export default function PartnerDashboard() {
 
       <main className="px-3 md:px-6 py-4 md:py-8">
         <Tabs value={selectedTab} onValueChange={setSelectedTab} className="space-y-4 md:space-y-6">
-          <TabsList className="grid w-full grid-cols-3 md:grid-cols-5 h-auto">
+          <TabsList className="grid w-full grid-cols-2 md:grid-cols-6 h-auto">
             <TabsTrigger value="dashboard" className="text-xs md:text-sm py-2">Dashboard</TabsTrigger>
             <TabsTrigger value="menu" className="text-xs md:text-sm py-2">Menu</TabsTrigger>
+            <TabsTrigger value="scheduled" className="text-xs md:text-sm py-2 relative">
+              <span className="hidden md:inline">Scheduled</span>
+              <span className="md:hidden">Sched</span>
+              {scheduledOrders.filter((o: Order) => o.status === "confirmed").length > 0 && (
+                <Badge variant="destructive" className="absolute -top-1 -right-1 h-4 w-4 p-0 flex items-center justify-center text-xs">
+                  {scheduledOrders.filter((o: Order) => o.status === "confirmed").length}
+                </Badge>
+              )}
+            </TabsTrigger>
             <TabsTrigger value="orders" className="text-xs md:text-sm py-2">Orders</TabsTrigger>
             <TabsTrigger value="subscriptions" className="text-xs md:text-sm py-2 relative">
               <span className="hidden md:inline">Subscriptions</span>
@@ -531,31 +596,66 @@ export default function PartnerDashboard() {
                           <div className="flex gap-1 flex-wrap">
                             {order.paymentStatus === "confirmed" && order.status === "confirmed" && (
                               <>
-                                <Button
-                                  size="sm"
-                                  onClick={() => acceptOrderMutation.mutate(order.id)}
-                                  disabled={acceptOrderMutation.isPending || rejectOrderMutation.isPending}
-                                  variant="default"
-                                  className="text-xs"
-                                  data-testid={`button-accept-${order.id}`}
-                                >
-                                  Accept
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  onClick={() => {
-                                    const reason = window.prompt("Please provide a reason for rejection:");
-                                    if (reason) {
-                                      rejectOrderMutation.mutate({ orderId: order.id, reason });
-                                    }
-                                  }}
-                                  disabled={acceptOrderMutation.isPending || rejectOrderMutation.isPending}
-                                  variant="destructive"
-                                  className="text-xs"
-                                  data-testid={`button-reject-${order.id}`}
-                                >
-                                  Reject
-                                </Button>
+                                {/* For scheduled orders, check if accept is enabled */}
+                                {order.deliveryTime ? (
+                                  <>
+                                    <Button
+                                      size="sm"
+                                      onClick={() => acceptOrderMutation.mutate(order.id)}
+                                      disabled={!canEnablePrepareButton(order) || acceptOrderMutation.isPending || rejectOrderMutation.isPending}
+                                      variant="default"
+                                      className="text-xs"
+                                      data-testid={`button-accept-${order.id}`}
+                                      title={!canEnablePrepareButton(order) ? "Will be enabled 2 hours before delivery" : ""}
+                                    >
+                                      {!canEnablePrepareButton(order) ? "🔒 Locked" : "Accept"}
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      onClick={() => {
+                                        const reason = window.prompt("Please provide a reason for rejection:");
+                                        if (reason) {
+                                          rejectOrderMutation.mutate({ orderId: order.id, reason });
+                                        }
+                                      }}
+                                      disabled={acceptOrderMutation.isPending || rejectOrderMutation.isPending}
+                                      variant="destructive"
+                                      className="text-xs"
+                                      data-testid={`button-reject-${order.id}`}
+                                    >
+                                      Reject
+                                    </Button>
+                                  </>
+                                ) : (
+                                  /* For non-scheduled orders, accept immediately */
+                                  <>
+                                    <Button
+                                      size="sm"
+                                      onClick={() => acceptOrderMutation.mutate(order.id)}
+                                      disabled={acceptOrderMutation.isPending || rejectOrderMutation.isPending}
+                                      variant="default"
+                                      className="text-xs"
+                                      data-testid={`button-accept-${order.id}`}
+                                    >
+                                      Accept
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      onClick={() => {
+                                        const reason = window.prompt("Please provide a reason for rejection:");
+                                        if (reason) {
+                                          rejectOrderMutation.mutate({ orderId: order.id, reason });
+                                        }
+                                      }}
+                                      disabled={acceptOrderMutation.isPending || rejectOrderMutation.isPending}
+                                      variant="destructive"
+                                      className="text-xs"
+                                      data-testid={`button-reject-${order.id}`}
+                                    >
+                                      Reject
+                                    </Button>
+                                  </>
+                                )}
                               </>
                             )}
                             {["preparing", "accepted_by_chef"].includes(order.status) && !order.assignedTo && (
@@ -752,12 +852,13 @@ export default function PartnerDashboard() {
           <TabsContent value="orders" className="space-y-4 md:space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm md:text-base">All Orders</CardTitle>
+                <CardTitle className="text-sm md:text-base">Regular Orders</CardTitle>
+                <CardDescription>Non-scheduled delivery orders</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3 md:space-y-4">
-                  {orders && orders.length > 0 ? (
-                    orders.map((order: any) => (
+                  {regularOrders && regularOrders.length > 0 ? (
+                    regularOrders.map((order: any) => (
                       <div
                         key={order.id}
                         className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 p-3 md:p-4 bg-slate-50 dark:bg-slate-800 rounded-lg border border-border/50"
@@ -807,31 +908,66 @@ export default function PartnerDashboard() {
                           <div className="flex gap-1 flex-wrap">
                             {order.paymentStatus === "confirmed" && order.status === "confirmed" && (
                               <>
-                                <Button
-                                  size="sm"
-                                  onClick={() => acceptOrderMutation.mutate(order.id)}
-                                  disabled={acceptOrderMutation.isPending || rejectOrderMutation.isPending}
-                                  variant="default"
-                                  className="text-xs"
-                                  data-testid={`button-table-accept-${order.id}`}
-                                >
-                                  Accept
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  onClick={() => {
-                                    const reason = window.prompt("Please provide a reason for rejection:");
-                                    if (reason) {
-                                      rejectOrderMutation.mutate({ orderId: order.id, reason });
-                                    }
-                                  }}
-                                  disabled={acceptOrderMutation.isPending || rejectOrderMutation.isPending}
-                                  variant="destructive"
-                                  className="text-xs"
-                                  data-testid={`button-table-reject-${order.id}`}
-                                >
-                                  Reject
-                                </Button>
+                                {/* For scheduled orders, check if accept is enabled */}
+                                {order.deliveryTime ? (
+                                  <>
+                                    <Button
+                                      size="sm"
+                                      onClick={() => acceptOrderMutation.mutate(order.id)}
+                                      disabled={!canEnablePrepareButton(order) || acceptOrderMutation.isPending || rejectOrderMutation.isPending}
+                                      variant="default"
+                                      className="text-xs"
+                                      data-testid={`button-table-accept-${order.id}`}
+                                      title={!canEnablePrepareButton(order) ? "Will be enabled 2 hours before delivery" : ""}
+                                    >
+                                      {!canEnablePrepareButton(order) ? "🔒 Locked" : "Accept"}
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      onClick={() => {
+                                        const reason = window.prompt("Please provide a reason for rejection:");
+                                        if (reason) {
+                                          rejectOrderMutation.mutate({ orderId: order.id, reason });
+                                        }
+                                      }}
+                                      disabled={acceptOrderMutation.isPending || rejectOrderMutation.isPending}
+                                      variant="destructive"
+                                      className="text-xs"
+                                      data-testid={`button-table-reject-${order.id}`}
+                                    >
+                                      Reject
+                                    </Button>
+                                  </>
+                                ) : (
+                                  /* For non-scheduled orders, accept immediately */
+                                  <>
+                                    <Button
+                                      size="sm"
+                                      onClick={() => acceptOrderMutation.mutate(order.id)}
+                                      disabled={acceptOrderMutation.isPending || rejectOrderMutation.isPending}
+                                      variant="default"
+                                      className="text-xs"
+                                      data-testid={`button-table-accept-${order.id}`}
+                                    >
+                                      Accept
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      onClick={() => {
+                                        const reason = window.prompt("Please provide a reason for rejection:");
+                                        if (reason) {
+                                          rejectOrderMutation.mutate({ orderId: order.id, reason });
+                                        }
+                                      }}
+                                      disabled={acceptOrderMutation.isPending || rejectOrderMutation.isPending}
+                                      variant="destructive"
+                                      className="text-xs"
+                                      data-testid={`button-table-reject-${order.id}`}
+                                    >
+                                      Reject
+                                    </Button>
+                                  </>
+                                )}
                               </>
                             )}
                             {["preparing", "accepted_by_chef"].includes(order.status) && !order.assignedTo && (
@@ -878,6 +1014,179 @@ export default function PartnerDashboard() {
                     ))
                   ) : (
                     <p className="text-center text-muted-foreground py-8 text-xs">No orders yet</p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="scheduled" className="space-y-4 md:space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Clock className="w-5 h-5" />
+                  Scheduled Deliveries ({scheduledOrders.length})
+                </CardTitle>
+                <CardDescription>Roti orders scheduled for specific delivery times</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3 md:space-y-4">
+                  {scheduledOrders && scheduledOrders.length > 0 ? (
+                    scheduledOrders.map((order: Order) => {
+                      const isPrepareEnabled = canEnablePrepareButton(order);
+                      return (
+                        <div
+                          key={order.id}
+                          className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 p-3 md:p-4 bg-slate-50 dark:bg-slate-800 rounded-lg border border-border/50"
+                          data-testid={`card-scheduled-order-${order.id}`}
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="font-semibold text-xs md:text-sm">Order #{order.id.slice(0, 8)}</p>
+                              <Badge className={`${getStatusColor(order.status)} text-xs`}>
+                                {order.status.replace("_", " ").toUpperCase()}
+                              </Badge>
+                              <Badge variant={order.paymentStatus === "confirmed" ? "default" : "secondary"} className="text-xs">
+                                {order.paymentStatus}
+                              </Badge>
+                            </div>
+                            <p className="text-xs md:text-sm text-muted-foreground mt-1">
+                              {order.customerName}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {format(new Date(order.createdAt), "MMM d, h:mm a")}
+                            </p>
+                            <div className="mt-2 text-xs space-y-0.5">
+                              {(order.items as any[]).slice(0, 2).map((item, idx) => (
+                                <p key={idx} className="text-muted-foreground">
+                                  {item.name} x{item.quantity}
+                                </p>
+                              ))}
+                              {(order.items as any[]).length > 2 && (
+                                <p className="text-muted-foreground text-xs">+{(order.items as any[]).length - 2} more</p>
+                              )}
+                            </div>
+                            {order.assignedTo && order.deliveryPersonName && (
+                              <Badge variant="outline" className="text-xs mt-2">
+                                🚴 {order.deliveryPersonName}
+                              </Badge>
+                            )}
+                            {/* Scheduled Delivery Time Display */}
+                            {order.deliveryTime && (
+                              <div className="mt-2 p-2 bg-orange-50 dark:bg-orange-950 rounded border border-orange-200 dark:border-orange-800">
+                                <p className="text-sm font-bold text-orange-700 dark:text-orange-300 flex items-center gap-1">
+                                  <Clock className="h-4 w-4" />
+                                  📅 {order.deliveryDate ? format(new Date(order.deliveryDate), "MMM d, yyyy") : (() => {
+                                    const today = new Date();
+                                    const [hours, mins] = order.deliveryTime.split(":").map(Number);
+                                    const deliveryTime = new Date(today.getFullYear(), today.getMonth(), today.getDate(), hours, mins);
+                                    
+                                    // Check if delivery time has passed today
+                                    if (currentTime > deliveryTime) {
+                                      // If delivery time has passed, it's tomorrow
+                                      const tomorrow = new Date(today);
+                                      tomorrow.setDate(tomorrow.getDate() + 1);
+                                      return format(tomorrow, "MMM d, yyyy");
+                                    } else {
+                                      return "Today";
+                                    }
+                                  })()}
+                                </p>
+                                <p className="text-sm font-bold text-orange-700 dark:text-orange-300 flex items-center gap-1 mt-1">
+                                  🕐 {order.deliveryTime && (() => {
+                                    const [hours, mins] = order.deliveryTime.split(":").map(Number);
+                                    const period = hours >= 12 ? "PM" : "AM";
+                                    const displayHours = hours % 12 || 12;
+                                    return `${displayHours}:${String(mins).padStart(2, "0")} ${period}`;
+                                  })()}
+                                </p>
+                                {isPrepareEnabled && (
+                                  <p className="text-xs text-green-600 dark:text-green-400 mt-1 flex items-center gap-1">
+                                    <AlertCircle className="h-3 w-3" />
+                                    🟢 Prepare button enabled (within 2 hours of delivery)
+                                  </p>
+                                )}
+                                {!isPrepareEnabled && order.status === "confirmed" && (
+                                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                                    ⏳ Prepare button will be enabled 2 hours before delivery
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex items-center justify-between md:flex-col md:items-end gap-2 flex-wrap">
+                            <p className="font-bold text-sm md:text-base">₹{order.total}</p>
+
+                            <div className="flex gap-1 flex-wrap">
+                              {order.paymentStatus === "confirmed" && order.status === "confirmed" && (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    onClick={() => acceptOrderMutation.mutate(order.id)}
+                                    disabled={!isPrepareEnabled || acceptOrderMutation.isPending || rejectOrderMutation.isPending}
+                                    variant="default"
+                                    className="text-xs"
+                                    data-testid={`button-scheduled-accept-${order.id}`}
+                                    title={!isPrepareEnabled ? "Will be enabled 2 hours before delivery" : ""}
+                                  >
+                                    {!isPrepareEnabled ? "🔒 Locked" : "Accept"}
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    onClick={() => {
+                                      const reason = window.prompt("Please provide a reason for rejection:");
+                                      if (reason) {
+                                        rejectOrderMutation.mutate({ orderId: order.id, reason });
+                                      }
+                                    }}
+                                    disabled={acceptOrderMutation.isPending || rejectOrderMutation.isPending}
+                                    variant="destructive"
+                                    className="text-xs"
+                                    data-testid={`button-scheduled-reject-${order.id}`}
+                                  >
+                                    Reject
+                                  </Button>
+                                </>
+                              )}
+                              {["preparing", "accepted_by_chef"].includes(order.status) && !order.assignedTo && (
+                                <Badge variant="secondary" className="text-xs">
+                                  Waiting for delivery
+                                </Badge>
+                              )}
+                              {order.assignedTo && order.deliveryPersonName && order.status === "preparing" && (
+                                <Button
+                                  size="sm"
+                                  onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: "prepared" })}
+                                  disabled={updateStatusMutation.isPending || !isPrepareEnabled}
+                                  variant={isPrepareEnabled ? "default" : "secondary"}
+                                  className="text-xs"
+                                  title={!isPrepareEnabled ? "Prepare button will be enabled 2 hours before delivery time" : ""}
+                                  data-testid={`button-scheduled-ready-${order.id}`}
+                                >
+                                  {isPrepareEnabled ? "Mark Ready" : "Not Ready Yet"}
+                                </Button>
+                              )}
+                              {order.status === "prepared" && (
+                                <Badge variant="outline" className="bg-green-50 text-xs">
+                                  ✓ Ready
+                                </Badge>
+                              )}
+                              {order.status === "out_for_delivery" && (
+                                <Badge variant="outline" className="bg-blue-50 text-xs">
+                                  ✓ Out for Delivery
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <Clock className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                      <p>No scheduled orders yet</p>
+                      <p className="text-sm">Scheduled delivery orders will appear here once payment is confirmed</p>
+                    </div>
                   )}
                 </div>
               </CardContent>

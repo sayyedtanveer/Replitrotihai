@@ -178,6 +178,30 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                 <span>Cart Settings</span>
               </div>
             </Link>
+            <Link href="/admin/roti-settings">
+              <div className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors cursor-pointer ${location === "/admin/roti-settings" ? "bg-primary text-primary-foreground" : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"}`}>
+                <Clock className="w-5 h-5" />
+                <span>Roti Settings</span>
+              </div>
+            </Link>
+            <Link href="/admin/delivery-time-slots">
+              <div className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors cursor-pointer ${location === "/admin/delivery-time-slots" ? "bg-primary text-primary-foreground" : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"}`}>
+                <Calendar className="w-5 h-5" />
+                <span>Delivery Time Slots</span>
+              </div>
+            </Link>
+            <Link href="/admin/referrals">
+              <div className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors cursor-pointer ${location === "/admin/referrals" ? "bg-primary text-primary-foreground" : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"}`}>
+                <Wallet className="w-5 h-5" />
+                <span>Referrals</span>
+              </div>
+            </Link>
+            <Link href="/admin/wallet-logs">
+              <div className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors cursor-pointer ${location === "/admin/wallet-logs" ? "bg-primary text-primary-foreground" : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"}`}>
+                <Wallet className="w-5 h-5" />
+                <span>Wallet Logs</span>
+              </div>
+            </Link>
           </nav>
 
           <div className="p-4 border-t border-slate-200 dark:border-slate-700 shrink-0 mt-auto">
